@@ -1,9 +1,7 @@
 const MAX_SEGMENT_STEPS: u32 = 16u;
 const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
 const STATIC_DEPOSIT_FRACTION: f32 = 0.05;
-const FILM_CENTRE_WEIGHT: f32 = 0.4;
-const FILM_EDGE_WEIGHT: f32 = 0.1;
-const FILM_CORNER_WEIGHT: f32 = 0.05;
+const FILM_MAX_RADIUS: f32 = 0.075 * PIXELS_PER_CM;
 const WICKING: f32 = 0.3;
 const SCRAPE_FRACTION: f32 = 0.25;
 const MAX_OVERLOAD: f32 = 2.0;
@@ -17,7 +15,7 @@ struct DepositUniform {
     sample_capacity: f32,
     contact_height: f32,
     dt: f32,
-    padding: f32,
+    lift_burst: f32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -29,6 +27,41 @@ struct DepositUniform {
 @group(0) @binding(5) var<storage, read_write> paint: array<atomic<i32>>;
 @group(0) @binding(7) var<uniform> window: WindowUniform;
 @group(0) @binding(8) var<storage, read> particle_volume: array<i32>;
+@group(0) @binding(9) var<storage, read_write> film: array<atomic<i32>>;
+
+fn film_radius(fill: f32) -> f32 {
+    return 0.5 + (FILM_MAX_RADIUS - 0.5) * smoothstep(0.2, 1.0, fill);
+}
+
+fn splat_film(centre: vec2<f32>, radius: f32, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
+    let reach = i32(ceil(radius));
+    let base_pixel = vec2<i32>(floor(centre));
+    var covered = 0.0;
+    for (var dy = -reach; dy <= reach; dy++) {
+        for (var dx = -reach; dx <= reach; dx++) {
+            let offset = vec2<f32>(f32(dx), f32(dy));
+            if (length(offset) <= radius) { covered += 1.0; }
+        }
+    }
+    let share = amount / max(covered, 1.0);
+    for (var dy = -reach; dy <= reach; dy++) {
+        for (var dx = -reach; dx <= reach; dx++) {
+            let offset = vec2<f32>(f32(dx), f32(dy));
+            if (length(offset) > radius) { continue; }
+            let pixel = base_pixel + vec2<i32>(dx, dy);
+            if (!window_contains(pixel)) { continue; }
+            let local = vec2<u32>(pixel - window.origin);
+            let slot = (local.y * window.width + local.x) * CHANNELS;
+            atomicAdd(&film[slot], fixed(share));
+            atomicAdd(&film[slot + 1u], fixed(share * absorption.x));
+            atomicAdd(&film[slot + 2u], fixed(share * absorption.y));
+            atomicAdd(&film[slot + 3u], fixed(share * absorption.z));
+            atomicAdd(&film[slot + 4u], fixed(share * scattering.x));
+            atomicAdd(&film[slot + 5u], fixed(share * scattering.y));
+            atomicAdd(&film[slot + 6u], fixed(share * scattering.z));
+        }
+    }
+}
 
 fn fixed(value: f32) -> i32 {
     return i32(round(value * PAINT_SCALE));
@@ -111,14 +144,6 @@ fn give(cell: u32, deposit_share: f32, load: ptr<function, f32>, absorption: vec
     *load -= given;
 }
 
-fn film_weight(dx: i32, dy: i32, fill: f32) -> f32 {
-    let taps = abs(dx) + abs(dy);
-    let spread = smoothstep(0.2, 0.8, fill);
-    if (taps == 0) { return mix(1.0, FILM_CENTRE_WEIGHT, spread); }
-    if (taps == 1) { return FILM_EDGE_WEIGHT * spread; }
-    return FILM_CORNER_WEIGHT * spread;
-}
-
 fn scrape(local: vec2<u32>, amount: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
     var remaining = amount;
     var z = column_top(local);
@@ -149,7 +174,7 @@ fn surface_is_dry(local: vec2<u32>) -> bool {
     return atomicLoad(&paint[cell + 7u]) >= i32(PAINT_SCALE);
 }
 
-fn exchange(pixel: vec2<i32>, surface_limit: f32, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
+fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, surface_limit: f32, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
     let local = vec2<u32>(pixel - window.origin);
     let height = column_height(local);
@@ -166,14 +191,10 @@ fn exchange(pixel: vec2<i32>, surface_limit: f32, deposit_share: f32, pickup_sha
     } else if (wet && top > 0u) {
         pickup(window_cell(vec3<u32>(local, top - 1u)), pickup_share * (1.0 - fill), load, absorption, scattering);
     }
-    for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-            let neighbour = pixel + vec2<i32>(dx, dy);
-            if (!window_contains(neighbour) || neighbour.x < 0 || neighbour.y < 0 || neighbour.x >= i32(window.canvas_width) || neighbour.y >= i32(window.canvas_height)) { continue; }
-            let neighbour_local = vec2<u32>(neighbour - window.origin);
-            give(window_cell(vec3<u32>(neighbour_local, column_top(neighbour_local))), deposit_share * fill * film_weight(dx, dy, fill), load, *absorption, *scattering);
-        }
-    }
+    let given = min(deposit_share * fill, *load);
+    if (given <= 0.0) { return; }
+    *load -= given;
+    splat_film(point_xy, film_radius(fill), given, *absorption, *scattering);
 }
 
 @compute @workgroup_size(128)
@@ -189,8 +210,11 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     var load = sample_load[sample];
     var absorption = sample_absorption[sample].xyz;
     var scattering = sample_scattering[sample].xyz;
+    let fill_now = clamp(load / deposit.sample_capacity, 0.0, 1.0);
+    let stride = max(u32(round(film_radius(fill_now) * 0.75)), 1u);
+    let depositing = (sample % deposit.samples_per_bristle) % stride == 0u;
     let travelled = distance(start.xy, end.xy);
-    let motion = clamp(travelled / (REFERENCE_SPEED * deposit.dt), STATIC_DEPOSIT_FRACTION, 1.0);
+    let motion = max(clamp(travelled / (REFERENCE_SPEED * deposit.dt), STATIC_DEPOSIT_FRACTION, 1.0), deposit.lift_burst);
     let steps = clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS);
     let share = 1.0 / f32(steps);
     for (var i = 1u; i <= steps; i++) {
@@ -200,7 +224,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let local = vec2<u32>(pixel - window.origin);
         let film = mix(0.015 * PIXELS_PER_CM, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
         if (point.z > column_height(local) + film) { continue; }
-        exchange(pixel, point.z + film, deposit.deposit_rate * share * motion, deposit.pickup_rate * share, &load, &absorption, &scattering);
+        let deposit_share = select(0.0, deposit.deposit_rate * share * motion * f32(stride), depositing);
+        exchange(pixel, point.xy, point.z + film, deposit_share, deposit.pickup_rate * share, &load, &absorption, &scattering);
     }
 
     sample_load[sample] = load;
@@ -238,4 +263,18 @@ fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
         previous_absorption = sample_absorption[here].xyz;
         previous_scattering = sample_scattering[here].xyz;
     }
+}
+
+@compute @workgroup_size(16, 16)
+fn apply_film(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= window.width || id.y >= window.height) { return; }
+    let slot = (id.y * window.width + id.x) * CHANNELS;
+    let mass = f32(atomicLoad(&film[slot])) / PAINT_SCALE;
+    if (mass <= 0.0) { return; }
+    let absorption = vec3<f32>(f32(atomicLoad(&film[slot + 1u])), f32(atomicLoad(&film[slot + 2u])), f32(atomicLoad(&film[slot + 3u]))) / PAINT_SCALE / mass;
+    let scattering = vec3<f32>(f32(atomicLoad(&film[slot + 4u])), f32(atomicLoad(&film[slot + 5u])), f32(atomicLoad(&film[slot + 6u]))) / PAINT_SCALE / mass;
+    let pixel = vec2<i32>(id.xy) + window.origin;
+    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { return; }
+    var remaining = mass;
+    give(window_cell(vec3<u32>(id.xy, column_top(id.xy))), mass, &remaining, absorption, scattering);
 }

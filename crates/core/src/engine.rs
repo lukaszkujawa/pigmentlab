@@ -47,6 +47,7 @@ pub struct Engine {
     pose_at_last_fluid_step: BrushPose,
     fluid_enabled: bool,
     fluid_active_until: f64,
+    was_pressed: bool,
     history: History,
     seed: u64,
     base_preset: BrushPreset,
@@ -112,6 +113,7 @@ impl Engine {
             pose_at_last_fluid_step: BrushPose::upright(lifted),
             fluid_enabled: true,
             fluid_active_until: 0.0,
+            was_pressed: false,
             history,
             seed,
             base_preset: BrushPreset::default_round(),
@@ -296,8 +298,13 @@ impl Engine {
         let canvas = [self.canvas.size.width as f32, self.canvas.size.height as f32];
         for _ in 0..steps {
             self.time += dt;
+            let mut lifting = false;
             if let Some(state) = self.pointer.state_at(self.time) {
-                self.pose = self.pose_for(state);
+                lifting = self.was_pressed && !state.pressed;
+                if !lifting {
+                    self.pose = self.pose_for(state);
+                }
+                self.was_pressed = state.pressed;
                 if state.pressed {
                     self.fluid_active_until = self.time + FLUID_SETTLE_SECONDS;
                 }
@@ -323,6 +330,7 @@ impl Engine {
                 self.fluid.clear_velocity(&mut encoder);
             }
             self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, canvas);
+            self.deposit.set_lifting(&self.gpu, lifting);
             self.deposit.encode(&mut encoder);
             self.substeps += 1;
             let fluid_due = self.fluid_enabled && self.time <= self.fluid_active_until;
