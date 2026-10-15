@@ -1,15 +1,15 @@
 {
   "seed": 1,
   "canvas": {
-    "width": 512,
-    "height": 384
+    "width": 1024,
+    "height": 768
   },
   "steps": [
     {
       "t": 0.0,
       "action": "press",
-      "x": 256,
-      "y": 192,
+      "x": 512,
+      "y": 384,
       "pressure": 0.8
     },
     {
@@ -20,8 +20,8 @@
     {
       "t": 0.3,
       "action": "move",
-      "x": 400,
-      "y": 192,
+      "x": 800,
+      "y": 384,
       "pressure": 0.8
     },
     {

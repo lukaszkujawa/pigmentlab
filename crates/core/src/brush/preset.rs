@@ -56,9 +56,9 @@ impl BrushPreset {
             recovery: 0.25,
             splay: 0.55,
             sink: 0.5,
-            sample_capacity: 12.0,
-            deposit_rate: 0.06,
-            pickup_rate: 0.002,
+            sample_capacity: cm(0.3),
+            deposit_rate: cm(0.0015),
+            pickup_rate: cm(0.00005),
         }
     }
 
@@ -99,12 +99,12 @@ impl BrushPreset {
 }
 
 pub const PRESETS: [NamedPreset; 6] = [
-    NamedPreset { name: "Round small", preset: BrushPreset::round(70, 6.0, 64.0) },
-    NamedPreset { name: "Round medium", preset: BrushPreset::round(200, 14.0, 88.0) },
-    NamedPreset { name: "Round large", preset: BrushPreset::round(450, 24.0, 112.0) },
-    NamedPreset { name: "Flat", preset: BrushPreset::flat(400, 48.0, 12.0, 80.0) },
-    NamedPreset { name: "Filbert", preset: BrushPreset::filbert(350, 40.0, 12.0, 88.0) },
-    NamedPreset { name: "Rigger", preset: BrushPreset::round(40, 5.0, 120.0) },
+    NamedPreset { name: "Round small", preset: BrushPreset::round(70, cm(0.15), cm(1.6)) },
+    NamedPreset { name: "Round medium", preset: BrushPreset::round(200, cm(0.35), cm(2.2)) },
+    NamedPreset { name: "Round large", preset: BrushPreset::round(450, cm(0.6), cm(2.8)) },
+    NamedPreset { name: "Flat", preset: BrushPreset::flat(400, cm(1.2), cm(0.3), cm(2.0)) },
+    NamedPreset { name: "Filbert", preset: BrushPreset::filbert(350, cm(1.0), cm(0.3), cm(2.2)) },
+    NamedPreset { name: "Rigger", preset: BrushPreset::round(40, cm(0.12), cm(3.0)) },
 ];
 
 pub fn preset_by_name(name: &str) -> Option<BrushPreset> {

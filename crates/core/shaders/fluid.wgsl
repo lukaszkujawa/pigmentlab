@@ -1,8 +1,12 @@
 const LIQUID_THRESHOLD: f32 = 0.05;
-const ADHERED_LAYERS: i32 = 1;
-const ADHESION_CELLS: i32 = 1;
-const JUMP_DISTANCE: f32 = 16.0;
+const ADHERED_LAYERS: i32 = 2;
+const ADHESION_CELLS: i32 = 2;
+const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const WORKGROUP: u32 = 64u;
+
+fn linear_index(id: vec3<u32>, groups: vec3<u32>, workgroup_size: u32) -> u32 {
+    return id.x + id.y * groups.x * workgroup_size;
+}
 
 struct FluidUniform {
     dt: f32,
@@ -167,8 +171,8 @@ fn curve_point(previous: bool, bristle_index: u32, t: f32) -> vec3<f32> {
 }
 
 @compute @workgroup_size(128)
-fn rasterize_bristles(@builtin(global_invocation_id) id: vec3<u32>) {
-    let sample = id.x;
+fn rasterize_bristles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let sample = linear_index(id, groups, 128u);
     if (sample >= fluid.sample_count) { return; }
     let bristle_index = sample / fluid.samples_per_bristle;
     let t = f32(sample % fluid.samples_per_bristle) / f32(fluid.samples_per_bristle - 1u);
@@ -261,13 +265,13 @@ fn advect_cell(index: u32, from_next: bool) {
 }
 
 @compute @workgroup_size(64)
-fn advect_forward(@builtin(global_invocation_id) id: vec3<u32>) {
-    advect_cell(id.x, false);
+fn advect_forward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    advect_cell(linear_index(id, groups, 64u), false);
 }
 
 @compute @workgroup_size(64)
-fn advect_backward(@builtin(global_invocation_id) id: vec3<u32>) {
-    advect_cell(id.x, true);
+fn advect_backward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    advect_cell(linear_index(id, groups, 64u), true);
 }
 
 fn face_velocity(solid_left: bool, solid_right: bool, left: vec3<i32>, right: vec3<i32>, component: u32, current: f32) -> f32 {
@@ -295,9 +299,9 @@ fn face_velocity(solid_left: bool, solid_right: bool, left: vec3<i32>, right: ve
 }
 
 @compute @workgroup_size(64)
-fn apply_boundaries(@builtin(global_invocation_id) id: vec3<u32>) {
+fn apply_boundaries(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
     let faces = (window.width + 1u) * (window.height + 1u) * (window.depth + 1u);
-    let index = id.x;
+    let index = linear_index(id, groups, 64u);
     if (index >= faces) { return; }
     let i = index % (window.width + 1u);
     let j = (index / (window.width + 1u)) % (window.height + 1u);
@@ -365,18 +369,18 @@ fn diffuse_component(index: u32, source_is_next: bool) {
 }
 
 @compute @workgroup_size(64)
-fn diffuse_forward(@builtin(global_invocation_id) id: vec3<u32>) {
-    diffuse_component(id.x, false);
+fn diffuse_forward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    diffuse_component(linear_index(id, groups, 64u), false);
 }
 
 @compute @workgroup_size(64)
-fn diffuse_backward(@builtin(global_invocation_id) id: vec3<u32>) {
-    diffuse_component(id.x, true);
+fn diffuse_backward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    diffuse_component(linear_index(id, groups, 64u), true);
 }
 
 @compute @workgroup_size(64)
-fn compute_divergence(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn compute_divergence(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
     if (index >= cell_count()) { return; }
     let c = cell_from_index(index);
     if (!is_liquid(vec3<i32>(c))) {
@@ -413,13 +417,13 @@ fn jacobi_step(index: u32, source_is_next: bool) {
 }
 
 @compute @workgroup_size(64)
-fn jacobi_forward(@builtin(global_invocation_id) id: vec3<u32>) {
-    jacobi_step(id.x, false);
+fn jacobi_forward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    jacobi_step(linear_index(id, groups, 64u), false);
 }
 
 @compute @workgroup_size(64)
-fn jacobi_backward(@builtin(global_invocation_id) id: vec3<u32>) {
-    jacobi_step(id.x, true);
+fn jacobi_backward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    jacobi_step(linear_index(id, groups, 64u), true);
 }
 
 fn pressure_at(c: vec3<i32>) -> f32 {
@@ -428,9 +432,9 @@ fn pressure_at(c: vec3<i32>) -> f32 {
 }
 
 @compute @workgroup_size(64)
-fn apply_gradient(@builtin(global_invocation_id) id: vec3<u32>) {
+fn apply_gradient(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
     let faces = (window.width + 1u) * (window.height + 1u) * (window.depth + 1u);
-    let index = id.x;
+    let index = linear_index(id, groups, 64u);
     if (index >= faces) { return; }
     let i = index % (window.width + 1u);
     let j = (index / (window.width + 1u)) % (window.height + 1u);
@@ -450,8 +454,8 @@ fn apply_gradient(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 @compute @workgroup_size(64)
-fn dry(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn dry(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
     if (index >= cell_count()) { return; }
     let base = index * CHANNELS;
     if (volume[base] <= 0) { return; }
@@ -459,8 +463,8 @@ fn dry(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 @compute @workgroup_size(64)
-fn dry_all(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn dry_all(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
     if (index >= cell_count()) { return; }
     let base = index * CHANNELS;
     if (volume[base] <= 0) { return; }
@@ -470,9 +474,9 @@ fn dry_all(@builtin(global_invocation_id) id: vec3<u32>) {
 const PARTICLES_PER_AXIS: u32 = 2u;
 const COARSE_CELL: u32 = 16u;
 const PIC_WEIGHT: f32 = 0.8;
-const CANVAS_FRICTION_RANGE: f32 = 8.0;
+const CANVAS_FRICTION_RANGE: f32 = 0.2 * PIXELS_PER_CM;
 const CANVAS_FRICTION: f32 = 0.5;
-const RETURN_SPEED: f32 = 20.0;
+const RETURN_SPEED: f32 = 0.5 * PIXELS_PER_CM;
 
 struct Particle {
     position: vec4<f32>,
@@ -521,8 +525,8 @@ fn near_bristles(xy: vec2<u32>) -> bool {
 }
 
 @compute @workgroup_size(128)
-fn flag_bristle_regions(@builtin(global_invocation_id) id: vec3<u32>) {
-    let sample = id.x;
+fn flag_bristle_regions(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let sample = linear_index(id, groups, 128u);
     if (sample >= fluid.sample_count) { return; }
     let bristle_index = sample / fluid.samples_per_bristle;
     let t = f32(sample % fluid.samples_per_bristle) / f32(fluid.samples_per_bristle - 1u);
@@ -543,8 +547,8 @@ fn append_particle(particle: Particle) {
 }
 
 @compute @workgroup_size(64)
-fn emit_particles(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn emit_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
     if (index >= cell_count()) { return; }
     let c = cell_from_index(index);
     let base = index * CHANNELS;
@@ -572,8 +576,8 @@ fn emit_particles(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 @compute @workgroup_size(128)
-fn rasterize_particles(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn rasterize_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 128u);
     if (index >= atomicLoad(&counters[0])) { return; }
     let particle = particles_in[index];
     let mass = particle.position.w;
@@ -610,8 +614,8 @@ fn splat_cell(c: vec3<i32>, weight: f32, particle: Particle) {
 }
 
 @compute @workgroup_size(128)
-fn splat_particles(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn splat_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 128u);
     if (index >= atomicLoad(&counters[0])) { return; }
     let particle = particles_in[index];
     if (particle.position.w <= 0.0) { return; }
@@ -649,9 +653,9 @@ fn merged_face(index: u32, left: vec3<i32>, right: vec3<i32>, component: u32) {
 }
 
 @compute @workgroup_size(64)
-fn merge_particle_velocity(@builtin(global_invocation_id) id: vec3<u32>) {
+fn merge_particle_velocity(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
     let faces = (window.width + 1u) * (window.height + 1u) * (window.depth + 1u);
-    let index = id.x;
+    let index = linear_index(id, groups, 64u);
     if (index >= faces) { return; }
     let i = index % (window.width + 1u);
     let j = (index / (window.width + 1u)) % (window.height + 1u);
@@ -675,8 +679,8 @@ fn sample_before(p: vec3<f32>) -> vec3<f32> {
 }
 
 @compute @workgroup_size(128)
-fn update_particles(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn update_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 128u);
     if (index >= atomicLoad(&counters[0])) { return; }
     var particle = particles_in[index];
     if (particle.position.w <= 0.0) { return; }
@@ -740,18 +744,18 @@ fn return_particle(index: u32, force: bool) {
 }
 
 @compute @workgroup_size(128)
-fn return_resting_particles(@builtin(global_invocation_id) id: vec3<u32>) {
-    return_particle(id.x, false);
+fn return_resting_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    return_particle(linear_index(id, groups, 128u), false);
 }
 
 @compute @workgroup_size(128)
-fn return_all_particles(@builtin(global_invocation_id) id: vec3<u32>) {
-    return_particle(id.x, true);
+fn return_all_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    return_particle(linear_index(id, groups, 128u), true);
 }
 
 @compute @workgroup_size(128)
-fn compact_particles(@builtin(global_invocation_id) id: vec3<u32>) {
-    let index = id.x;
+fn compact_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 128u);
     if (index >= atomicLoad(&counters[0])) { return; }
     let particle = particles_in[index];
     if (particle.position.w <= 0.0) { return; }

@@ -1,5 +1,7 @@
 use super::Gpu;
 
+const MAX_GROUPS_PER_DIMENSION: u32 = 65_535;
+
 #[derive(Clone, Copy)]
 pub enum Binding<'a> {
     Uniform(&'a wgpu::Buffer),
@@ -63,6 +65,12 @@ impl ComputePass {
             cache: None,
         });
         Self { pipeline, bind_group, label }
+    }
+
+    pub fn dispatch_linear(&self, encoder: &mut wgpu::CommandEncoder, items: u32, workgroup_size: u32) {
+        let groups = items.div_ceil(workgroup_size);
+        let columns = groups.min(MAX_GROUPS_PER_DIMENSION);
+        self.dispatch(encoder, [columns, groups.div_ceil(columns), 1]);
     }
 
     pub fn dispatch(&self, encoder: &mut wgpu::CommandEncoder, workgroups: [u32; 3]) {

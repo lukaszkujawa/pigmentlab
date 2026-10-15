@@ -4,7 +4,7 @@ use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 
 const WORKGROUP_SIZE: u32 = 128;
-const CONTACT_HEIGHT: f32 = 2.5;
+const CONTACT_HEIGHT: f32 = crate::units::cm(0.06);
 const FLOW_PER_MEDIUM: f32 = 1.0;
 
 #[repr(C)]
@@ -81,6 +81,7 @@ impl Deposit {
         let shader = gpu.shader(
             "deposit",
             &[
+                include_str!("../../shaders/units.wgsl"),
                 include_str!("../../shaders/hermite.wgsl"),
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/deposit.wgsl"),

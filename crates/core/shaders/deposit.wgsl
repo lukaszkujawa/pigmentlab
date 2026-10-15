@@ -1,11 +1,11 @@
-const MAX_SEGMENT_STEPS: u32 = 8u;
-const REFERENCE_SPEED: f32 = 120.0;
+const MAX_SEGMENT_STEPS: u32 = 16u;
+const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
 const STATIC_DEPOSIT_FRACTION: f32 = 0.05;
 const FILM_CENTRE_WEIGHT: f32 = 0.4;
 const FILM_EDGE_WEIGHT: f32 = 0.1;
 const FILM_CORNER_WEIGHT: f32 = 0.05;
 const WICKING: f32 = 0.3;
-const JUMP_DISTANCE: f32 = 16.0;
+const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 
 struct DepositUniform {
     sample_count: u32,
@@ -155,7 +155,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let pixel = vec2<i32>(floor(point.xy));
         if (!window_contains(pixel) || pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { continue; }
         let local = vec2<u32>(pixel - window.origin);
-        let film = mix(0.6, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
+        let film = mix(0.015 * PIXELS_PER_CM, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
         if (point.z > column_height(local) + film) { continue; }
         exchange(pixel, deposit.deposit_rate * share * motion, deposit.pickup_rate * share, &load, &absorption, &scattering);
     }

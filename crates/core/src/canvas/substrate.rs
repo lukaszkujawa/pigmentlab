@@ -3,7 +3,7 @@ use super::CanvasSize;
 const BASE_COLOR: [f32; 3] = [0.93, 0.91, 0.86];
 const GRAIN_AMPLITUDE: f32 = 0.035;
 const WEAVE_AMPLITUDE: f32 = 0.02;
-const WEAVE_PERIOD: f32 = 6.0;
+const WEAVE_PERIOD: f32 = crate::units::cm(0.15);
 
 pub fn paper(size: CanvasSize, seed: u64) -> Vec<u8> {
     let mut pixels = Vec::with_capacity((size.width * size.height * 4) as usize);

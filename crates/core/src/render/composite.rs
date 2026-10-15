@@ -51,7 +51,11 @@ impl Composite {
     pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, fluid: &Fluid, height_map: &HeightMap) -> Self {
         let shader = gpu.shader(
             "composite",
-            &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/composite.wgsl")],
+            &[
+                include_str!("../../shaders/units.wgsl"),
+                include_str!("../../shaders/window.wgsl"),
+                include_str!("../../shaders/composite.wgsl"),
+            ],
         );
         let uniform = gpu.uniform_buffer("composite uniform", std::mem::size_of::<CompositeUniform>() as u64);
         let fragment = wgpu::ShaderStages::FRAGMENT;

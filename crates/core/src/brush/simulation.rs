@@ -8,7 +8,7 @@ use crate::rng::SplitMix64;
 use glam::{Mat3, Vec3, Vec4};
 
 const WORKGROUP_SIZE: u32 = 64;
-pub const SAMPLES_PER_BRISTLE: u32 = 128;
+pub const SAMPLES_PER_BRISTLE: u32 = 256;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

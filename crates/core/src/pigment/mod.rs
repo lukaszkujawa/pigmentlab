@@ -4,7 +4,7 @@ pub use palette::{PALETTE, Pigment, by_name};
 
 use glam::Vec3;
 
-pub const OPTICAL_THICKNESS_PER_PIXEL: f32 = 10.0;
+pub const OPTICAL_THICKNESS_PER_PIXEL: f32 = 400.0 / crate::units::PIXELS_PER_CM;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Coefficients {

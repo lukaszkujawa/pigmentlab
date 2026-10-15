@@ -10,8 +10,8 @@ struct CompositeUniform {
 };
 
 const OCCLUSION_STRENGTH: f32 = 0.6;
-const SHADOW_STEPS: i32 = 16;
-const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(2.0, 4.0, 7.0);
+const SHADOW_STEPS: i32 = 24;
+const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 * PIXELS_PER_CM, 0.18 * PIXELS_PER_CM);
 
 @group(0) @binding(0) var substrate: texture_2d<f32>;
 @group(0) @binding(1) var<storage, read> paint: array<i32>;
@@ -121,7 +121,7 @@ fn shadow(texel: vec2<i32>, height: f32, light: vec3<f32>) -> f32 {
 }
 
 fn shade(albedo: vec3<f32>, texel: vec2<i32>, height: f32) -> vec3<f32> {
-    let relief = smoothstep(0.0, 0.6, height);
+    let relief = smoothstep(0.0, 0.015 * PIXELS_PER_CM, height);
     let slope_x = (smooth_height(texel + vec2<i32>(1, 0)) - smooth_height(texel - vec2<i32>(1, 0))) * 0.5 * relief;
     let slope_y = (smooth_height(texel + vec2<i32>(0, 1)) - smooth_height(texel - vec2<i32>(0, 1))) * 0.5 * relief;
     let normal = normalize(vec3<f32>(-slope_x, -slope_y, 1.0));

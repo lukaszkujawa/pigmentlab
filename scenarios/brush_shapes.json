@@ -1,34 +1,168 @@
 {
   "seed": 1,
-  "canvas": { "width": 640, "height": 520 },
+  "canvas": {
+    "width": 1280,
+    "height": 1040
+  },
   "steps": [
-    { "t": 0.0, "action": "tool", "name": "Flat" },
-    { "t": 0.0, "action": "dip", "pigment": "cadmium_red" },
-    { "t": 0.0, "action": "press", "x": 100, "y": 100, "pressure": 0.6 },
-    { "t": 0.6, "action": "move", "x": 540, "y": 110, "pressure": 0.6 },
-    { "t": 0.6, "action": "release" },
-    { "t": 0.8, "action": "param", "name": "angle", "value": 90 },
-    { "t": 0.8, "action": "press", "x": 100, "y": 200, "pressure": 0.6 },
-    { "t": 1.4, "action": "move", "x": 540, "y": 210, "pressure": 0.6 },
-    { "t": 1.4, "action": "release" },
-    { "t": 1.6, "action": "tool", "name": "Filbert" },
-    { "t": 1.6, "action": "param", "name": "angle", "value": 0 },
-    { "t": 1.6, "action": "dip", "pigment": "phthalo_green" },
-    { "t": 1.6, "action": "press", "x": 100, "y": 300, "pressure": 0.6 },
-    { "t": 2.2, "action": "move", "x": 540, "y": 310, "pressure": 0.6 },
-    { "t": 2.2, "action": "release" },
-    { "t": 2.4, "action": "tool", "name": "Round medium" },
-    { "t": 2.4, "action": "param", "name": "medium", "value": 0.8 },
-    { "t": 2.4, "action": "dip", "pigment": "french_ultramarine" },
-    { "t": 2.4, "action": "press", "x": 100, "y": 400, "pressure": 0.6 },
-    { "t": 3.0, "action": "move", "x": 540, "y": 410, "pressure": 0.6 },
-    { "t": 3.0, "action": "release" },
-    { "t": 3.2, "action": "tool", "name": "Rigger" },
-    { "t": 3.2, "action": "param", "name": "medium", "value": 0 },
-    { "t": 3.2, "action": "dip", "pigment": "ivory_black" },
-    { "t": 3.2, "action": "press", "x": 100, "y": 470, "pressure": 0.5 },
-    { "t": 3.8, "action": "move", "x": 540, "y": 480, "pressure": 0.5 },
-    { "t": 3.8, "action": "release" },
-    { "t": 4.1, "action": "checkpoint", "name": "shapes" }
+    {
+      "t": 0.0,
+      "action": "tool",
+      "name": "Flat"
+    },
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 200,
+      "y": 200,
+      "pressure": 0.6
+    },
+    {
+      "t": 0.6,
+      "action": "move",
+      "x": 1080,
+      "y": 220,
+      "pressure": 0.6
+    },
+    {
+      "t": 0.6,
+      "action": "release"
+    },
+    {
+      "t": 0.8,
+      "action": "param",
+      "name": "angle",
+      "value": 90
+    },
+    {
+      "t": 0.8,
+      "action": "press",
+      "x": 200,
+      "y": 400,
+      "pressure": 0.6
+    },
+    {
+      "t": 1.4,
+      "action": "move",
+      "x": 1080,
+      "y": 420,
+      "pressure": 0.6
+    },
+    {
+      "t": 1.4,
+      "action": "release"
+    },
+    {
+      "t": 1.6,
+      "action": "tool",
+      "name": "Filbert"
+    },
+    {
+      "t": 1.6,
+      "action": "param",
+      "name": "angle",
+      "value": 0
+    },
+    {
+      "t": 1.6,
+      "action": "dip",
+      "pigment": "phthalo_green"
+    },
+    {
+      "t": 1.6,
+      "action": "press",
+      "x": 200,
+      "y": 600,
+      "pressure": 0.6
+    },
+    {
+      "t": 2.2,
+      "action": "move",
+      "x": 1080,
+      "y": 620,
+      "pressure": 0.6
+    },
+    {
+      "t": 2.2,
+      "action": "release"
+    },
+    {
+      "t": 2.4,
+      "action": "tool",
+      "name": "Round medium"
+    },
+    {
+      "t": 2.4,
+      "action": "param",
+      "name": "medium",
+      "value": 0.8
+    },
+    {
+      "t": 2.4,
+      "action": "dip",
+      "pigment": "french_ultramarine"
+    },
+    {
+      "t": 2.4,
+      "action": "press",
+      "x": 200,
+      "y": 800,
+      "pressure": 0.6
+    },
+    {
+      "t": 3.0,
+      "action": "move",
+      "x": 1080,
+      "y": 820,
+      "pressure": 0.6
+    },
+    {
+      "t": 3.0,
+      "action": "release"
+    },
+    {
+      "t": 3.2,
+      "action": "tool",
+      "name": "Rigger"
+    },
+    {
+      "t": 3.2,
+      "action": "param",
+      "name": "medium",
+      "value": 0
+    },
+    {
+      "t": 3.2,
+      "action": "dip",
+      "pigment": "ivory_black"
+    },
+    {
+      "t": 3.2,
+      "action": "press",
+      "x": 200,
+      "y": 940,
+      "pressure": 0.5
+    },
+    {
+      "t": 3.8,
+      "action": "move",
+      "x": 1080,
+      "y": 960,
+      "pressure": 0.5
+    },
+    {
+      "t": 3.8,
+      "action": "release"
+    },
+    {
+      "t": 4.1,
+      "action": "checkpoint",
+      "name": "shapes"
+    }
   ]
 }

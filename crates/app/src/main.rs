@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 
-const CANVAS: CanvasSize = CanvasSize { width: 1024, height: 768 };
+const CANVAS: CanvasSize = CanvasSize { width: 2048, height: 1536 };
 const SEED: u64 = 1;
 
 #[derive(Default)]
@@ -36,8 +36,10 @@ fn main() -> Result<(), slint::PlatformError> {
         .select()?;
 
     let app = AppWindow::new()?;
-    app.set_canvas_width(CANVAS.width as f32);
-    app.set_canvas_height(CANVAS.height as f32);
+    let scale = app.window().scale_factor().max(1.0);
+    app.set_canvas_width(CANVAS.width as f32 / scale);
+    app.set_canvas_height(CANVAS.height as f32 / scale);
+    app.set_canvas_scale(scale);
     app.set_swatches(swatches());
     app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(
         PRESETS.iter().map(|named| slint::SharedString::from(named.name)).collect::<Vec<_>>(),
@@ -55,10 +57,11 @@ fn main() -> Result<(), slint::PlatformError> {
         let pen = pen.state();
         let (pressure, tilt, rotation) =
             if pen.present { (pen.pressure, pen.tilt, pen.rotation) } else { (app.get_pressure(), [0.0; 2], 0.0) };
+        let scale = app.get_canvas_scale();
         shared.borrow_mut().pointer.push(PointerSample {
             phase: phase(kind),
-            x,
-            y,
+            x: x * scale,
+            y: y * scale,
             pressure,
             tilt,
             rotation,

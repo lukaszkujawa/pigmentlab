@@ -11,7 +11,7 @@ const MAX_ADVECTION_SUBSTEPS: u32 = 12;
 pub const PARTICLE_CAPACITY: u32 = 262_144;
 const PARTICLE_STRIDE: u64 = 64;
 const COARSE_CELL: u32 = 16;
-const MIN_SPEED_FOR_SUBSTEPS: f32 = 60.0;
+const MIN_SPEED_FOR_SUBSTEPS: f32 = crate::units::cm(1.5);
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -112,6 +112,7 @@ impl Fluid {
         let shader = gpu.shader(
             "fluid",
             &[
+                include_str!("../../shaders/units.wgsl"),
                 include_str!("../../shaders/hermite.wgsl"),
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/fluid.wgsl"),
@@ -282,60 +283,55 @@ impl Fluid {
                 _padding: [0.0; 3],
             }),
         );
-        let samples = [self.sample_count.div_ceil(SAMPLE_WORKGROUP), 1, 1];
-        let particles = [PARTICLE_CAPACITY.div_ceil(SAMPLE_WORKGROUP), 1, 1];
-        let faces = [self.face_slots.div_ceil(CELL_WORKGROUP), 1, 1];
-        let cells = [self.cell_groups(), 1, 1];
-
         encoder.clear_buffer(&self.bristle, 0, None);
         encoder.clear_buffer(&self.coarse_flags, 0, None);
-        self.rasterize.dispatch(encoder, samples);
+        self.rasterize.dispatch_linear(encoder, self.sample_count, SAMPLE_WORKGROUP);
         if self.settings.particles {
-            self.flag_regions.dispatch(encoder, samples);
-            self.emit.dispatch(encoder, cells);
+            self.flag_regions.dispatch_linear(encoder, self.sample_count, SAMPLE_WORKGROUP);
+            self.emit.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
             self.encode_particle_rasterization(encoder);
-            self.merge_velocity.dispatch(encoder, faces);
+            self.merge_velocity.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
             encoder.copy_buffer_to_buffer(&self.velocity, 0, &self.velocity_before, 0, self.velocity.size());
         }
-        self.boundaries.dispatch(encoder, faces);
+        self.boundaries.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
         for _ in 0..DIFFUSION_ROUNDS {
-            self.diffuse_forward.dispatch(encoder, [self.velocity_len.div_ceil(CELL_WORKGROUP), 1, 1]);
-            self.diffuse_backward.dispatch(encoder, [self.velocity_len.div_ceil(CELL_WORKGROUP), 1, 1]);
+            self.diffuse_forward.dispatch_linear(encoder, self.velocity_len, CELL_WORKGROUP);
+            self.diffuse_backward.dispatch_linear(encoder, self.velocity_len, CELL_WORKGROUP);
         }
-        self.boundaries.dispatch(encoder, faces);
+        self.boundaries.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
         self.encode_projection(encoder);
         if self.settings.particles {
-            self.update_particles.dispatch(encoder, particles);
-            self.return_resting.dispatch(encoder, particles);
+            self.update_particles.dispatch_linear(encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
+            self.return_resting.dispatch_linear(encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
             self.encode_compaction(encoder);
             encoder.clear_buffer(&self.particle_volume, 0, None);
-            self.splat_particles.dispatch(encoder, particles);
+            self.splat_particles.dispatch_linear(encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
         }
         for _ in 0..substeps / 2 {
-            self.advect_forward.dispatch(encoder, cells);
-            self.advect_backward.dispatch(encoder, cells);
+            self.advect_forward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
+            self.advect_backward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
         }
         self.settle.dispatch(encoder, [WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1]);
-        self.dry.dispatch(encoder, cells);
+        self.dry.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
         encoder.copy_buffer_to_buffer(&brush.curves, 0, &self.previous_curves, 0, brush.curves.size());
     }
 
     fn encode_particle_rasterization(&self, encoder: &mut wgpu::CommandEncoder) {
         encoder.clear_buffer(&self.particle_volume, 0, None);
         encoder.clear_buffer(&self.particle_velocity, 0, None);
-        self.rasterize_particles.dispatch(encoder, [PARTICLE_CAPACITY.div_ceil(SAMPLE_WORKGROUP), 1, 1]);
+        self.rasterize_particles.dispatch_linear(encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
     }
 
     fn encode_compaction(&self, encoder: &mut wgpu::CommandEncoder) {
         encoder.clear_buffer(&self.counters, 4, Some(4));
-        self.compact.dispatch(encoder, [PARTICLE_CAPACITY.div_ceil(SAMPLE_WORKGROUP), 1, 1]);
+        self.compact.dispatch_linear(encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
         encoder.copy_buffer_to_buffer(&self.particles_out, 0, &self.particles_in, 0, self.particles_in.size());
         self.finish_compaction.dispatch(encoder, [1, 1, 1]);
     }
 
     pub fn submit_return_all_particles(&self, gpu: &Gpu) {
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("return particles") });
-        self.return_all.dispatch(&mut encoder, [PARTICLE_CAPACITY.div_ceil(SAMPLE_WORKGROUP), 1, 1]);
+        self.return_all.dispatch_linear(&mut encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
         self.encode_compaction(&mut encoder);
         encoder.clear_buffer(&self.particle_volume, 0, None);
         encoder.clear_buffer(&self.particle_velocity, 0, None);
@@ -343,19 +339,15 @@ impl Fluid {
     }
 
     pub fn encode_dry_all(&self, encoder: &mut wgpu::CommandEncoder) {
-        self.dry_all.dispatch(encoder, [self.cell_groups(), 1, 1]);
+        self.dry_all.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
     }
 
     pub fn encode_projection(&self, encoder: &mut wgpu::CommandEncoder) {
         for _ in 0..PROJECTION_ROUNDS {
-            self.divergence.dispatch(encoder, [self.cell_groups(), 1, 1]);
-            self.jacobi_forward.dispatch(encoder, [self.cell_groups(), 1, 1]);
-            self.jacobi_backward.dispatch(encoder, [self.cell_groups(), 1, 1]);
-            self.gradient.dispatch(encoder, [self.face_slots.div_ceil(CELL_WORKGROUP), 1, 1]);
+            self.divergence.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
+            self.jacobi_forward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
+            self.jacobi_backward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
+            self.gradient.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
         }
-    }
-
-    fn cell_groups(&self) -> u32 {
-        self.cells.div_ceil(CELL_WORKGROUP)
     }
 }

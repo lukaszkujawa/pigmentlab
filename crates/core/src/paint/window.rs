@@ -2,8 +2,8 @@ use crate::canvas::{Canvas, PAINT_CHANNELS};
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use glam::{IVec2, UVec3, Vec2};
 
-pub const WINDOW_SIZE: UVec3 = UVec3::new(192, 192, 16);
-const RELOCATE_MARGIN: f32 = 40.0;
+pub const WINDOW_SIZE: UVec3 = UVec3::new(384, 384, 16);
+const RELOCATE_MARGIN: f32 = crate::units::cm(1.0);
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
