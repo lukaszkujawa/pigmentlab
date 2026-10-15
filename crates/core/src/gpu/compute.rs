@@ -73,6 +73,16 @@ impl ComputePass {
         self.dispatch(encoder, [columns, groups.div_ceil(columns), 1]);
     }
 
+    pub fn dispatch_indirect(&self, encoder: &mut wgpu::CommandEncoder, args: &wgpu::Buffer, offset: u64) {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some(self.label),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.dispatch_workgroups_indirect(args, offset);
+    }
+
     pub fn dispatch(&self, encoder: &mut wgpu::CommandEncoder, workgroups: [u32; 3]) {
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some(self.label),

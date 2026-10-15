@@ -171,9 +171,68 @@ fn curve_point(previous: bool, bristle_index: u32, t: f32) -> vec3<f32> {
 }
 
 @compute @workgroup_size(128)
-fn rasterize_bristles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+fn grow_region(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
     let sample = linear_index(id, groups, 128u);
     if (sample >= fluid.sample_count) { return; }
+    let bristle_index = sample / fluid.samples_per_bristle;
+    let t = f32(sample % fluid.samples_per_bristle) / f32(fluid.samples_per_bristle - 1u);
+    let base = bristle_index * 4u;
+    let point = hermite(curves[base].xyz, curves[base + 1u].xyz, curves[base + 2u].xyz, curves[base + 3u].xyz, t);
+    let local = vec3<i32>(floor(vec3<f32>(point.xy - vec2<f32>(window.origin), point.z)));
+    if (!inside(vec3<i32>(local.xy, 0))) { return; }
+    atomicMin(&region[0], local.x);
+    atomicMin(&region[1], local.y);
+    atomicMax(&region[3], local.x);
+    atomicMax(&region[4], local.y);
+}
+
+@compute @workgroup_size(1)
+fn finalize_region() {
+    let low = vec3<i32>(atomicLoad(&region[0]), atomicLoad(&region[1]), 0);
+    let high = vec3<i32>(atomicLoad(&region[3]), atomicLoad(&region[4]), i32(window.depth) - 1);
+    var engaged = low.x <= high.x && low.y <= high.y;
+    let margin = vec3<i32>(REGION_MARGIN, REGION_MARGIN, 0);
+    let clamped_low = max(low - margin, vec3<i32>(0));
+    let clamped_high = min(high + margin, vec3<i32>(i32(window.width) - 1, i32(window.height) - 1, i32(window.depth) - 1));
+    var size = select(vec3<i32>(0), clamped_high - clamped_low + 1, engaged);
+    if (engaged) {
+        engaged = false;
+        for (var y = clamped_low.y; y <= clamped_high.y && !engaged; y++) {
+            for (var x = clamped_low.x; x <= clamped_high.x; x++) {
+                let pixel = vec2<i32>(x, y) + window.origin;
+                if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { continue; }
+                if (stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)] > 0.0) { engaged = true; break; }
+            }
+        }
+    }
+    if (!engaged) { size = vec3<i32>(0); }
+    atomicStore(&region[0], clamped_low.x);
+    atomicStore(&region[1], clamped_low.y);
+    atomicStore(&region[2], clamped_low.z);
+    atomicStore(&region[3], size.x);
+    atomicStore(&region[4], size.y);
+    atomicStore(&region[5], size.z);
+    atomicStore(&region[6], select(0, 1, engaged));
+    let cells = u32(size.x * size.y * size.z);
+    let slots = u32((size.x + 1) * (size.y + 1) * (size.z + 1)) * u32(engaged);
+    let cell_groups = (cells + 63u) / 64u;
+    let slot_groups = (slots + 63u) / 64u;
+    indirect[0] = min(cell_groups, 65535u);
+    indirect[1] = (cell_groups + 65534u) / 65535u;
+    indirect[2] = 1u;
+    indirect[3] = min(slot_groups, 65535u);
+    indirect[4] = (slot_groups + 65534u) / 65535u;
+    indirect[5] = 1u;
+    let column_groups = (u32(size.x * size.y) + 63u) / 64u;
+    indirect[6] = min(column_groups, 65535u);
+    indirect[7] = (column_groups + 65534u) / 65535u;
+    indirect[8] = 1u;
+}
+
+@compute @workgroup_size(128)
+fn rasterize_bristles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let sample = linear_index(id, groups, 128u);
+    if (sample >= fluid.sample_count || !region_active()) { return; }
     let bristle_index = sample / fluid.samples_per_bristle;
     let t = f32(sample % fluid.samples_per_bristle) / f32(fluid.samples_per_bristle - 1u);
     let point = above_canvas(curve_point(false, bristle_index, t));
@@ -225,8 +284,8 @@ fn outflow_scale(c: vec3<u32>) -> f32 {
 }
 
 fn advect_cell(index: u32, from_next: bool) {
-    if (index >= cell_count()) { return; }
-    let c = cell_from_index(index);
+    if (index >= region_cell_count()) { return; }
+    let c = region_cell(index);
     let dt = fluid.advection_dt;
     let faces = cell_faces(c);
     let own = source_channels(from_next, c);
@@ -256,7 +315,7 @@ fn advect_cell(index: u32, from_next: bool) {
     for (var channel = 0u; channel < 7u; channel++) {
         result[channel] -= own[channel] * min(outflow, 1.0);
     }
-    let base = index * CHANNELS;
+    let base = cell_index(c) * CHANNELS;
     for (var channel = 0u; channel < 7u; channel++) {
         let value = i32(round(max(result[channel], 0.0)));
         if (from_next) { volume[base + channel] = value; } else { volume_next[base + channel] = value; }
@@ -300,13 +359,12 @@ fn face_velocity(solid_left: bool, solid_right: bool, left: vec3<i32>, right: ve
 
 @compute @workgroup_size(64)
 fn apply_boundaries(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    let faces = (window.width + 1u) * (window.height + 1u) * (window.depth + 1u);
     let index = linear_index(id, groups, 64u);
-    if (index >= faces) { return; }
-    let i = index % (window.width + 1u);
-    let j = (index / (window.width + 1u)) % (window.height + 1u);
-    let k = index / ((window.width + 1u) * (window.height + 1u));
-    let c = vec3<i32>(i32(i), i32(j), i32(k));
+    if (index >= region_face_slots()) { return; }
+    let c = region_face_slot(index);
+    let i = u32(c.x);
+    let j = u32(c.y);
+    let k = u32(c.z);
     if (j < window.height && k < window.depth) {
         let left = c - vec3<i32>(1, 0, 0);
         let at = u_index(i, j, k);
@@ -324,65 +382,59 @@ fn apply_boundaries(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_w
     }
 }
 
-fn diffuse_component(index: u32, source_is_next: bool) {
+fn diffuse_face(at: u32, position: vec3<i32>, extent: vec3<u32>, stride: vec3<u32>, source_is_next: bool) {
     let coefficient = fluid.viscosity * fluid.dt;
+    let offsets = array<vec3<i32>, 6>(vec3<i32>(-1, 0, 0), vec3<i32>(1, 0, 0), vec3<i32>(0, -1, 0), vec3<i32>(0, 1, 0), vec3<i32>(0, 0, -1), vec3<i32>(0, 0, 1));
+    let origin_value = select(velocity[at], velocity_next[at], source_is_next);
     var neighbours = 0.0;
     var count = 0.0;
-    let faces = arrayLength(&velocity);
-    if (index >= faces) { return; }
-    let u_count = (window.width + 1u) * window.height * window.depth;
-    let v_count = window.width * (window.height + 1u) * window.depth;
-    var i: u32;
-    var j: u32;
-    var k: u32;
-    var extent: vec3<u32>;
-    var local: u32;
-    if (index < u_count) {
-        local = index;
-        extent = vec3<u32>(window.width + 1u, window.height, window.depth);
-    } else if (index < u_count + v_count) {
-        local = index - u_count;
-        extent = vec3<u32>(window.width, window.height + 1u, window.depth);
-    } else {
-        local = index - u_count - v_count;
-        extent = vec3<u32>(window.width, window.height, window.depth + 1u);
-    }
-    i = local % extent.x;
-    j = (local / extent.x) % extent.y;
-    k = local / (extent.x * extent.y);
-    let stride = vec3<u32>(1u, extent.x, extent.x * extent.y);
-    let offsets = array<vec3<i32>, 6>(vec3<i32>(-1, 0, 0), vec3<i32>(1, 0, 0), vec3<i32>(0, -1, 0), vec3<i32>(0, 1, 0), vec3<i32>(0, 0, -1), vec3<i32>(0, 0, 1));
-    let origin_value = select(velocity[index], velocity_next[index], source_is_next);
     for (var n = 0u; n < 6u; n++) {
-        let position = vec3<i32>(i32(i), i32(j), i32(k)) + offsets[n];
-        if (position.x < 0 || position.y < 0 || position.z < 0 || position.x >= i32(extent.x) || position.y >= i32(extent.y) || position.z >= i32(extent.z)) { continue; }
-        let neighbour = index - local + u32(position.x) * stride.x + u32(position.y) * stride.y + u32(position.z) * stride.z;
+        let neighbour_position = position + offsets[n];
+        if (neighbour_position.x < 0 || neighbour_position.y < 0 || neighbour_position.z < 0 || neighbour_position.x >= i32(extent.x) || neighbour_position.y >= i32(extent.y) || neighbour_position.z >= i32(extent.z)) { continue; }
+        let neighbour = at + u32(offsets[n].x) * stride.x + u32(offsets[n].y) * stride.y + u32(offsets[n].z) * stride.z;
         neighbours += select(velocity[neighbour], velocity_next[neighbour], source_is_next);
         count += 1.0;
     }
     let result = (origin_value + coefficient * neighbours) / (1.0 + coefficient * count);
-    if (source_is_next) {
-        velocity[index] = result;
-    } else {
-        velocity_next[index] = result;
+    if (source_is_next) { velocity[at] = result; } else { velocity_next[at] = result; }
+}
+
+fn diffuse_slot(index: u32, source_is_next: bool) {
+    if (index >= region_face_slots()) { return; }
+    let c = region_face_slot(index);
+    let i = u32(c.x);
+    let j = u32(c.y);
+    let k = u32(c.z);
+    if (j < window.height && k < window.depth) {
+        let extent = vec3<u32>(window.width + 1u, window.height, window.depth);
+        diffuse_face(u_index(i, j, k), c, extent, vec3<u32>(1u, extent.x, extent.x * extent.y), source_is_next);
+    }
+    if (i < window.width && k < window.depth) {
+        let extent = vec3<u32>(window.width, window.height + 1u, window.depth);
+        diffuse_face(v_index(i, j, k), c, extent, vec3<u32>(1u, extent.x, extent.x * extent.y), source_is_next);
+    }
+    if (i < window.width && j < window.height) {
+        let extent = vec3<u32>(window.width, window.height, window.depth + 1u);
+        diffuse_face(w_index(i, j, k), c, extent, vec3<u32>(1u, extent.x, extent.x * extent.y), source_is_next);
     }
 }
 
 @compute @workgroup_size(64)
 fn diffuse_forward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    diffuse_component(linear_index(id, groups, 64u), false);
+    diffuse_slot(linear_index(id, groups, 64u), false);
 }
 
 @compute @workgroup_size(64)
 fn diffuse_backward(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    diffuse_component(linear_index(id, groups, 64u), true);
+    diffuse_slot(linear_index(id, groups, 64u), true);
 }
 
 @compute @workgroup_size(64)
 fn compute_divergence(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    let index = linear_index(id, groups, 64u);
-    if (index >= cell_count()) { return; }
-    let c = cell_from_index(index);
+    let slot = linear_index(id, groups, 64u);
+    if (slot >= region_cell_count()) { return; }
+    let c = region_cell(slot);
+    let index = cell_index(c);
     if (!is_liquid(vec3<i32>(c))) {
         divergence[index] = 0.0;
         pressure[index] = 0.0;
@@ -393,9 +445,10 @@ fn compute_divergence(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num
         + velocity[w_index(c.x, c.y, c.z + 1u)] - velocity[w_index(c.x, c.y, c.z)];
 }
 
-fn jacobi_step(index: u32, source_is_next: bool) {
-    if (index >= cell_count()) { return; }
-    let c = vec3<i32>(cell_from_index(index));
+fn jacobi_step(slot: u32, source_is_next: bool) {
+    if (slot >= region_cell_count()) { return; }
+    let c = vec3<i32>(region_cell(slot));
+    let index = cell_index(vec3<u32>(c));
     if (!is_liquid(c)) {
         if (source_is_next) { pressure[index] = 0.0; } else { pressure_next[index] = 0.0; }
         return;
@@ -433,13 +486,12 @@ fn pressure_at(c: vec3<i32>) -> f32 {
 
 @compute @workgroup_size(64)
 fn apply_gradient(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    let faces = (window.width + 1u) * (window.height + 1u) * (window.depth + 1u);
     let index = linear_index(id, groups, 64u);
-    if (index >= faces) { return; }
-    let i = index % (window.width + 1u);
-    let j = (index / (window.width + 1u)) % (window.height + 1u);
-    let k = index / ((window.width + 1u) * (window.height + 1u));
-    let c = vec3<i32>(i32(i), i32(j), i32(k));
+    if (index >= region_face_slots()) { return; }
+    let c = region_face_slot(index);
+    let i = u32(c.x);
+    let j = u32(c.y);
+    let k = u32(c.z);
     let axes = array<vec3<i32>, 3>(vec3<i32>(1, 0, 0), vec3<i32>(0, 1, 0), vec3<i32>(0, 0, 1));
     for (var axis = 0u; axis < 3u; axis++) {
         let in_range = select(select(i < window.width && j < window.height, i < window.width && k < window.depth, axis == 1u), j < window.height && k < window.depth, axis == 0u);
@@ -455,9 +507,9 @@ fn apply_gradient(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_wor
 
 @compute @workgroup_size(64)
 fn dry(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
-    let index = linear_index(id, groups, 64u);
-    if (index >= cell_count()) { return; }
-    let base = index * CHANNELS;
+    let slot = linear_index(id, groups, 64u);
+    if (slot >= region_cell_count()) { return; }
+    let base = cell_index(region_cell(slot)) * CHANNELS;
     if (volume[base] <= 0) { return; }
     volume[base + 7u] = min(volume[base + 7u] + i32(round(fluid.dryness_rate * fluid.dt * PAINT_SCALE)), i32(PAINT_SCALE));
 }
@@ -494,6 +546,44 @@ struct Particle {
 @group(0) @binding(19) var<storage, read_write> velocity_before: array<f32>;
 @group(0) @binding(20) var<storage, read_write> volume_atomic: array<atomic<i32>>;
 @group(0) @binding(21) var<storage, read_write> stroke_base: array<f32>;
+@group(0) @binding(22) var<storage, read_write> region: array<atomic<i32>>;
+@group(0) @binding(23) var<storage, read_write> indirect: array<u32>;
+
+const REGION_MARGIN: i32 = 10;
+
+fn region_min() -> vec3<i32> {
+    return vec3<i32>(atomicLoad(&region[0]), atomicLoad(&region[1]), atomicLoad(&region[2]));
+}
+
+fn region_size() -> vec3<u32> {
+    return vec3<u32>(u32(atomicLoad(&region[3])), u32(atomicLoad(&region[4])), u32(atomicLoad(&region[5])));
+}
+
+fn region_active() -> bool {
+    return atomicLoad(&region[6]) > 0;
+}
+
+fn region_cell_count() -> u32 {
+    let size = region_size();
+    return size.x * size.y * size.z;
+}
+
+fn region_cell(index: u32) -> vec3<u32> {
+    let size = region_size();
+    let local = vec3<u32>(index % size.x, (index / size.x) % size.y, index / (size.x * size.y));
+    return vec3<u32>(region_min()) + local;
+}
+
+fn region_face_slots() -> u32 {
+    let size = region_size() + 1u;
+    return size.x * size.y * size.z;
+}
+
+fn region_face_slot(index: u32) -> vec3<i32> {
+    let size = region_size() + 1u;
+    let local = vec3<u32>(index % size.x, (index / size.x) % size.y, index / (size.x * size.y));
+    return region_min() + vec3<i32>(local);
+}
 
 fn below_stroke_base(c: vec3<i32>) -> bool {
     let pixel = c.xy + window.origin;
@@ -549,7 +639,7 @@ fn append_particle(particle: Particle) {
 @compute @workgroup_size(64)
 fn emit_particles(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
     let index = linear_index(id, groups, 64u);
-    if (index >= cell_count()) { return; }
+    if (index >= cell_count() || !region_active()) { return; }
     let c = cell_from_index(index);
     let base = index * CHANNELS;
     let density = f32(volume[base]) / PAINT_SCALE;
@@ -769,15 +859,18 @@ fn finish_compaction() {
     atomicStore(&counters[1], 0u);
 }
 
-@compute @workgroup_size(16, 16)
-fn settle_columns(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height) { return; }
+@compute @workgroup_size(64)
+fn settle_columns(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
+    let size = region_size();
+    if (index >= size.x * size.y) { return; }
+    let column = vec2<u32>(region_min().xy) + vec2<u32>(index % size.x, index / size.x);
     var write = 0u;
     for (var z = 0u; z < window.depth; z++) {
-        let source = cell_index(vec3<u32>(id.x, id.y, z)) * CHANNELS;
+        let source = cell_index(vec3<u32>(column, z)) * CHANNELS;
         if (volume[source] <= 0) { continue; }
         if (write != z) {
-            let destination = cell_index(vec3<u32>(id.x, id.y, write)) * CHANNELS;
+            let destination = cell_index(vec3<u32>(column, write)) * CHANNELS;
             for (var channel = 0u; channel < 8u; channel++) {
                 volume[destination + channel] = volume[source + channel];
                 volume[source + channel] = 0;

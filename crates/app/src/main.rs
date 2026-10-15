@@ -102,6 +102,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let mut engine: Option<Engine> = None;
     let mut last_frame = Instant::now();
     let mut recorder: Option<Recorder> = None;
+    let log_frames = std::env::var_os("SIMPAINT_LOG_FRAMES").is_some();
     app.window()
         .set_rendering_notifier(move |state, graphics_api| match state {
             slint::RenderingState::RenderingSetup => {
@@ -135,7 +136,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     let texture = engine.render().clone();
                     app.set_canvas_texture(slint::Image::try_from(texture).unwrap());
                     let now = Instant::now();
-                    app.set_frame_ms((now - last_frame).as_secs_f32() * 1000.0);
+                    let frame_ms = (now - last_frame).as_secs_f32() * 1000.0;
+                    app.set_frame_ms(frame_ms);
+                    if log_frames {
+                        eprintln!("frame {frame_ms:.1} ms");
+                    }
                     last_frame = now;
                     app.window().request_redraw();
                 }

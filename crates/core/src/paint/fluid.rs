@@ -53,6 +53,10 @@ pub struct Fluid {
     pub counters: wgpu::Buffer,
     coarse_flags: wgpu::Buffer,
     stroke_base: wgpu::Buffer,
+    region: wgpu::Buffer,
+    indirect: wgpu::Buffer,
+    grow_region: ComputePass,
+    finalize_region: ComputePass,
     rasterize: ComputePass,
     flag_regions: ComputePass,
     emit: ComputePass,
@@ -79,7 +83,6 @@ pub struct Fluid {
     sample_count: u32,
     cells: u32,
     face_slots: u32,
-    velocity_len: u32,
 }
 
 impl Fluid {
@@ -108,6 +111,8 @@ impl Fluid {
         let coarse_cells = u64::from(w.div_ceil(COARSE_CELL)) * u64::from(h.div_ceil(COARSE_CELL));
         let coarse_flags = gpu.storage_buffer("bristle region flags", coarse_cells * 4);
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
+        let region = gpu.storage_buffer("fluid region", 7 * 4);
+        let indirect = gpu.indirect_buffer("fluid indirect dispatch", 9 * 4);
 
         let shader = gpu.shader(
             "fluid",
@@ -131,32 +136,39 @@ impl Fluid {
         let particles_in_rw = Binding::ReadWrite(&particles_in);
         let counters_rw = Binding::ReadWrite(&counters);
         let coarse_rw = Binding::ReadWrite(&coarse_flags);
+        let region_rw = Binding::ReadWrite(&region);
 
         let rasterize = pass(
             "rasterize bristles",
             "rasterize_bristles",
-            &[(9, bristle_rw), (11, Binding::ReadOnly(&brush.curves)), (12, Binding::ReadOnly(&previous_curves))],
+            &[(9, bristle_rw), (11, Binding::ReadOnly(&brush.curves)), (12, Binding::ReadOnly(&previous_curves)), (22, region_rw)],
         );
         let advect_forward = pass(
             "advect forward",
             "advect_forward",
-            &[(2, volume), (3, Binding::ReadWrite(&volume_next)), (4, velocity_rw)],
+            &[(2, volume), (3, Binding::ReadWrite(&volume_next)), (4, velocity_rw), (22, region_rw)],
         );
         let advect_backward = pass(
             "advect backward",
             "advect_backward",
-            &[(2, volume), (3, Binding::ReadWrite(&volume_next)), (4, velocity_rw)],
+            &[(2, volume), (3, Binding::ReadWrite(&volume_next)), (4, velocity_rw), (22, region_rw)],
         );
         let boundaries = pass(
             "apply boundaries",
             "apply_boundaries",
-            &[(2, volume), (4, velocity_rw), (9, bristle_rw), (16, particle_volume_rw), (21, Binding::ReadWrite(&stroke_base))],
+            &[(2, volume), (4, velocity_rw), (9, bristle_rw), (16, particle_volume_rw), (21, Binding::ReadWrite(&stroke_base)), (22, region_rw)],
+        );
+        let grow_region = pass("grow region", "grow_region", &[(11, Binding::ReadOnly(&brush.curves)), (22, region_rw)]);
+        let finalize_region = pass(
+            "finalize region",
+            "finalize_region",
+            &[(21, Binding::ReadWrite(&stroke_base)), (22, region_rw), (23, Binding::ReadWrite(&indirect))],
         );
         let flag_regions = pass("flag bristle regions", "flag_bristle_regions", &[(11, Binding::ReadOnly(&brush.curves)), (18, coarse_rw)]);
         let emit = pass(
             "emit particles",
             "emit_particles",
-            &[(2, volume), (4, velocity_rw), (13, particles_in_rw), (15, counters_rw), (18, coarse_rw)],
+            &[(2, volume), (4, velocity_rw), (13, particles_in_rw), (15, counters_rw), (18, coarse_rw), (22, region_rw)],
         );
         let rasterize_particles = pass(
             "rasterize particles",
@@ -187,8 +199,8 @@ impl Fluid {
             &[(13, particles_in_rw), (14, Binding::ReadWrite(&particles_out)), (15, counters_rw)],
         );
         let finish_compaction = pass("finish compaction", "finish_compaction", &[(15, counters_rw)]);
-        let diffuse_forward = pass("diffuse forward", "diffuse_forward", &[(4, velocity_rw), (5, Binding::ReadWrite(&velocity_next))]);
-        let diffuse_backward = pass("diffuse backward", "diffuse_backward", &[(4, velocity_rw), (5, Binding::ReadWrite(&velocity_next))]);
+        let diffuse_forward = pass("diffuse forward", "diffuse_forward", &[(4, velocity_rw), (5, Binding::ReadWrite(&velocity_next)), (22, region_rw)]);
+        let diffuse_backward = pass("diffuse backward", "diffuse_backward", &[(4, velocity_rw), (5, Binding::ReadWrite(&velocity_next)), (22, region_rw)]);
         let projection_bindings = |pressure_pair: bool| -> Vec<(u32, Binding)> {
             let mut list = vec![
                 (2, volume),
@@ -197,6 +209,7 @@ impl Fluid {
                 (8, Binding::ReadWrite(&divergence)),
                 (9, bristle_rw),
                 (16, particle_volume_rw),
+                (22, region_rw),
             ];
             if pressure_pair {
                 list.push((7, Binding::ReadWrite(&pressure_next)));
@@ -207,9 +220,9 @@ impl Fluid {
         let jacobi_forward = pass("jacobi forward", "jacobi_forward", &projection_bindings(true));
         let jacobi_backward = pass("jacobi backward", "jacobi_backward", &projection_bindings(true));
         let gradient = pass("apply gradient", "apply_gradient", &projection_bindings(false));
-        let dry = pass("dry", "dry", &[(2, volume)]);
+        let dry = pass("dry", "dry", &[(2, volume), (22, region_rw)]);
         let dry_all = pass("dry all", "dry_all", &[(2, volume)]);
-        let settle = pass("settle columns", "settle_columns", &[(2, volume)]);
+        let settle = pass("settle columns", "settle_columns", &[(2, volume), (22, region_rw)]);
 
         Self {
             settings,
@@ -225,6 +238,10 @@ impl Fluid {
             counters,
             coarse_flags,
             stroke_base,
+            region,
+            indirect,
+            grow_region,
+            finalize_region,
             rasterize,
             flag_regions,
             emit,
@@ -251,7 +268,6 @@ impl Fluid {
             sample_count,
             cells,
             face_slots,
-            velocity_len,
         }
     }
 
@@ -283,6 +299,9 @@ impl Fluid {
                 _padding: [0.0; 3],
             }),
         );
+        gpu.queue.write_buffer(&self.region, 0, bytemuck::cast_slice(&[i32::MAX, i32::MAX, 0, i32::MIN, i32::MIN, 0, 0]));
+        self.grow_region.dispatch_linear(encoder, self.sample_count, SAMPLE_WORKGROUP);
+        self.finalize_region.dispatch(encoder, [1, 1, 1]);
         encoder.clear_buffer(&self.bristle, 0, None);
         encoder.clear_buffer(&self.coarse_flags, 0, None);
         self.rasterize.dispatch_linear(encoder, self.sample_count, SAMPLE_WORKGROUP);
@@ -293,12 +312,12 @@ impl Fluid {
             self.merge_velocity.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
             encoder.copy_buffer_to_buffer(&self.velocity, 0, &self.velocity_before, 0, self.velocity.size());
         }
-        self.boundaries.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
+        self.boundaries.dispatch_indirect(encoder, &self.indirect, 12);
         for _ in 0..DIFFUSION_ROUNDS {
-            self.diffuse_forward.dispatch_linear(encoder, self.velocity_len, CELL_WORKGROUP);
-            self.diffuse_backward.dispatch_linear(encoder, self.velocity_len, CELL_WORKGROUP);
+            self.diffuse_forward.dispatch_indirect(encoder, &self.indirect, 12);
+            self.diffuse_backward.dispatch_indirect(encoder, &self.indirect, 12);
         }
-        self.boundaries.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
+        self.boundaries.dispatch_indirect(encoder, &self.indirect, 12);
         self.encode_projection(encoder);
         if self.settings.particles {
             self.update_particles.dispatch_linear(encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
@@ -308,11 +327,11 @@ impl Fluid {
             self.splat_particles.dispatch_linear(encoder, PARTICLE_CAPACITY, SAMPLE_WORKGROUP);
         }
         for _ in 0..substeps / 2 {
-            self.advect_forward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
-            self.advect_backward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
+            self.advect_forward.dispatch_indirect(encoder, &self.indirect, 0);
+            self.advect_backward.dispatch_indirect(encoder, &self.indirect, 0);
         }
-        self.settle.dispatch(encoder, [WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1]);
-        self.dry.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
+        self.settle.dispatch_indirect(encoder, &self.indirect, 24);
+        self.dry.dispatch_indirect(encoder, &self.indirect, 0);
         encoder.copy_buffer_to_buffer(&brush.curves, 0, &self.previous_curves, 0, brush.curves.size());
     }
 
@@ -344,10 +363,10 @@ impl Fluid {
 
     pub fn encode_projection(&self, encoder: &mut wgpu::CommandEncoder) {
         for _ in 0..PROJECTION_ROUNDS {
-            self.divergence.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
-            self.jacobi_forward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
-            self.jacobi_backward.dispatch_linear(encoder, self.cells, CELL_WORKGROUP);
-            self.gradient.dispatch_linear(encoder, self.face_slots, CELL_WORKGROUP);
+            self.divergence.dispatch_indirect(encoder, &self.indirect, 0);
+            self.jacobi_forward.dispatch_indirect(encoder, &self.indirect, 0);
+            self.jacobi_backward.dispatch_indirect(encoder, &self.indirect, 0);
+            self.gradient.dispatch_indirect(encoder, &self.indirect, 0);
         }
     }
 }
