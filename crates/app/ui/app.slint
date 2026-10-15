@@ -1,4 +1,4 @@
-import { Slider, HorizontalBox, VerticalBox, CheckBox, Button, GroupBox, ComboBox } from "std-widgets.slint";
+import { Slider, HorizontalBox, VerticalBox, CheckBox, Button, GroupBox, ComboBox, ScrollView } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "SimPaint";
@@ -95,9 +95,10 @@ export component AppWindow inherits Window {
                 width: 280px;
                 background: #262626;
 
-                VerticalBox {
+                ScrollView {
+                    VerticalBox {
                     alignment: start;
-                    spacing: 12px;
+                    spacing: 6px;
 
                     GroupBox {
                         title: "Palette";
@@ -118,7 +119,7 @@ export component AppWindow inherits Window {
                     GroupBox {
                         title: "Brush";
                         VerticalLayout {
-                            spacing: 8px;
+                            spacing: 2px;
                             brush-choice := ComboBox {
                                 model: root.brush-names;
                                 current-index: 1;
@@ -140,7 +141,7 @@ export component AppWindow inherits Window {
                     GroupBox {
                         title: "Paint";
                         VerticalLayout {
-                            spacing: 8px;
+                            spacing: 2px;
                             Text { text: "Load " + round(load-slider.value * 100) + "%"; }
                             load-slider := Slider { minimum: 0.05; maximum: 1; value: 1; released => { root.paint-changed(); } }
                             Text { text: "Medium " + round(medium-slider.value * 100) + "%"; }
@@ -151,7 +152,7 @@ export component AppWindow inherits Window {
                     GroupBox {
                         title: "Light";
                         VerticalLayout {
-                            spacing: 8px;
+                            spacing: 2px;
                             Text { text: "Direction " + round(azimuth-slider.value) + "°"; }
                             azimuth-slider := Slider { minimum: 0; maximum: 360; value: 225; }
                             Text { text: "Elevation " + round(elevation-slider.value) + "°"; }
@@ -164,7 +165,7 @@ export component AppWindow inherits Window {
                     GroupBox {
                         title: "Simulation";
                         VerticalLayout {
-                            spacing: 8px;
+                            spacing: 2px;
                             fluid-toggle := CheckBox { text: "Fluid"; checked: true; }
                             bristles-toggle := CheckBox { text: "Show bristles"; }
                             record-toggle := CheckBox { text: "Record scenario"; }
@@ -174,7 +175,7 @@ export component AppWindow inherits Window {
                     GroupBox {
                         title: "Canvas";
                         VerticalLayout {
-                            spacing: 8px;
+                            spacing: 2px;
                             Button { text: "Undo (Cmd+Z)"; clicked => { root.undo(); } }
                             Button { text: "Dry"; clicked => { root.dry(); } }
                             Button { text: "Clear"; clicked => { root.clear(); } }
@@ -197,6 +198,7 @@ export component AppWindow inherits Window {
                         width: 240px;
                         wrap: word-wrap;
                         color: #aaaaaa;
+                    }
                     }
                 }
             }
