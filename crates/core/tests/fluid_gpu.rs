@@ -70,6 +70,7 @@ fn undo_restores_the_previous_stroke_state() {
     engine.pointer(sample(PointerPhase::Up, 300.0, 100.0, 0.6, 0.4));
     engine.advance_exact(0.5);
     let first = engine.paint_mass();
+    engine.dip(by_name("cadmium_red").unwrap());
     engine.pointer(sample(PointerPhase::Down, 100.0, 250.0, 0.6, 0.5));
     engine.pointer(sample(PointerPhase::Move, 300.0, 250.0, 0.6, 0.9));
     engine.pointer(sample(PointerPhase::Up, 300.0, 250.0, 0.6, 0.9));

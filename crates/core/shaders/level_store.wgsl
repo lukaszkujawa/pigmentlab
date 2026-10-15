@@ -1,4 +1,5 @@
-const LEVEL_RATE: f32 = 0.2;
+const LEVEL_RATE: f32 = 0.5;
+const LEVEL_YIELD_SLOPE: f32 = 0.25;
 const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
@@ -22,7 +23,9 @@ fn flow_to(height: f32, neighbour: vec2<i32>) -> f32 {
     let other = heights[pixel_index(neighbour)];
     if (other <= 0.0) { return 0.0; }
     let flowing = max(max(height, other) - LEVEL_MIN_HEIGHT, 0.0);
-    return (height - other) * LEVEL_RATE * 0.25 * min(flowing / LEVEL_MIN_HEIGHT, 1.0);
+    let difference = height - other;
+    let beyond_yield = sign(difference) * max(abs(difference) - LEVEL_YIELD_SLOPE, 0.0);
+    return beyond_yield * LEVEL_RATE * 0.25 * min(flowing / LEVEL_MIN_HEIGHT, 1.0);
 }
 
 @compute @workgroup_size(16, 16)

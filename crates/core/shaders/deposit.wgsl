@@ -220,7 +220,9 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let stride = max(u32(round(film_radius(fill_now) * 0.75)), 1u);
     let depositing = (sample % deposit.samples_per_bristle) % stride == 0u;
     let travelled = distance(start.xy, end.xy);
-    let motion = max(clamp(travelled / (REFERENCE_SPEED * deposit.dt), STATIC_DEPOSIT_FRACTION, 1.0), deposit.lift_burst);
+    let speed_factor = travelled / (REFERENCE_SPEED * deposit.dt);
+    let lift = deposit.lift_burst * clamp(1.0 - speed_factor, 0.0, 1.0);
+    let motion = max(clamp(speed_factor, STATIC_DEPOSIT_FRACTION, 1.0), lift);
     let steps = clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS);
     let share = 1.0 / f32(steps);
     for (var i = 1u; i <= steps; i++) {

@@ -11,6 +11,7 @@ use glam::{Quat, Vec2, Vec3};
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
 const SUBSTEPS_PER_FLUID_STEP: u32 = 8;
+const FAST_BRUSH_SPEED: f32 = crate::units::cm(5.0);
 const UNDO_DEPTH: usize = 6;
 const FLUID_SETTLE_SECONDS: f64 = 0.5;
 const FLUID: FluidSettings = FluidSettings {
@@ -45,6 +46,7 @@ pub struct Engine {
     time: f64,
     substeps: u64,
     pose_at_last_fluid_step: BrushPose,
+    substeps_since_fluid: u32,
     fluid_enabled: bool,
     fluid_active_until: f64,
     was_pressed: bool,
@@ -111,6 +113,7 @@ impl Engine {
             time: 0.0,
             substeps: 0,
             pose_at_last_fluid_step: BrushPose::upright(lifted),
+            substeps_since_fluid: 0,
             fluid_enabled: true,
             fluid_active_until: 0.0,
             was_pressed: false,
@@ -334,12 +337,17 @@ impl Engine {
             self.deposit.encode(&mut encoder);
             self.substeps += 1;
             let fluid_due = self.fluid_enabled && self.time <= self.fluid_active_until;
+            let speed = self.pose.position.distance(self.pose_at_last_fluid_step.position)
+                / (SIMULATION_DT * self.substeps_since_fluid.max(1) as f32);
+            let cadence = (SUBSTEPS_PER_FLUID_STEP / (speed / FAST_BRUSH_SPEED).ceil().max(1.0) as u32).max(2);
+            self.substeps_since_fluid += 1;
+            if fluid_due && self.substeps_since_fluid >= cadence {
+                let elapsed = SIMULATION_DT * self.substeps_since_fluid as f32;
+                self.fluid.encode_step(&self.gpu, &mut encoder, &self.brush, speed, elapsed);
+                self.pose_at_last_fluid_step = self.pose;
+                self.substeps_since_fluid = 0;
+            }
             if self.substeps.is_multiple_of(u64::from(SUBSTEPS_PER_FLUID_STEP)) {
-                if fluid_due {
-                    let speed = self.pose.position.distance(self.pose_at_last_fluid_step.position) / FLUID.dt;
-                    self.fluid.encode_step(&self.gpu, &mut encoder, &self.brush, speed);
-                    self.pose_at_last_fluid_step = self.pose;
-                }
                 if self.fluid_enabled {
                     self.fluid.encode_levelling(&mut encoder);
                     self.height_map.encode(&mut encoder);

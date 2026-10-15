@@ -296,21 +296,21 @@ impl Fluid {
         encoder.copy_buffer_to_buffer(heights, 0, &self.stroke_base, 0, self.stroke_base.size());
     }
 
-    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, brush_speed: f32) {
-        let substeps = ((brush_speed.max(MIN_SPEED_FOR_SUBSTEPS) * self.settings.dt).ceil() as u32)
+    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, brush_speed: f32, dt: f32) {
+        let substeps = ((brush_speed.max(MIN_SPEED_FOR_SUBSTEPS) * dt).ceil() as u32)
             .clamp(2, MAX_ADVECTION_SUBSTEPS)
             .next_multiple_of(2);
         gpu.queue.write_buffer(
             &self.uniform,
             0,
             bytemuck::bytes_of(&FluidUniform {
-                dt: self.settings.dt,
+                dt,
                 damping: self.settings.damping,
                 viscosity: self.settings.viscosity,
                 dryness_rate: self.settings.dryness_rate,
                 sample_count: self.sample_count,
                 samples_per_bristle: SAMPLES_PER_BRISTLE,
-                advection_dt: self.settings.dt / substeps as f32,
+                advection_dt: dt / substeps as f32,
                 gravity: self.settings.gravity,
                 yield_speed: self.settings.yield_speed,
                 _padding: [0.0; 3],
