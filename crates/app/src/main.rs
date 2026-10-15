@@ -2,10 +2,10 @@ slint::include_modules!();
 
 mod tablet;
 
-use simpaint_core::brush::BrushPreset;
+use simpaint_core::brush::{BrushAdjustments, PRESETS};
+use simpaint_core::engine::PaintSettings;
 use simpaint_core::scenario::Recorder;
 use simpaint_core::pigment::{PALETTE, linear_to_srgb};
-use simpaint_core::units::cm;
 use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
 use tablet::Tablet;
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings, wgpu};
@@ -15,14 +15,13 @@ use std::time::Instant;
 
 const CANVAS: CanvasSize = CanvasSize { width: 1024, height: 768 };
 const SEED: u64 = 1;
-const REFERENCE_RADIUS_CM: f32 = 0.35;
-const REFERENCE_BRISTLES: f32 = 200.0;
 
 #[derive(Default)]
 struct Requests {
     pointer: Vec<PointerSample>,
     dip: Option<usize>,
-    brush_radius_cm: Option<f32>,
+    brush: Option<(usize, BrushAdjustments)>,
+    paint: Option<PaintSettings>,
     clear: bool,
     undo: bool,
     save: bool,
@@ -40,6 +39,9 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_canvas_width(CANVAS.width as f32);
     app.set_canvas_height(CANVAS.height as f32);
     app.set_swatches(swatches());
+    app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(
+        PRESETS.iter().map(|named| slint::SharedString::from(named.name)).collect::<Vec<_>>(),
+    )));
 
     let requests: Rc<RefCell<Requests>> = Rc::default();
     let started = Instant::now();
@@ -51,13 +53,15 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_pointer(move |kind, x, y| {
         let app = app_weak.unwrap();
         let pen = pen.state();
-        let (pressure, tilt) = if pen.present { (pen.pressure, pen.tilt) } else { (app.get_pressure(), [0.0; 2]) };
+        let (pressure, tilt, rotation) =
+            if pen.present { (pen.pressure, pen.tilt, pen.rotation) } else { (app.get_pressure(), [0.0; 2], 0.0) };
         shared.borrow_mut().pointer.push(PointerSample {
             phase: phase(kind),
             x,
             y,
             pressure,
             tilt,
+            rotation,
             time: started.elapsed().as_secs_f64(),
         });
     });
@@ -65,7 +69,23 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_dip(move |index| shared.borrow_mut().dip = Some(index as usize));
     let shared = requests.clone();
     let app_weak = app.as_weak();
-    app.on_brush_changed(move || shared.borrow_mut().brush_radius_cm = Some(app_weak.unwrap().get_brush_radius_cm()));
+    app.on_brush_changed(move || {
+        let app = app_weak.unwrap();
+        shared.borrow_mut().brush = Some((
+            app.get_brush_index().max(0) as usize,
+            BrushAdjustments {
+                scale: app.get_brush_scale(),
+                bristle_count: Some(app.get_brush_bristles().round() as u32),
+                stiffness: app.get_brush_stiffness(),
+            },
+        ));
+    });
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    app.on_paint_changed(move || {
+        let app = app_weak.unwrap();
+        shared.borrow_mut().paint = Some(PaintSettings { load: app.get_paint_load(), medium: app.get_paint_medium() });
+    });
     let shared = requests.clone();
     app.on_clear(move || shared.borrow_mut().clear = true);
     let shared = requests.clone();
@@ -93,6 +113,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     let now = started.elapsed().as_secs_f64();
                     update_recorder(&mut recorder, &app, now, &requests.borrow());
                     apply_requests(engine, &app, &mut requests.borrow_mut());
+                    engine.set_brush_angle(app.get_brush_angle());
                     engine.set_show_bristles(app.get_show_bristles());
                     engine.set_fluid_enabled(app.get_fluid_enabled());
                     engine.set_lighting(Lighting {
@@ -130,6 +151,16 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
         if let Some(index) = requests.dip {
             active.dip(now, PALETTE[index].name);
         }
+        if let Some((index, adjustments)) = requests.brush {
+            active.tool(now, PRESETS[index.min(PRESETS.len() - 1)].name);
+            active.param(now, "size", adjustments.scale);
+            active.param(now, "bristles", adjustments.bristle_count.unwrap_or(0) as f32);
+            active.param(now, "stiffness", adjustments.stiffness);
+        }
+        if let Some(paint) = requests.paint {
+            active.param(now, "load", paint.load);
+            active.param(now, "medium", paint.medium);
+        }
         if requests.clear {
             active.clear(now);
         }
@@ -155,8 +186,12 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests)
     if let Some(index) = requests.dip.take() {
         engine.dip(PALETTE[index]);
     }
-    if let Some(radius_cm) = requests.brush_radius_cm.take() {
-        engine.set_brush(preset_for_radius(radius_cm));
+    if let Some((index, adjustments)) = requests.brush.take() {
+        engine.select_brush(PRESETS[index.min(PRESETS.len() - 1)].name);
+        engine.set_brush_adjustments(adjustments);
+    }
+    if let Some(paint) = requests.paint.take() {
+        engine.set_paint(paint);
     }
     if std::mem::take(&mut requests.clear) {
         engine.clear();
@@ -178,12 +213,6 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests)
     for sample in requests.pointer.drain(..) {
         engine.pointer(sample);
     }
-}
-
-fn preset_for_radius(radius_cm: f32) -> BrushPreset {
-    let scale = radius_cm / REFERENCE_RADIUS_CM;
-    let bristles = (REFERENCE_BRISTLES * scale * scale).round().clamp(40.0, 600.0) as u32;
-    BrushPreset::round(bristles, cm(radius_cm), cm(1.6 + radius_cm * 1.8))
 }
 
 fn stamp() -> u64 {

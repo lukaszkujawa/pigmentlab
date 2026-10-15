@@ -1,10 +1,10 @@
-use crate::brush::{Brush, BrushPose, BrushPreset};
+use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, preset_by_name};
 use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::{Gpu, read_buffer, read_rgba8};
 use crate::history::History;
 use crate::input::{PointerSample, PointerState, PointerTrack};
 use crate::paint::{ActiveWindow, Deposit, Fluid, FluidSettings};
-use crate::pigment::Pigment;
+use crate::pigment::{Coefficients, Pigment};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::{Quat, Vec2, Vec3};
 
@@ -25,6 +25,7 @@ const FLUID: FluidSettings = FluidSettings {
 const MAX_COMPRESSION: f32 = 0.4;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
+const DILUTION_PER_MEDIUM: f32 = 0.9;
 
 pub struct Engine {
     gpu: Gpu,
@@ -47,6 +48,22 @@ pub struct Engine {
     fluid_active_until: f64,
     history: History,
     seed: u64,
+    base_preset: BrushPreset,
+    adjustments: BrushAdjustments,
+    brush_angle_degrees: f32,
+    paint: PaintSettings,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaintSettings {
+    pub load: f32,
+    pub medium: f32,
+}
+
+impl Default for PaintSettings {
+    fn default() -> Self {
+        Self { load: 1.0, medium: 0.0 }
+    }
 }
 
 impl Engine {
@@ -94,6 +111,10 @@ impl Engine {
             fluid_active_until: 0.0,
             history,
             seed,
+            base_preset: BrushPreset::default_round(),
+            adjustments: BrushAdjustments::default(),
+            brush_angle_degrees: 0.0,
+            paint: PaintSettings::default(),
         }
     }
 
@@ -103,6 +124,51 @@ impl Engine {
 
     pub fn brush(&self) -> &Brush {
         &self.brush
+    }
+
+    pub fn select_brush(&mut self, name: &str) -> bool {
+        match preset_by_name(name) {
+            Some(preset) => {
+                self.base_preset = preset;
+                self.rebuild_brush();
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn set_brush_adjustments(&mut self, adjustments: BrushAdjustments) {
+        if adjustments != self.adjustments {
+            self.adjustments = adjustments;
+            self.rebuild_brush();
+        }
+    }
+
+    pub fn set_brush_angle(&mut self, degrees: f32) {
+        self.brush_angle_degrees = degrees;
+    }
+
+    pub fn set_paint(&mut self, paint: PaintSettings) {
+        self.paint = paint;
+        self.deposit.set_medium(&self.gpu, paint.medium);
+    }
+
+    pub fn set_param(&mut self, name: &str, value: f32) -> bool {
+        match name {
+            "size" => self.set_brush_adjustments(BrushAdjustments { scale: value, ..self.adjustments }),
+            "bristles" => self.set_brush_adjustments(BrushAdjustments { bristle_count: Some(value as u32), ..self.adjustments }),
+            "stiffness" => self.set_brush_adjustments(BrushAdjustments { stiffness: value, ..self.adjustments }),
+            "angle" => self.set_brush_angle(value),
+            "load" => self.set_paint(PaintSettings { load: value, ..self.paint }),
+            "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),
+            _ => return false,
+        }
+        true
+    }
+
+    fn rebuild_brush(&mut self) {
+        self.set_brush(self.base_preset.adjusted(self.adjustments));
+        self.deposit.set_medium(&self.gpu, self.paint.medium);
     }
 
     pub fn set_brush(&mut self, preset: BrushPreset) {
@@ -170,7 +236,15 @@ impl Engine {
     }
 
     pub fn dip(&self, pigment: Pigment) {
-        self.brush.dip(&self.gpu, pigment);
+        let dilution = 1.0 - DILUTION_PER_MEDIUM * self.paint.medium.clamp(0.0, 1.0);
+        let thinned = Pigment {
+            name: pigment.name,
+            coefficients: Coefficients {
+                absorption: pigment.coefficients.absorption * dilution,
+                scattering: pigment.coefficients.scattering * dilution,
+            },
+        };
+        self.brush.dip(&self.gpu, thinned, self.paint.load.clamp(0.0, 1.0));
     }
 
     pub fn clean(&self) {
@@ -263,9 +337,10 @@ impl Engine {
             length * LIFTED_HEIGHT
         };
         let handle = handle_direction(state.tilt);
+        let spin = Quat::from_rotation_z((self.brush_angle_degrees + state.rotation).to_radians());
         BrushPose {
             position: Vec3::new(state.x, state.y, 0.0) + handle * along_handle,
-            orientation: Quat::from_rotation_arc(Vec3::Z, handle),
+            orientation: Quat::from_rotation_arc(Vec3::Z, handle) * spin,
         }
     }
 

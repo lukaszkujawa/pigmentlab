@@ -24,8 +24,27 @@ pub struct BrushPreset {
     pub pickup_rate: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NamedPreset {
+    pub name: &'static str,
+    pub preset: BrushPreset,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BrushAdjustments {
+    pub scale: f32,
+    pub bristle_count: Option<u32>,
+    pub stiffness: f32,
+}
+
+impl Default for BrushAdjustments {
+    fn default() -> Self {
+        Self { scale: 1.0, bristle_count: None, stiffness: 0.5 }
+    }
+}
+
 impl BrushPreset {
-    pub fn round(bristle_count: u32, radius: f32, length: f32) -> Self {
+    pub const fn round(bristle_count: u32, radius: f32, length: f32) -> Self {
         Self {
             shape: BrushShape::Round,
             bristle_count,
@@ -43,11 +62,11 @@ impl BrushPreset {
         }
     }
 
-    pub fn flat(bristle_count: u32, width: f32, thickness: f32, length: f32) -> Self {
+    pub const fn flat(bristle_count: u32, width: f32, thickness: f32, length: f32) -> Self {
         Self { shape: BrushShape::Flat, width, thickness, ..Self::round(bristle_count, 0.0, length) }
     }
 
-    pub fn filbert(bristle_count: u32, width: f32, thickness: f32, length: f32) -> Self {
+    pub const fn filbert(bristle_count: u32, width: f32, thickness: f32, length: f32) -> Self {
         Self { shape: BrushShape::Filbert, ..Self::flat(bristle_count, width, thickness, length) }
     }
 
@@ -57,5 +76,68 @@ impl BrushPreset {
 
     pub fn segment_length(&self) -> f32 {
         self.length / (super::geometry::VERTICES_PER_BRISTLE - 2) as f32
+    }
+
+    pub fn adjusted(self, adjustments: BrushAdjustments) -> Self {
+        let scale = adjustments.scale.clamp(0.3, 3.0);
+        let bristle_count = adjustments
+            .bristle_count
+            .unwrap_or_else(|| (self.bristle_count as f32 * scale * scale).round() as u32)
+            .clamp(20, 600);
+        let stiffness = adjustments.stiffness.clamp(0.0, 1.0);
+        Self {
+            bristle_count,
+            length: self.length * scale.sqrt(),
+            width: self.width * scale,
+            thickness: self.thickness * scale,
+            splay: 0.3 + 0.5 * (1.0 - stiffness),
+            sink: 0.3 + 0.4 * (1.0 - stiffness),
+            friction: 0.4 + 0.4 * stiffness,
+            ..self
+        }
+    }
+}
+
+pub const PRESETS: [NamedPreset; 6] = [
+    NamedPreset { name: "Round small", preset: BrushPreset::round(70, 6.0, 64.0) },
+    NamedPreset { name: "Round medium", preset: BrushPreset::round(200, 14.0, 88.0) },
+    NamedPreset { name: "Round large", preset: BrushPreset::round(450, 24.0, 112.0) },
+    NamedPreset { name: "Flat", preset: BrushPreset::flat(400, 48.0, 12.0, 80.0) },
+    NamedPreset { name: "Filbert", preset: BrushPreset::filbert(350, 40.0, 12.0, 88.0) },
+    NamedPreset { name: "Rigger", preset: BrushPreset::round(40, 5.0, 120.0) },
+];
+
+pub fn preset_by_name(name: &str) -> Option<BrushPreset> {
+    PRESETS.iter().find(|named| named.name.eq_ignore_ascii_case(name)).map(|named| named.preset)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn presets_are_findable_by_name() {
+        for named in PRESETS {
+            assert_eq!(preset_by_name(named.name), Some(named.preset));
+        }
+        assert!(preset_by_name("mop").is_none());
+    }
+
+    #[test]
+    fn scaling_grows_width_and_bristles() {
+        let base = BrushPreset::default_round();
+        let bigger = base.adjusted(BrushAdjustments { scale: 2.0, ..Default::default() });
+        assert!((bigger.width - base.width * 2.0).abs() < 1e-4);
+        assert!(bigger.bristle_count >= base.bristle_count * 2);
+        assert!(bigger.bristle_count <= 600);
+    }
+
+    #[test]
+    fn stiff_brushes_splay_and_sink_less() {
+        let base = BrushPreset::default_round();
+        let stiff = base.adjusted(BrushAdjustments { stiffness: 1.0, ..Default::default() });
+        let soft = base.adjusted(BrushAdjustments { stiffness: 0.0, ..Default::default() });
+        assert!(stiff.splay < soft.splay);
+        assert!(stiff.sink < soft.sink);
     }
 }

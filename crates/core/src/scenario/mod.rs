@@ -41,6 +41,8 @@ pub enum Action {
         pressure: f32,
         #[serde(default)]
         tilt: [f32; 2],
+        #[serde(default)]
+        rotation: f32,
     },
     Move {
         x: f32,
@@ -48,6 +50,8 @@ pub enum Action {
         pressure: f32,
         #[serde(default)]
         tilt: [f32; 2],
+        #[serde(default)]
+        rotation: f32,
     },
     Release,
     Dip { pigment: String },

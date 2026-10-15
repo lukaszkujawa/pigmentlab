@@ -2,7 +2,7 @@ use simpaint_core::pigment::by_name;
 use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
 fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, time: f64) -> PointerSample {
-    PointerSample { phase, x, y, pressure, tilt: [0.0; 2], time }
+    PointerSample { phase, x, y, pressure, tilt: [0.0; 2], rotation: 0.0, time }
 }
 
 #[test]

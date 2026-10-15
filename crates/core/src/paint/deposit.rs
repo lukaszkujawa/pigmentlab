@@ -5,6 +5,7 @@ use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 
 const WORKGROUP_SIZE: u32 = 128;
 const CONTACT_HEIGHT: f32 = 2.5;
+const FLOW_PER_MEDIUM: f32 = 1.0;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -20,6 +21,8 @@ struct DepositUniform {
 }
 
 pub struct Deposit {
+    uniform: wgpu::Buffer,
+    base: DepositUniform,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::ComputePipeline,
     replenish: wgpu::ComputePipeline,
@@ -32,20 +35,17 @@ impl Deposit {
         let preset = brush.preset();
         let sample_count = preset.bristle_count * SAMPLES_PER_BRISTLE;
         let uniform = gpu.uniform_buffer("deposit uniform", std::mem::size_of::<DepositUniform>() as u64);
-        gpu.queue.write_buffer(
-            &uniform,
-            0,
-            bytemuck::bytes_of(&DepositUniform {
-                sample_count,
-                samples_per_bristle: SAMPLES_PER_BRISTLE,
-                deposit_rate: preset.deposit_rate,
-                pickup_rate: preset.pickup_rate,
-                sample_capacity: preset.sample_capacity,
-                contact_height: CONTACT_HEIGHT,
-                dt: crate::engine::SIMULATION_DT,
-                _padding: 0.0,
-            }),
-        );
+        let base = DepositUniform {
+            sample_count,
+            samples_per_bristle: SAMPLES_PER_BRISTLE,
+            deposit_rate: preset.deposit_rate,
+            pickup_rate: preset.pickup_rate,
+            sample_capacity: preset.sample_capacity,
+            contact_height: CONTACT_HEIGHT,
+            dt: crate::engine::SIMULATION_DT,
+            _padding: 0.0,
+        };
+        gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let compute = wgpu::ShaderStages::COMPUTE;
         let read_only = wgpu::BufferBindingType::Storage { read_only: true };
         let read_write = wgpu::BufferBindingType::Storage { read_only: false };
@@ -102,12 +102,20 @@ impl Deposit {
             })
         };
         Self {
+            uniform,
+            base,
             bind_group,
             pipeline: compute_pipeline("step"),
             replenish: compute_pipeline("replenish"),
             sample_count,
             bristle_count: preset.bristle_count,
         }
+    }
+
+    pub fn set_medium(&self, gpu: &Gpu, medium: f32) {
+        let flow = 1.0 + FLOW_PER_MEDIUM * medium.clamp(0.0, 1.0);
+        let uniform = DepositUniform { deposit_rate: self.base.deposit_rate * flow, ..self.base };
+        gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
     }
 
     pub fn encode(&self, encoder: &mut wgpu::CommandEncoder) {

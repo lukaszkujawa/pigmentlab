@@ -1,4 +1,4 @@
-import { Slider, HorizontalBox, VerticalBox, CheckBox, Button, GroupBox } from "std-widgets.slint";
+import { Slider, HorizontalBox, VerticalBox, CheckBox, Button, GroupBox, ComboBox } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "SimPaint";
@@ -12,7 +12,14 @@ export component AppWindow inherits Window {
     in property <string> status: "";
     in property <float> frame-ms: 0;
     out property <float> pressure <=> pressure-slider.value;
-    out property <float> brush-radius-cm <=> size-slider.value;
+    in property <[string]> brush-names: [];
+    out property <int> brush-index <=> brush-choice.current-index;
+    out property <float> brush-scale <=> size-slider.value;
+    out property <float> brush-bristles <=> bristles-slider.value;
+    out property <float> brush-stiffness <=> stiffness-slider.value;
+    out property <float> brush-angle <=> angle-slider.value;
+    out property <float> paint-load <=> load-slider.value;
+    out property <float> paint-medium <=> medium-slider.value;
     out property <bool> show-bristles <=> bristles-toggle.checked;
     out property <bool> fluid-enabled <=> fluid-toggle.checked;
     out property <bool> recording <=> record-toggle.checked;
@@ -24,6 +31,7 @@ export component AppWindow inherits Window {
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
     callback brush-changed();
+    callback paint-changed();
     callback clear();
     callback undo();
     callback save();
@@ -111,15 +119,32 @@ export component AppWindow inherits Window {
                         title: "Brush";
                         VerticalLayout {
                             spacing: 8px;
-                            Text { text: "Pressure " + round(pressure-slider.value * 100) + "%"; }
-                            pressure-slider := Slider { minimum: 0.0; maximum: 1.0; value: 0.5; }
-                            Text { text: "Size " + round(size-slider.value * 100) / 100 + " cm"; }
-                            size-slider := Slider {
-                                minimum: 0.15;
-                                maximum: 0.8;
-                                value: 0.35;
-                                released => { root.brush-changed(); }
+                            brush-choice := ComboBox {
+                                model: root.brush-names;
+                                current-index: 1;
+                                selected => { root.brush-changed(); }
                             }
+                            Text { text: "Size ×" + round(size-slider.value * 100) / 100; }
+                            size-slider := Slider { minimum: 0.4; maximum: 2.5; value: 1.0; released => { root.brush-changed(); } }
+                            Text { text: "Bristles " + round(bristles-slider.value); }
+                            bristles-slider := Slider { minimum: 20; maximum: 600; value: 200; released => { root.brush-changed(); } }
+                            Text { text: "Stiffness " + round(stiffness-slider.value * 100) + "%"; }
+                            stiffness-slider := Slider { minimum: 0; maximum: 1; value: 0.5; released => { root.brush-changed(); } }
+                            Text { text: "Angle " + round(angle-slider.value) + "°"; }
+                            angle-slider := Slider { minimum: 0; maximum: 180; value: 0; }
+                            Text { text: "Pressure " + round(pressure-slider.value * 100) + "% (mouse)"; }
+                            pressure-slider := Slider { minimum: 0.0; maximum: 1.0; value: 0.5; }
+                        }
+                    }
+
+                    GroupBox {
+                        title: "Paint";
+                        VerticalLayout {
+                            spacing: 8px;
+                            Text { text: "Load " + round(load-slider.value * 100) + "%"; }
+                            load-slider := Slider { minimum: 0.05; maximum: 1; value: 1; released => { root.paint-changed(); } }
+                            Text { text: "Medium " + round(medium-slider.value * 100) + "%"; }
+                            medium-slider := Slider { minimum: 0; maximum: 1; value: 0; released => { root.paint-changed(); } }
                         }
                     }
 
