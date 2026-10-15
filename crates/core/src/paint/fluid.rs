@@ -56,7 +56,9 @@ pub struct Fluid {
     region: wgpu::Buffer,
     indirect: wgpu::Buffer,
     grow_region: ComputePass,
-    finalize_region: ComputePass,
+    finalize_bounds: ComputePass,
+    scan_region: ComputePass,
+    finalize_depth: ComputePass,
     rasterize: ComputePass,
     flag_regions: ComputePass,
     emit: ComputePass,
@@ -159,11 +161,9 @@ impl Fluid {
             &[(2, volume), (4, velocity_rw), (9, bristle_rw), (16, particle_volume_rw), (21, Binding::ReadWrite(&stroke_base)), (22, region_rw)],
         );
         let grow_region = pass("grow region", "grow_region", &[(11, Binding::ReadOnly(&brush.curves)), (22, region_rw)]);
-        let finalize_region = pass(
-            "finalize region",
-            "finalize_region",
-            &[(21, Binding::ReadWrite(&stroke_base)), (22, region_rw), (23, Binding::ReadWrite(&indirect))],
-        );
+        let finalize_bounds = pass("finalize bounds", "finalize_bounds", &[(22, region_rw), (23, Binding::ReadWrite(&indirect))]);
+        let scan_region = pass("scan region", "scan_region", &[(21, Binding::ReadWrite(&stroke_base)), (22, region_rw)]);
+        let finalize_depth = pass("finalize depth", "finalize_depth", &[(22, region_rw), (23, Binding::ReadWrite(&indirect))]);
         let flag_regions = pass("flag bristle regions", "flag_bristle_regions", &[(11, Binding::ReadOnly(&brush.curves)), (18, coarse_rw)]);
         let emit = pass(
             "emit particles",
@@ -241,7 +241,9 @@ impl Fluid {
             region,
             indirect,
             grow_region,
-            finalize_region,
+            finalize_bounds,
+            scan_region,
+            finalize_depth,
             rasterize,
             flag_regions,
             emit,
@@ -301,7 +303,9 @@ impl Fluid {
         );
         gpu.queue.write_buffer(&self.region, 0, bytemuck::cast_slice(&[i32::MAX, i32::MAX, 0, i32::MIN, i32::MIN, 0, 0]));
         self.grow_region.dispatch_linear(encoder, self.sample_count, SAMPLE_WORKGROUP);
-        self.finalize_region.dispatch(encoder, [1, 1, 1]);
+        self.finalize_bounds.dispatch(encoder, [1, 1, 1]);
+        self.scan_region.dispatch_indirect(encoder, &self.indirect, 24);
+        self.finalize_depth.dispatch(encoder, [1, 1, 1]);
         encoder.clear_buffer(&self.bristle, 0, None);
         encoder.clear_buffer(&self.coarse_flags, 0, None);
         self.rasterize.dispatch_linear(encoder, self.sample_count, SAMPLE_WORKGROUP);

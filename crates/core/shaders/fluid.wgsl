@@ -186,32 +186,49 @@ fn grow_region(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgr
     atomicMax(&region[4], local.y);
 }
 
+const BASE_SCALE: f32 = 256.0;
+
 @compute @workgroup_size(1)
-fn finalize_region() {
-    let low = vec3<i32>(atomicLoad(&region[0]), atomicLoad(&region[1]), 0);
-    let high = vec3<i32>(atomicLoad(&region[3]), atomicLoad(&region[4]), i32(window.depth) - 1);
-    var engaged = low.x <= high.x && low.y <= high.y;
-    let margin = vec3<i32>(REGION_MARGIN, REGION_MARGIN, 0);
-    let clamped_low = max(low - margin, vec3<i32>(0));
-    let clamped_high = min(high + margin, vec3<i32>(i32(window.width) - 1, i32(window.height) - 1, i32(window.depth) - 1));
-    var size = select(vec3<i32>(0), clamped_high - clamped_low + 1, engaged);
-    if (engaged) {
-        engaged = false;
-        for (var y = clamped_low.y; y <= clamped_high.y && !engaged; y++) {
-            for (var x = clamped_low.x; x <= clamped_high.x; x++) {
-                let pixel = vec2<i32>(x, y) + window.origin;
-                if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { continue; }
-                if (stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)] > 0.0) { engaged = true; break; }
-            }
-        }
-    }
-    if (!engaged) { size = vec3<i32>(0); }
+fn finalize_bounds() {
+    let low = vec2<i32>(atomicLoad(&region[0]), atomicLoad(&region[1]));
+    let high = vec2<i32>(atomicLoad(&region[3]), atomicLoad(&region[4]));
+    let engaged = low.x <= high.x && low.y <= high.y;
+    let margin = vec2<i32>(REGION_MARGIN);
+    let clamped_low = max(low - margin, vec2<i32>(0));
+    let clamped_high = min(high + margin, vec2<i32>(i32(window.width) - 1, i32(window.height) - 1));
+    let size = select(vec2<i32>(0), clamped_high - clamped_low + 1, engaged);
     atomicStore(&region[0], clamped_low.x);
     atomicStore(&region[1], clamped_low.y);
-    atomicStore(&region[2], clamped_low.z);
+    atomicStore(&region[2], 0);
     atomicStore(&region[3], size.x);
     atomicStore(&region[4], size.y);
-    atomicStore(&region[5], size.z);
+    atomicStore(&region[5], 0);
+    atomicStore(&region[6], 0);
+    let column_groups = (u32(size.x * size.y) + 63u) / 64u;
+    indirect[6] = min(column_groups, 65535u);
+    indirect[7] = (column_groups + 65534u) / 65535u;
+    indirect[8] = 1u;
+}
+
+@compute @workgroup_size(64)
+fn scan_region(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
+    let size = region_size();
+    if (index >= size.x * size.y) { return; }
+    let column = vec2<i32>(region_min().xy) + vec2<i32>(i32(index % size.x), i32(index / size.x));
+    let pixel = column + window.origin;
+    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { return; }
+    let base = stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
+    atomicMax(&region[6], i32(base * BASE_SCALE));
+}
+
+@compute @workgroup_size(1)
+fn finalize_depth() {
+    let tallest = f32(atomicLoad(&region[6])) / BASE_SCALE;
+    let engaged = tallest > f32(ADHERED_LAYERS) && atomicLoad(&region[3]) > 0;
+    let depth = select(0, clamp(i32(ceil(tallest)) + 2, 1, i32(window.depth)), engaged);
+    let size = vec3<i32>(atomicLoad(&region[3]), atomicLoad(&region[4]), depth);
+    atomicStore(&region[5], depth);
     atomicStore(&region[6], select(0, 1, engaged));
     let cells = u32(size.x * size.y * size.z);
     let slots = u32((size.x + 1) * (size.y + 1) * (size.z + 1)) * u32(engaged);
@@ -223,7 +240,7 @@ fn finalize_region() {
     indirect[3] = min(slot_groups, 65535u);
     indirect[4] = (slot_groups + 65534u) / 65535u;
     indirect[5] = 1u;
-    let column_groups = (u32(size.x * size.y) + 63u) / 64u;
+    let column_groups = (u32(size.x * size.y) + 63u) / 64u * u32(engaged);
     indirect[6] = min(column_groups, 65535u);
     indirect[7] = (column_groups + 65534u) / 65535u;
     indirect[8] = 1u;

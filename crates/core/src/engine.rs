@@ -10,7 +10,7 @@ use glam::{Quat, Vec2, Vec3};
 
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
-const SUBSTEPS_PER_FLUID_STEP: u32 = 4;
+const SUBSTEPS_PER_FLUID_STEP: u32 = 8;
 const UNDO_DEPTH: usize = 6;
 const FLUID_SETTLE_SECONDS: f64 = 0.5;
 const FLUID: FluidSettings = FluidSettings {

@@ -1,0 +1,16 @@
+{
+  "seed": 1,
+  "canvas": { "width": 1280, "height": 960 },
+  "steps": [
+    { "t": 0.0, "action": "tool", "name": "Round large" },
+    { "t": 0.0, "action": "dip", "pigment": "cadmium_red" },
+    { "t": 0.0, "action": "press", "x": 200, "y": 300, "pressure": 1.0 },
+    { "t": 0.8, "action": "move", "x": 1080, "y": 320, "pressure": 1.0 },
+    { "t": 0.8, "action": "release" },
+    { "t": 1.0, "action": "dip", "pigment": "french_ultramarine" },
+    { "t": 1.0, "action": "press", "x": 200, "y": 420, "pressure": 1.0 },
+    { "t": 1.8, "action": "move", "x": 1080, "y": 400, "pressure": 1.0 },
+    { "t": 1.8, "action": "release" },
+    { "t": 2.1, "action": "checkpoint", "name": "heavy" }
+  ]
+}
