@@ -5,6 +5,8 @@ const FILM_CENTRE_WEIGHT: f32 = 0.4;
 const FILM_EDGE_WEIGHT: f32 = 0.1;
 const FILM_CORNER_WEIGHT: f32 = 0.05;
 const WICKING: f32 = 0.3;
+const SCRAPE_FRACTION: f32 = 0.25;
+const MAX_OVERLOAD: f32 = 2.0;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 
 struct DepositUniform {
@@ -77,9 +79,13 @@ fn column_top(local: vec2<u32>) -> u32 {
 }
 
 fn pickup(cell: u32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
+    pickup_up_to(cell, pickup_share, deposit.sample_capacity, load, absorption, scattering);
+}
+
+fn pickup_up_to(cell: u32, pickup_share: f32, capacity: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
     let available = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
-    if (available <= 0.0 || *load >= deposit.sample_capacity) { return; }
-    let wanted = min(min(pickup_share, available), deposit.sample_capacity - *load);
+    if (available <= 0.0 || *load >= capacity) { return; }
+    let wanted = min(min(pickup_share, available), capacity - *load);
     let canvas_absorption = load_vec3(cell, 1u) / available;
     let canvas_scattering = load_vec3(cell, 4u) / available;
     let previous = atomicSub(&paint[cell], fixed(wanted));
@@ -113,14 +119,51 @@ fn film_weight(dx: i32, dy: i32, fill: f32) -> f32 {
     return FILM_CORNER_WEIGHT * spread;
 }
 
-fn exchange(pixel: vec2<i32>, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
-    let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
-    let local = vec2<u32>(pixel - window.origin);
+fn scrape(local: vec2<u32>, amount: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
+    var remaining = amount;
+    var z = column_top(local);
+    loop {
+        let cell = window_cell(vec3<u32>(local, z));
+        let before = *load;
+        let capacity = deposit.sample_capacity;
+        let wanted = min(remaining, max(capacity * MAX_OVERLOAD - *load, 0.0));
+        if (wanted <= 0.0) { break; }
+        let available = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
+        if (available > 0.0) {
+            let temporarily_raised = capacity * MAX_OVERLOAD;
+            pickup_up_to(cell, wanted, temporarily_raised, load, absorption, scattering);
+            remaining -= *load - before;
+        }
+        if (remaining <= 1e-5 || z == 0u) { break; }
+        z -= 1u;
+    }
+}
+
+fn surface_is_dry(local: vec2<u32>) -> bool {
     let top = column_top(local);
     let top_cell = window_cell(vec3<u32>(local, top));
-    if (f32(atomicLoad(&paint[top_cell])) > 0.0) {
+    var cell = top_cell;
+    if (atomicLoad(&paint[top_cell]) <= 0 && top > 0u) {
+        cell = window_cell(vec3<u32>(local, top - 1u));
+    }
+    return atomicLoad(&paint[cell + 7u]) >= i32(PAINT_SCALE);
+}
+
+fn exchange(pixel: vec2<i32>, surface_limit: f32, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
+    let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
+    let local = vec2<u32>(pixel - window.origin);
+    let height = column_height(local);
+    let wet = !surface_is_dry(local);
+    let excess = height - surface_limit;
+    if (excess > 0.0) {
+        if (wet) { scrape(local, excess * SCRAPE_FRACTION, load, absorption, scattering); }
+        return;
+    }
+    let top = column_top(local);
+    let top_cell = window_cell(vec3<u32>(local, top));
+    if (wet && f32(atomicLoad(&paint[top_cell])) > 0.0) {
         pickup(top_cell, pickup_share * (1.0 - fill), load, absorption, scattering);
-    } else if (top > 0u) {
+    } else if (wet && top > 0u) {
         pickup(window_cell(vec3<u32>(local, top - 1u)), pickup_share * (1.0 - fill), load, absorption, scattering);
     }
     for (var dy = -1; dy <= 1; dy++) {
@@ -157,7 +200,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let local = vec2<u32>(pixel - window.origin);
         let film = mix(0.015 * PIXELS_PER_CM, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
         if (point.z > column_height(local) + film) { continue; }
-        exchange(pixel, deposit.deposit_rate * share * motion, deposit.pickup_rate * share, &load, &absorption, &scattering);
+        exchange(pixel, point.z + film, deposit.deposit_rate * share * motion, deposit.pickup_rate * share, &load, &absorption, &scattering);
     }
 
     sample_load[sample] = load;

@@ -3,7 +3,7 @@ use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::{Gpu, read_buffer, read_rgba8};
 use crate::history::History;
 use crate::input::{PointerSample, PointerState, PointerTrack};
-use crate::paint::{ActiveWindow, Deposit, Fluid, FluidSettings};
+use crate::paint::{ActiveWindow, Deposit, Fluid, FluidSettings, StoreLevelling};
 use crate::pigment::{Coefficients, Pigment};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::{Quat, Vec2, Vec3};
@@ -35,6 +35,7 @@ pub struct Engine {
     deposit: Deposit,
     fluid: Fluid,
     height_map: HeightMap,
+    store_levelling: StoreLevelling,
     composite: Composite,
     brush_lines: BrushLines,
     display: wgpu::Texture,
@@ -74,6 +75,7 @@ impl Engine {
         let fluid = Fluid::new(&gpu, &canvas, &window, &brush, FLUID);
         let deposit = Deposit::new(&gpu, &brush, &window, &fluid);
         let height_map = HeightMap::new(&gpu, &canvas, &window, &fluid);
+        let store_levelling = StoreLevelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &fluid, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
         let display = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -98,6 +100,7 @@ impl Engine {
             deposit,
             fluid,
             height_map,
+            store_levelling,
             composite,
             brush_lines,
             display,
@@ -177,6 +180,7 @@ impl Engine {
         self.fluid = Fluid::new(&self.gpu, &self.canvas, &self.window, &self.brush, FLUID);
         self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.fluid);
         self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window, &self.fluid);
+        self.store_levelling = StoreLevelling::new(&self.gpu, &self.canvas, &self.window, &self.height_map);
         self.composite = Composite::new(&self.gpu, &self.canvas, &self.window, &self.fluid, &self.height_map);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
@@ -322,10 +326,17 @@ impl Engine {
             self.deposit.encode(&mut encoder);
             self.substeps += 1;
             let fluid_due = self.fluid_enabled && self.time <= self.fluid_active_until;
-            if fluid_due && self.substeps.is_multiple_of(u64::from(SUBSTEPS_PER_FLUID_STEP)) {
-                let speed = self.pose.position.distance(self.pose_at_last_fluid_step.position) / FLUID.dt;
-                self.fluid.encode_step(&self.gpu, &mut encoder, &self.brush, speed);
-                self.pose_at_last_fluid_step = self.pose;
+            if self.substeps.is_multiple_of(u64::from(SUBSTEPS_PER_FLUID_STEP)) {
+                if fluid_due {
+                    let speed = self.pose.position.distance(self.pose_at_last_fluid_step.position) / FLUID.dt;
+                    self.fluid.encode_step(&self.gpu, &mut encoder, &self.brush, speed);
+                    self.pose_at_last_fluid_step = self.pose;
+                }
+                if self.fluid_enabled {
+                    self.fluid.encode_levelling(&mut encoder);
+                    self.height_map.encode(&mut encoder);
+                    self.store_levelling.encode(&mut encoder);
+                }
             }
             self.gpu.queue.submit(Some(encoder.finish()));
         }

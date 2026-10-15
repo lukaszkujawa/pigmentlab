@@ -565,6 +565,11 @@ struct Particle {
 @group(0) @binding(21) var<storage, read_write> stroke_base: array<f32>;
 @group(0) @binding(22) var<storage, read_write> region: array<atomic<i32>>;
 @group(0) @binding(23) var<storage, read_write> indirect: array<u32>;
+@group(0) @binding(24) var<storage, read_write> columns: array<vec4<f32>>;
+@group(0) @binding(25) var<storage, read_write> column_pigment: array<vec4<f32>>;
+
+const LEVEL_RATE: f32 = 0.1;
+const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 
 const REGION_MARGIN: i32 = 10;
 
@@ -895,4 +900,100 @@ fn settle_columns(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_wor
         }
         write += 1u;
     }
+}
+
+fn column_slot(xy: vec2<u32>) -> u32 {
+    return xy.y * window.width + xy.x;
+}
+
+@compute @workgroup_size(64)
+fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
+    if (index >= window.width * window.height) { return; }
+    let xy = vec2<u32>(index % window.width, index / window.width);
+    var height = 0.0;
+    var top_absorption = vec3<f32>(0.0);
+    var top_scattering = vec3<f32>(0.0);
+    var dry = false;
+    for (var z = 0u; z < window.depth; z++) {
+        let base = cell_index(vec3<u32>(xy, z)) * CHANNELS;
+        let density = f32(volume[base]) / PAINT_SCALE;
+        if (density <= 0.0) { continue; }
+        height += density;
+        top_absorption = vec3<f32>(f32(volume[base + 1u]), f32(volume[base + 2u]), f32(volume[base + 3u])) / PAINT_SCALE / density;
+        top_scattering = vec3<f32>(f32(volume[base + 4u]), f32(volume[base + 5u]), f32(volume[base + 6u])) / PAINT_SCALE / density;
+        dry = dry || volume[base + 7u] >= i32(PAINT_SCALE);
+    }
+    columns[index] = vec4<f32>(height, select(0.0, 1.0, dry), top_scattering.x, 0.0);
+    column_pigment[index] = vec4<f32>(top_absorption, top_scattering.y);
+    columns[index].w = top_scattering.z;
+}
+
+fn column_flow(height: f32, xy: vec2<i32>) -> f32 {
+    if (xy.x < 0 || xy.y < 0 || xy.x >= i32(window.width) || xy.y >= i32(window.height)) { return 0.0; }
+    let other = columns[column_slot(vec2<u32>(xy))];
+    if (other.x <= 0.0 || other.y > 0.0) { return 0.0; }
+    let flowing = max(max(height, other.x) - LEVEL_MIN_HEIGHT, 0.0);
+    return (height - other.x) * LEVEL_RATE * 0.25 * min(flowing / LEVEL_MIN_HEIGHT, 1.0);
+}
+
+fn take_from_top(xy: vec2<u32>, amount: f32) {
+    var remaining = amount;
+    for (var step = 0u; step < window.depth; step++) {
+        let z = window.depth - 1u - step;
+        let base = cell_index(vec3<u32>(xy, z)) * CHANNELS;
+        let density = f32(volume[base]) / PAINT_SCALE;
+        if (density <= 0.0) { continue; }
+        let taken = min(density, remaining);
+        let fraction = taken / density;
+        for (var channel = 0u; channel < 7u; channel++) {
+            volume[base + channel] = i32(round(f32(volume[base + channel]) * (1.0 - fraction)));
+        }
+        remaining -= taken;
+        if (remaining <= 1e-6) { return; }
+    }
+}
+
+fn add_on_top(xy: vec2<u32>, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
+    for (var z = 0u; z < window.depth; z++) {
+        let base = cell_index(vec3<u32>(xy, z)) * CHANNELS;
+        let density = f32(volume[base]) / PAINT_SCALE;
+        if (density >= 0.999 && z + 1u < window.depth) { continue; }
+        volume[base] += i32(round(amount * PAINT_SCALE));
+        volume[base + 1u] += i32(round(amount * absorption.x * PAINT_SCALE));
+        volume[base + 2u] += i32(round(amount * absorption.y * PAINT_SCALE));
+        volume[base + 3u] += i32(round(amount * absorption.z * PAINT_SCALE));
+        volume[base + 4u] += i32(round(amount * scattering.x * PAINT_SCALE));
+        volume[base + 5u] += i32(round(amount * scattering.y * PAINT_SCALE));
+        volume[base + 6u] += i32(round(amount * scattering.z * PAINT_SCALE));
+        return;
+    }
+}
+
+@compute @workgroup_size(64)
+fn level_columns(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {
+    let index = linear_index(id, groups, 64u);
+    if (index >= window.width * window.height) { return; }
+    let xy = vec2<i32>(i32(index % window.width), i32(index / window.width));
+    let own = columns[index];
+    if (own.x <= 0.0 || own.y > 0.0) { return; }
+    let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
+    var outgoing = 0.0;
+    var incoming = 0.0;
+    var incoming_absorption = vec3<f32>(0.0);
+    var incoming_scattering = vec3<f32>(0.0);
+    for (var n = 0u; n < 4u; n++) {
+        let flow = column_flow(own.x, xy + offsets[n]);
+        if (flow > 0.0) {
+            outgoing += flow;
+        } else if (flow < 0.0) {
+            let neighbour = column_slot(vec2<u32>(xy + offsets[n]));
+            let pigment = column_pigment[neighbour];
+            incoming -= flow;
+            incoming_absorption += pigment.xyz * -flow;
+            incoming_scattering += vec3<f32>(columns[neighbour].z, pigment.w, columns[neighbour].w) * -flow;
+        }
+    }
+    if (outgoing > 0.0) { take_from_top(vec2<u32>(xy), outgoing); }
+    if (incoming > 0.0) { add_on_top(vec2<u32>(xy), incoming, incoming_absorption / incoming, incoming_scattering / incoming); }
 }

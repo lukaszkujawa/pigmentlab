@@ -55,6 +55,8 @@ pub struct Fluid {
     stroke_base: wgpu::Buffer,
     region: wgpu::Buffer,
     indirect: wgpu::Buffer,
+    snapshot_columns: ComputePass,
+    level_columns: ComputePass,
     grow_region: ComputePass,
     finalize_bounds: ComputePass,
     scan_region: ComputePass,
@@ -114,6 +116,8 @@ impl Fluid {
         let coarse_flags = gpu.storage_buffer("bristle region flags", coarse_cells * 4);
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let region = gpu.storage_buffer("fluid region", 7 * 4);
+        let columns = gpu.storage_buffer("column snapshot", u64::from(w * h) * 16);
+        let column_pigment = gpu.storage_buffer("column pigment snapshot", u64::from(w * h) * 16);
         let indirect = gpu.indirect_buffer("fluid indirect dispatch", 9 * 4);
 
         let shader = gpu.shader(
@@ -161,6 +165,9 @@ impl Fluid {
             &[(2, volume), (4, velocity_rw), (9, bristle_rw), (16, particle_volume_rw), (21, Binding::ReadWrite(&stroke_base)), (22, region_rw)],
         );
         let grow_region = pass("grow region", "grow_region", &[(11, Binding::ReadOnly(&brush.curves)), (22, region_rw)]);
+        let column_bindings = [(2, volume), (24, Binding::ReadWrite(&columns)), (25, Binding::ReadWrite(&column_pigment))];
+        let snapshot_columns = pass("snapshot columns", "snapshot_columns", &column_bindings);
+        let level_columns = pass("level columns", "level_columns", &column_bindings);
         let finalize_bounds = pass("finalize bounds", "finalize_bounds", &[(22, region_rw), (23, Binding::ReadWrite(&indirect))]);
         let scan_region = pass("scan region", "scan_region", &[(21, Binding::ReadWrite(&stroke_base)), (22, region_rw)]);
         let finalize_depth = pass("finalize depth", "finalize_depth", &[(22, region_rw), (23, Binding::ReadWrite(&indirect))]);
@@ -240,6 +247,8 @@ impl Fluid {
             stroke_base,
             region,
             indirect,
+            snapshot_columns,
+            level_columns,
             grow_region,
             finalize_bounds,
             scan_region,
@@ -275,6 +284,12 @@ impl Fluid {
 
     pub fn clear_velocity(&self, encoder: &mut wgpu::CommandEncoder) {
         encoder.clear_buffer(&self.velocity, 0, None);
+    }
+
+    pub fn encode_levelling(&self, encoder: &mut wgpu::CommandEncoder) {
+        let column_count = WINDOW_SIZE.x * WINDOW_SIZE.y;
+        self.snapshot_columns.dispatch_linear(encoder, column_count, CELL_WORKGROUP);
+        self.level_columns.dispatch_linear(encoder, column_count, CELL_WORKGROUP);
     }
 
     pub fn encode_capture_stroke_base(&self, encoder: &mut wgpu::CommandEncoder, heights: &wgpu::Buffer) {
