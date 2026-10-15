@@ -126,7 +126,7 @@ fn shade(albedo: vec3<f32>, texel: vec2<i32>, height: f32) -> vec3<f32> {
     let slope_y = (smooth_height(texel + vec2<i32>(0, 1)) - smooth_height(texel - vec2<i32>(0, 1))) * 0.5 * relief;
     let normal = normalize(vec3<f32>(-slope_x, -slope_y, 1.0));
     let light = light_direction();
-    let diffuse = max(dot(normal, light), 0.0);
+    let diffuse = min(max(dot(normal, light), 0.0) / max(light.z, 0.2), 1.5);
     let halfway = normalize(light + vec3<f32>(0.0, 0.0, 1.0));
     let shininess = mix(8.0, 96.0, composite.gloss);
     let specular = pow(max(dot(normal, halfway), 0.0), shininess) * composite.gloss * 0.5 * relief;
