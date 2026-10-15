@@ -11,7 +11,8 @@ use glam::{Quat, Vec2, Vec3};
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
 const SUBSTEPS_PER_FLUID_STEP: u32 = 8;
-const FAST_BRUSH_SPEED: f32 = crate::units::cm(5.0);
+const MAX_BRUSH_TRAVEL_PER_FLUID_STEP: f32 = 16.0;
+const MIN_SUBSTEPS_PER_FLUID_STEP: u32 = 4;
 const UNDO_DEPTH: usize = 6;
 const FLUID_SETTLE_SECONDS: f64 = 0.5;
 const FLUID: FluidSettings = FluidSettings {
@@ -75,9 +76,10 @@ impl Engine {
         let canvas = Canvas::new(&gpu, size, seed);
         let window = ActiveWindow::new(&gpu, &canvas);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window);
-        let fluid = Fluid::new(&gpu, &canvas, &window, &brush, FLUID);
+        let particle_volume = Fluid::particle_volume_buffer(&gpu, &window);
+        let height_map = HeightMap::new(&gpu, &canvas, &window, &particle_volume);
+        let fluid = Fluid::new(&gpu, &canvas, &window, &brush, particle_volume, &height_map.heights, FLUID);
         let deposit = Deposit::new(&gpu, &brush, &window, &fluid);
-        let height_map = HeightMap::new(&gpu, &canvas, &window, &fluid);
         let store_levelling = StoreLevelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &fluid, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
@@ -182,9 +184,10 @@ impl Engine {
     pub fn set_brush(&mut self, preset: BrushPreset) {
         self.fluid.submit_return_all_particles(&self.gpu);
         self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window);
-        self.fluid = Fluid::new(&self.gpu, &self.canvas, &self.window, &self.brush, FLUID);
+        let particle_volume = Fluid::particle_volume_buffer(&self.gpu, &self.window);
+        self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window, &particle_volume);
+        self.fluid = Fluid::new(&self.gpu, &self.canvas, &self.window, &self.brush, particle_volume, &self.height_map.heights, FLUID);
         self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.fluid);
-        self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window, &self.fluid);
         self.store_levelling = StoreLevelling::new(&self.gpu, &self.canvas, &self.window, &self.height_map);
         self.composite = Composite::new(&self.gpu, &self.canvas, &self.window, &self.fluid, &self.height_map);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
@@ -339,7 +342,9 @@ impl Engine {
             let fluid_due = self.fluid_enabled && self.time <= self.fluid_active_until;
             let speed = self.pose.position.distance(self.pose_at_last_fluid_step.position)
                 / (SIMULATION_DT * self.substeps_since_fluid.max(1) as f32);
-            let cadence = (SUBSTEPS_PER_FLUID_STEP / (speed / FAST_BRUSH_SPEED).ceil().max(1.0) as u32).max(2);
+            let travel_per_substep = speed * SIMULATION_DT;
+            let cadence = ((MAX_BRUSH_TRAVEL_PER_FLUID_STEP / travel_per_substep.max(1e-3)).floor() as u32)
+                .clamp(MIN_SUBSTEPS_PER_FLUID_STEP, SUBSTEPS_PER_FLUID_STEP);
             self.substeps_since_fluid += 1;
             if fluid_due && self.substeps_since_fluid >= cadence {
                 let elapsed = SIMULATION_DT * self.substeps_since_fluid as f32;
@@ -349,8 +354,8 @@ impl Engine {
             }
             if self.substeps.is_multiple_of(u64::from(SUBSTEPS_PER_FLUID_STEP)) {
                 if self.fluid_enabled {
-                    self.fluid.encode_levelling(&mut encoder);
                     self.height_map.encode(&mut encoder);
+                    self.fluid.encode_levelling(&mut encoder);
                     self.store_levelling.encode(&mut encoder);
                 }
             }

@@ -1,5 +1,5 @@
 const LEVEL_RATE: f32 = 0.5;
-const LEVEL_YIELD_SLOPE: f32 = 0.25;
+const LEVEL_YIELD_SLOPE: f32 = 0.0;
 const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
@@ -19,7 +19,7 @@ fn is_dry(pixel: vec2<i32>) -> bool {
 }
 
 fn flow_to(height: f32, neighbour: vec2<i32>) -> f32 {
-    if (!on_canvas(neighbour) || window_contains(neighbour) || is_dry(neighbour)) { return 0.0; }
+    if (!on_canvas(neighbour) || is_dry(neighbour)) { return 0.0; }
     let other = heights[pixel_index(neighbour)];
     if (other <= 0.0) { return 0.0; }
     let flowing = max(max(height, other) - LEVEL_MIN_HEIGHT, 0.0);

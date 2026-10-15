@@ -3,8 +3,6 @@ const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
 const STATIC_DEPOSIT_FRACTION: f32 = 0.05;
 const FILM_MAX_RADIUS: f32 = 0.11 * PIXELS_PER_CM;
 const WICKING: f32 = 0.3;
-const SCRAPE_FRACTION: f32 = 0.25;
-const MAX_OVERLOAD: f32 = 2.0;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 
 struct DepositUniform {
@@ -150,26 +148,6 @@ fn give(cell: u32, deposit_share: f32, load: ptr<function, f32>, absorption: vec
     *load -= given;
 }
 
-fn scrape(local: vec2<u32>, amount: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
-    var remaining = amount;
-    var z = column_top(local);
-    loop {
-        let cell = window_cell(vec3<u32>(local, z));
-        let before = *load;
-        let capacity = deposit.sample_capacity;
-        let wanted = min(remaining, max(capacity * MAX_OVERLOAD - *load, 0.0));
-        if (wanted <= 0.0) { break; }
-        let available = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
-        if (available > 0.0) {
-            let temporarily_raised = capacity * MAX_OVERLOAD;
-            pickup_up_to(cell, wanted, temporarily_raised, load, absorption, scattering);
-            remaining -= *load - before;
-        }
-        if (remaining <= 1e-5 || z == 0u) { break; }
-        z -= 1u;
-    }
-}
-
 fn surface_is_dry(local: vec2<u32>) -> bool {
     let top = column_top(local);
     let top_cell = window_cell(vec3<u32>(local, top));
@@ -185,11 +163,7 @@ fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, surface_limit: f32, deposit_s
     let local = vec2<u32>(pixel - window.origin);
     let height = column_height(local);
     let wet = !surface_is_dry(local);
-    let excess = height - surface_limit;
-    if (excess > 0.0) {
-        if (wet) { scrape(local, excess * SCRAPE_FRACTION, load, absorption, scattering); }
-        return;
-    }
+    if (height > surface_limit) { return; }
     let top = column_top(local);
     let top_cell = window_cell(vec3<u32>(local, top));
     if (wet && f32(atomicLoad(&paint[top_cell])) > 0.0) {

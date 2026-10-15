@@ -1,6 +1,6 @@
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
-use crate::paint::{ActiveWindow, Fluid};
+use crate::paint::ActiveWindow;
 
 pub struct HeightMap {
     pub heights: wgpu::Buffer,
@@ -10,7 +10,7 @@ pub struct HeightMap {
 }
 
 impl HeightMap {
-    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, fluid: &Fluid) -> Self {
+    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, particle_volume: &wgpu::Buffer) -> Self {
         let heights = gpu.storage_buffer("height map", canvas.size.pixel_count() * 4);
         let shader = gpu.shader(
             "height map",
@@ -25,7 +25,7 @@ impl HeightMap {
                 (0, Binding::Uniform(&window.uniform)),
                 (1, Binding::ReadOnly(&canvas.paint)),
                 (2, Binding::ReadOnly(&window.volume)),
-                (3, Binding::ReadOnly(&fluid.particle_volume)),
+                (3, Binding::ReadOnly(particle_volume)),
                 (4, Binding::ReadWrite(&heights)),
             ],
         );

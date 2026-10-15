@@ -5,8 +5,8 @@ use crate::gpu::{Binding, ComputePass, Gpu};
 
 const SAMPLE_WORKGROUP: u32 = 128;
 const CELL_WORKGROUP: u32 = 64;
-const PROJECTION_ROUNDS: u32 = 3;
-const DIFFUSION_ROUNDS: u32 = 1;
+const PROJECTION_ROUNDS: u32 = 2;
+const DIFFUSION_ROUNDS: u32 = 2;
 const MAX_ADVECTION_SUBSTEPS: u32 = 12;
 pub const PARTICLE_CAPACITY: u32 = 262_144;
 const PARTICLE_STRIDE: u64 = 64;
@@ -90,7 +90,11 @@ pub struct Fluid {
 }
 
 impl Fluid {
-    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, brush: &Brush, settings: FluidSettings) -> Self {
+    pub fn particle_volume_buffer(gpu: &Gpu, window: &ActiveWindow) -> wgpu::Buffer {
+        gpu.storage_buffer("particle volume", window.volume.size())
+    }
+
+    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, brush: &Brush, particle_volume: wgpu::Buffer, canvas_heights: &wgpu::Buffer, settings: FluidSettings) -> Self {
         let [w, h, d] = [WINDOW_SIZE.x, WINDOW_SIZE.y, WINDOW_SIZE.z];
         let cells = w * h * d;
         let velocity_len = (w + 1) * h * d + w * (h + 1) * d + w * h * (d + 1);
@@ -107,7 +111,6 @@ impl Fluid {
         let bristle = gpu.storage_buffer("fluid bristle occupancy", u64::from(cells) * 16);
         let previous_curves = gpu.storage_buffer("fluid previous curves", brush.curves.size());
         let velocity_before = gpu.storage_buffer("fluid velocity before projection", u64::from(velocity_len) * 4);
-        let particle_volume = gpu.storage_buffer("particle volume", window.volume.size());
         let particle_velocity = gpu.storage_buffer("particle momentum", u64::from(cells) * 16);
         let particles_in = gpu.storage_buffer("particles", u64::from(PARTICLE_CAPACITY) * PARTICLE_STRIDE);
         let particles_out = gpu.storage_buffer("particles compacted", u64::from(PARTICLE_CAPACITY) * PARTICLE_STRIDE);
@@ -165,7 +168,13 @@ impl Fluid {
             &[(2, volume), (4, velocity_rw), (9, bristle_rw), (16, particle_volume_rw), (21, Binding::ReadWrite(&stroke_base)), (22, region_rw)],
         );
         let grow_region = pass("grow region", "grow_region", &[(11, Binding::ReadOnly(&brush.curves)), (22, region_rw)]);
-        let column_bindings = [(2, volume), (24, Binding::ReadWrite(&columns)), (25, Binding::ReadWrite(&column_pigment))];
+        let column_bindings = [
+            (2, volume),
+            (24, Binding::ReadWrite(&columns)),
+            (25, Binding::ReadWrite(&column_pigment)),
+            (26, Binding::ReadOnly(canvas_heights)),
+            (27, Binding::ReadOnly(&canvas.paint)),
+        ];
         let snapshot_columns = pass("snapshot columns", "snapshot_columns", &column_bindings);
         let level_columns = pass("level columns", "level_columns", &column_bindings);
         let finalize_bounds = pass("finalize bounds", "finalize_bounds", &[(22, region_rw), (23, Binding::ReadWrite(&indirect))]);

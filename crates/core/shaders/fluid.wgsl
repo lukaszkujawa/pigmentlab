@@ -1,6 +1,7 @@
 const LIQUID_THRESHOLD: f32 = 0.05;
 const ADHERED_LAYERS: i32 = 2;
 const ADHESION_CELLS: i32 = 2;
+const BRISTLE_DRAG: f32 = 0.35;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const WORKGROUP: u32 = 64u;
 
@@ -96,8 +97,7 @@ fn is_solid(c: vec3<i32>) -> bool {
     if (!inside(c)) { return true; }
     if (!on_canvas(c)) { return true; }
     if (c.z < ADHERED_LAYERS) { return true; }
-    let cell = vec3<u32>(c);
-    return bristle_density(cell) > 0.0 || is_dry(cell);
+    return is_dry(vec3<u32>(c));
 }
 
 fn joint_density_at(c: vec3<i32>) -> f32 {
@@ -354,24 +354,21 @@ fn face_velocity(solid_left: bool, solid_right: bool, left: vec3<i32>, right: ve
     if (!inside(left) || !inside(right) || !on_canvas(left) || !on_canvas(right)) { return 0.0; }
     if (is_dry(vec3<u32>(left)) || is_dry(vec3<u32>(right))) { return 0.0; }
     if (left.z < ADHERED_LAYERS || right.z < ADHERED_LAYERS) { return 0.0; }
-    if (!below_stroke_base(left) || !below_stroke_base(right)) { return 0.0; }
     let liquid_left = joint_density_at(left) > LIQUID_THRESHOLD;
     let liquid_right = joint_density_at(right) > LIQUID_THRESHOLD;
     if (!liquid_left && !liquid_right) { return 0.0; }
-    if (solid_left || solid_right) {
-        if (!liquid_left || !liquid_right) { return 0.0; }
-        var prescribed = vec3<f32>(0.0);
-        if (solid_left && inside(left) && bristle_density(vec3<u32>(left)) > 0.0) {
-            prescribed = bristle_velocity(vec3<u32>(left));
-        } else if (solid_right && inside(right) && bristle_density(vec3<u32>(right)) > 0.0) {
-            prescribed = bristle_velocity(vec3<u32>(right));
-        }
+    if (solid_left || solid_right) { return 0.0; }
+    let drag_left = bristle_density(vec3<u32>(left));
+    let drag_right = bristle_density(vec3<u32>(right));
+    let drag = drag_left + drag_right;
+    if (drag > 0.0) {
+        var prescribed = (bristle_velocity(vec3<u32>(left)) * drag_left + bristle_velocity(vec3<u32>(right)) * drag_right) / drag;
         prescribed.z = min(prescribed.z, 0.0);
-        return prescribed[component];
+        let coupling = clamp(drag * BRISTLE_DRAG, 0.0, 1.0);
+        return mix(current * fluid.damping, prescribed[component], coupling);
     }
-    let settle = select(0.0, fluid.gravity * fluid.dt, component == 2u);
     let damped = current * fluid.damping;
-    return select(damped, 0.0, abs(damped) < fluid.yield_speed) - settle;
+    return select(damped, 0.0, abs(damped) < fluid.yield_speed);
 }
 
 @compute @workgroup_size(64)
@@ -567,9 +564,11 @@ struct Particle {
 @group(0) @binding(23) var<storage, read_write> indirect: array<u32>;
 @group(0) @binding(24) var<storage, read_write> columns: array<vec4<f32>>;
 @group(0) @binding(25) var<storage, read_write> column_pigment: array<vec4<f32>>;
+@group(0) @binding(26) var<storage, read> canvas_heights: array<f32>;
+@group(0) @binding(27) var<storage, read> store: array<i32>;
 
 const LEVEL_RATE: f32 = 0.5;
-const LEVEL_YIELD_SLOPE: f32 = 0.25;
+const LEVEL_YIELD_SLOPE: f32 = 0.0;
 const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 
 const REGION_MARGIN: i32 = 10;
@@ -930,10 +929,41 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_w
     columns[index].w = top_scattering.z;
 }
 
+fn canvas_height_of(xy: vec2<i32>) -> f32 {
+    let pixel = xy + window.origin;
+    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { return -1.0; }
+    return canvas_heights[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
+}
+
+fn neighbour_dry(xy: vec2<i32>) -> bool {
+    if (xy.x >= 0 && xy.y >= 0 && xy.x < i32(window.width) && xy.y < i32(window.height)) {
+        return columns[column_slot(vec2<u32>(xy))].y > 0.0;
+    }
+    let pixel = xy + window.origin;
+    return store[store_cell(vec2<u32>(pixel)) + 7u] >= i32(PAINT_SCALE);
+}
+
+fn neighbour_pigment(xy: vec2<i32>) -> array<f32, 6> {
+    var pigment: array<f32, 6>;
+    if (xy.x >= 0 && xy.y >= 0 && xy.x < i32(window.width) && xy.y < i32(window.height)) {
+        let slot = column_slot(vec2<u32>(xy));
+        let p = column_pigment[slot];
+        let c = columns[slot];
+        pigment = array<f32, 6>(p.x, p.y, p.z, c.z, p.w, c.w);
+        return pigment;
+    }
+    let cell = store_cell(vec2<u32>(xy + window.origin));
+    let height = max(f32(store[cell]) / PAINT_SCALE, 1e-6);
+    for (var channel = 0u; channel < 6u; channel++) {
+        pigment[channel] = f32(store[cell + 1u + channel]) / PAINT_SCALE / height;
+    }
+    return pigment;
+}
+
 fn column_flow(height: f32, xy: vec2<i32>) -> f32 {
-    if (xy.x < 0 || xy.y < 0 || xy.x >= i32(window.width) || xy.y >= i32(window.height)) { return 0.0; }
-    let other = columns[column_slot(vec2<u32>(xy))];
-    if (other.x <= 0.0 || other.y > 0.0) { return 0.0; }
+    let other_height = canvas_height_of(xy);
+    if (other_height <= 0.0 || neighbour_dry(xy)) { return 0.0; }
+    let other = vec4<f32>(other_height, 0.0, 0.0, 0.0);
     let flowing = max(max(height, other.x) - LEVEL_MIN_HEIGHT, 0.0);
     let difference = height - other.x;
     let beyond_yield = sign(difference) * max(abs(difference) - LEVEL_YIELD_SLOPE, 0.0);
@@ -979,22 +1009,22 @@ fn level_columns(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_work
     if (index >= window.width * window.height) { return; }
     let xy = vec2<i32>(i32(index % window.width), i32(index / window.width));
     let own = columns[index];
-    if (own.x <= 0.0 || own.y > 0.0) { return; }
+    let own_height = canvas_height_of(xy);
+    if (own_height <= 0.0 || own.y > 0.0) { return; }
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;
     var incoming = 0.0;
     var incoming_absorption = vec3<f32>(0.0);
     var incoming_scattering = vec3<f32>(0.0);
     for (var n = 0u; n < 4u; n++) {
-        let flow = column_flow(own.x, xy + offsets[n]);
+        let flow = column_flow(own_height, xy + offsets[n]);
         if (flow > 0.0) {
             outgoing += flow;
         } else if (flow < 0.0) {
-            let neighbour = column_slot(vec2<u32>(xy + offsets[n]));
-            let pigment = column_pigment[neighbour];
+            let pigment = neighbour_pigment(xy + offsets[n]);
             incoming -= flow;
-            incoming_absorption += pigment.xyz * -flow;
-            incoming_scattering += vec3<f32>(columns[neighbour].z, pigment.w, columns[neighbour].w) * -flow;
+            incoming_absorption += vec3<f32>(pigment[0], pigment[1], pigment[2]) * -flow;
+            incoming_scattering += vec3<f32>(pigment[3], pigment[4], pigment[5]) * -flow;
         }
     }
     if (outgoing > 0.0) { take_from_top(vec2<u32>(xy), outgoing); }
