@@ -40,17 +40,17 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
             engine.advance_exact(step.t);
         }
         match &step.action {
-            Action::Press { x, y, pressure } => {
+            Action::Press { x, y, pressure, tilt } => {
                 last_position = (*x, *y);
-                engine.pointer(sample(PointerPhase::Down, *x, *y, *pressure, step.t));
+                engine.pointer(sample(PointerPhase::Down, *x, *y, *pressure, *tilt, step.t));
             }
-            Action::Move { x, y, pressure } => {
+            Action::Move { x, y, pressure, tilt } => {
                 last_position = (*x, *y);
-                engine.pointer(sample(PointerPhase::Move, *x, *y, *pressure, step.t));
+                engine.pointer(sample(PointerPhase::Move, *x, *y, *pressure, *tilt, step.t));
             }
             Action::Release => {
                 let (x, y) = last_position;
-                engine.pointer(sample(PointerPhase::Up, x, y, 0.0, step.t));
+                engine.pointer(sample(PointerPhase::Up, x, y, 0.0, [0.0; 2], step.t));
             }
             Action::Checkpoint { name } => {
                 engine.render();
@@ -80,8 +80,8 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
     Report { total_ms: started.elapsed().as_secs_f64() * 1000.0, steps_simulated, checkpoints }
 }
 
-fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, time: f64) -> PointerSample {
-    PointerSample { phase, x, y, pressure, time }
+fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, tilt: [f32; 2], time: f64) -> PointerSample {
+    PointerSample { phase, x, y, pressure, tilt, time }
 }
 
 fn check(

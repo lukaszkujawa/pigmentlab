@@ -17,8 +17,8 @@ impl Recorder {
 
     pub fn pointer(&mut self, sample: PointerSample) {
         let action = match sample.phase {
-            PointerPhase::Down => Action::Press { x: sample.x, y: sample.y, pressure: sample.pressure },
-            PointerPhase::Move => Action::Move { x: sample.x, y: sample.y, pressure: sample.pressure },
+            PointerPhase::Down => Action::Press { x: sample.x, y: sample.y, pressure: sample.pressure, tilt: sample.tilt },
+            PointerPhase::Move => Action::Move { x: sample.x, y: sample.y, pressure: sample.pressure, tilt: sample.tilt },
             PointerPhase::Up => Action::Release,
         };
         self.push(sample.time, action);
@@ -75,8 +75,8 @@ mod tests {
     fn recorded_scenario_round_trips() {
         let mut recorder = Recorder::start(CanvasSize { width: 64, height: 64 }, 1, 10.0);
         recorder.dip(10.0, "cadmium_red");
-        recorder.pointer(PointerSample { phase: PointerPhase::Down, x: 1.0, y: 2.0, pressure: 0.5, time: 10.5 });
-        recorder.pointer(PointerSample { phase: PointerPhase::Up, x: 1.0, y: 2.0, pressure: 0.5, time: 11.0 });
+        recorder.pointer(PointerSample { phase: PointerPhase::Down, x: 1.0, y: 2.0, pressure: 0.5, tilt: [0.0; 2], time: 10.5 });
+        recorder.pointer(PointerSample { phase: PointerPhase::Up, x: 1.0, y: 2.0, pressure: 0.5, tilt: [0.0; 2], time: 11.0 });
         let scenario = recorder.finish(11.0);
         let text = serde_json::to_string(&scenario).unwrap();
         let parsed: Scenario = serde_json::from_str(&text).unwrap();

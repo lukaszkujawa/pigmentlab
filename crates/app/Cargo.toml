@@ -7,5 +7,11 @@ edition.workspace = true
 simpaint-core = { path = "../core" }
 slint = { version = "1.18", features = ["unstable-wgpu-30", "renderer-femtovg-wgpu"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSEvent", "block2"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+block2 = "0.6"
+
 [build-dependencies]
 slint-build = "1.18"

@@ -12,12 +12,39 @@ struct CompositeUniform {
     canvas_width: u32,
     canvas_height: u32,
     optical_thickness_per_pixel: f32,
-    _padding: f32,
+    light_azimuth: f32,
+    light_elevation: f32,
+    gloss: f32,
+    ambient: f32,
+    shadow_strength: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lighting {
+    pub azimuth_degrees: f32,
+    pub elevation_degrees: f32,
+    pub gloss: f32,
+    pub ambient: f32,
+    pub shadow_strength: f32,
+}
+
+impl Default for Lighting {
+    fn default() -> Self {
+        Self { azimuth_degrees: 225.0, elevation_degrees: 40.0, gloss: 0.5, ambient: 0.45, shadow_strength: 0.6 }
+    }
 }
 
 pub struct Composite {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
+    uniform: wgpu::Buffer,
+    canvas: CanvasExtent,
+}
+
+#[derive(Clone, Copy)]
+struct CanvasExtent {
+    width: u32,
+    height: u32,
 }
 
 impl Composite {
@@ -27,16 +54,6 @@ impl Composite {
             &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/composite.wgsl")],
         );
         let uniform = gpu.uniform_buffer("composite uniform", std::mem::size_of::<CompositeUniform>() as u64);
-        gpu.queue.write_buffer(
-            &uniform,
-            0,
-            bytemuck::bytes_of(&CompositeUniform {
-                canvas_width: canvas.size.width,
-                canvas_height: canvas.size.height,
-                optical_thickness_per_pixel: OPTICAL_THICKNESS_PER_PIXEL,
-                _padding: 0.0,
-            }),
-        );
         let fragment = wgpu::ShaderStages::FRAGMENT;
         let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("composite"),
@@ -103,7 +120,31 @@ impl Composite {
             multiview_mask: None,
             cache: None,
         });
-        Self { pipeline, bind_group }
+        let composite = Self {
+            pipeline,
+            bind_group,
+            uniform,
+            canvas: CanvasExtent { width: canvas.size.width, height: canvas.size.height },
+        };
+        composite.set_lighting(gpu, Lighting::default());
+        composite
+    }
+
+    pub fn set_lighting(&self, gpu: &Gpu, lighting: Lighting) {
+        gpu.queue.write_buffer(
+            &self.uniform,
+            0,
+            bytemuck::bytes_of(&CompositeUniform {
+                canvas_width: self.canvas.width,
+                canvas_height: self.canvas.height,
+                optical_thickness_per_pixel: OPTICAL_THICKNESS_PER_PIXEL,
+                light_azimuth: lighting.azimuth_degrees,
+                light_elevation: lighting.elevation_degrees,
+                gloss: lighting.gloss,
+                ambient: lighting.ambient,
+                shadow_strength: lighting.shadow_strength,
+            }),
+        );
     }
 
     pub fn encode(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView) {

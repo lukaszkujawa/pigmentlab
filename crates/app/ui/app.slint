@@ -16,6 +16,10 @@ export component AppWindow inherits Window {
     out property <bool> show-bristles <=> bristles-toggle.checked;
     out property <bool> fluid-enabled <=> fluid-toggle.checked;
     out property <bool> recording <=> record-toggle.checked;
+    out property <float> light-azimuth <=> azimuth-slider.value;
+    out property <float> light-elevation <=> elevation-slider.value;
+    out property <float> gloss <=> gloss-slider.value;
+    in property <string> pen-status: "";
 
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
@@ -120,6 +124,19 @@ export component AppWindow inherits Window {
                     }
 
                     GroupBox {
+                        title: "Light";
+                        VerticalLayout {
+                            spacing: 8px;
+                            Text { text: "Direction " + round(azimuth-slider.value) + "°"; }
+                            azimuth-slider := Slider { minimum: 0; maximum: 360; value: 225; }
+                            Text { text: "Elevation " + round(elevation-slider.value) + "°"; }
+                            elevation-slider := Slider { minimum: 10; maximum: 80; value: 40; }
+                            Text { text: "Gloss " + round(gloss-slider.value * 100) + "%"; }
+                            gloss-slider := Slider { minimum: 0; maximum: 1; value: 0.5; }
+                        }
+                    }
+
+                    GroupBox {
                         title: "Simulation";
                         VerticalLayout {
                             spacing: 8px;
@@ -142,6 +159,11 @@ export component AppWindow inherits Window {
 
                     Text {
                         text: "Frame " + round(root.frame-ms * 10) / 10 + " ms";
+                        width: 240px;
+                        color: #aaaaaa;
+                    }
+                    Text {
+                        text: root.pen-status;
                         width: 240px;
                         color: #aaaaaa;
                     }

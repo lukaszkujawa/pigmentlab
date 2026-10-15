@@ -1,10 +1,13 @@
 slint::include_modules!();
 
+mod tablet;
+
 use simpaint_core::brush::BrushPreset;
 use simpaint_core::scenario::Recorder;
 use simpaint_core::pigment::{PALETTE, linear_to_srgb};
 use simpaint_core::units::cm;
-use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
+use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
+use tablet::Tablet;
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings, wgpu};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -40,16 +43,21 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let requests: Rc<RefCell<Requests>> = Rc::default();
     let started = Instant::now();
+    let tablet = Rc::new(Tablet::install());
 
     let app_weak = app.as_weak();
     let shared = requests.clone();
+    let pen = tablet.clone();
     app.on_pointer(move |kind, x, y| {
         let app = app_weak.unwrap();
+        let pen = pen.state();
+        let (pressure, tilt) = if pen.present { (pen.pressure, pen.tilt) } else { (app.get_pressure(), [0.0; 2]) };
         shared.borrow_mut().pointer.push(PointerSample {
             phase: phase(kind),
             x,
             y,
-            pressure: app.get_pressure(),
+            pressure,
+            tilt,
             time: started.elapsed().as_secs_f64(),
         });
     });
@@ -87,6 +95,18 @@ fn main() -> Result<(), slint::PlatformError> {
                     apply_requests(engine, &app, &mut requests.borrow_mut());
                     engine.set_show_bristles(app.get_show_bristles());
                     engine.set_fluid_enabled(app.get_fluid_enabled());
+                    engine.set_lighting(Lighting {
+                        azimuth_degrees: app.get_light_azimuth(),
+                        elevation_degrees: app.get_light_elevation(),
+                        gloss: app.get_gloss(),
+                        ..Lighting::default()
+                    });
+                    let pen = tablet.state();
+                    app.set_pen_status(if pen.present {
+                        format!("Pen {:.0}% tilt {:+.2} {:+.2}", pen.pressure * 100.0, pen.tilt[0], pen.tilt[1]).into()
+                    } else {
+                        "Pen: none (slider pressure)".into()
+                    });
                     engine.advance_realtime(started.elapsed().as_secs_f64());
                     let texture = engine.render().clone();
                     app.set_canvas_texture(slint::Image::try_from(texture).unwrap());

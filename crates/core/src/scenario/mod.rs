@@ -35,8 +35,20 @@ pub struct Step {
 pub enum Action {
     Tool { name: String },
     Param { name: String, value: f32 },
-    Press { x: f32, y: f32, pressure: f32 },
-    Move { x: f32, y: f32, pressure: f32 },
+    Press {
+        x: f32,
+        y: f32,
+        pressure: f32,
+        #[serde(default)]
+        tilt: [f32; 2],
+    },
+    Move {
+        x: f32,
+        y: f32,
+        pressure: f32,
+        #[serde(default)]
+        tilt: [f32; 2],
+    },
     Release,
     Dip { pigment: String },
     Clean,

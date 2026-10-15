@@ -5,8 +5,8 @@ use crate::history::History;
 use crate::input::{PointerSample, PointerState, PointerTrack};
 use crate::paint::{ActiveWindow, Deposit, Fluid, FluidSettings};
 use crate::pigment::Pigment;
-use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap};
-use glam::{Vec2, Vec3};
+use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
+use glam::{Quat, Vec2, Vec3};
 
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
@@ -24,6 +24,7 @@ const FLUID: FluidSettings = FluidSettings {
 };
 const MAX_COMPRESSION: f32 = 0.4;
 const LIFTED_HEIGHT: f32 = 1.25;
+const MAX_TILT: f32 = 0.8;
 
 pub struct Engine {
     gpu: Gpu,
@@ -156,6 +157,10 @@ impl Engine {
         self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) })
     }
 
+    pub fn set_lighting(&self, lighting: Lighting) {
+        self.composite.set_lighting(&self.gpu, lighting);
+    }
+
     pub fn set_fluid_enabled(&mut self, enabled: bool) {
         self.fluid_enabled = enabled;
     }
@@ -252,12 +257,16 @@ impl Engine {
 
     fn pose_for(&self, state: PointerState) -> BrushPose {
         let length = self.brush.preset().length;
-        let height = if state.pressed {
+        let along_handle = if state.pressed {
             length * (1.0 - MAX_COMPRESSION * state.pressure.clamp(0.0, 1.0))
         } else {
             length * LIFTED_HEIGHT
         };
-        BrushPose::upright(Vec3::new(state.x, state.y, height))
+        let handle = handle_direction(state.tilt);
+        BrushPose {
+            position: Vec3::new(state.x, state.y, 0.0) + handle * along_handle,
+            orientation: Quat::from_rotation_arc(Vec3::Z, handle),
+        }
     }
 
     pub fn time(&self) -> f64 {
@@ -281,5 +290,27 @@ impl Engine {
 
     pub fn read_back(&self) -> image::RgbaImage {
         read_rgba8(&self.gpu, &self.display)
+    }
+}
+
+fn handle_direction(tilt: [f32; 2]) -> Vec3 {
+    let lean = Vec2::new(tilt[0], -tilt[1]).clamp_length_max(MAX_TILT);
+    Vec3::new(lean.x, lean.y, (1.0 - lean.length_squared()).max(0.05).sqrt()).normalize()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upright_pen_gives_vertical_handle() {
+        assert!((handle_direction([0.0, 0.0]) - Vec3::Z).length() < 1e-6);
+    }
+
+    #[test]
+    fn tilt_is_limited_and_unit_length() {
+        let handle = handle_direction([1.0, 1.0]);
+        assert!((handle.length() - 1.0).abs() < 1e-5);
+        assert!(handle.z > 0.3, "handle should never lie flat, got {handle}");
     }
 }

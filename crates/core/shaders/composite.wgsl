@@ -2,14 +2,16 @@ struct CompositeUniform {
     canvas_width: u32,
     canvas_height: u32,
     optical_thickness_per_pixel: f32,
-    padding: f32,
+    light_azimuth: f32,
+    light_elevation: f32,
+    gloss: f32,
+    ambient: f32,
+    shadow_strength: f32,
 };
 
-const LIGHT_DIRECTION: vec3<f32> = vec3<f32>(-0.45, -0.6, 0.66);
-const AMBIENT: f32 = 0.55;
-const DIFFUSE: f32 = 0.45;
-const SPECULAR: f32 = 0.25;
-const SHININESS: f32 = 24.0;
+const OCCLUSION_STRENGTH: f32 = 0.6;
+const SHADOW_STEPS: i32 = 16;
+const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(2.0, 4.0, 7.0);
 
 @group(0) @binding(0) var substrate: texture_2d<f32>;
 @group(0) @binding(1) var<storage, read> paint: array<i32>;
@@ -83,16 +85,54 @@ fn smooth_height(texel: vec2<i32>) -> f32 {
     return total / 9.0;
 }
 
+fn light_direction() -> vec3<f32> {
+    let elevation = radians(composite.light_elevation);
+    let azimuth = radians(composite.light_azimuth);
+    return vec3<f32>(cos(elevation) * cos(azimuth), cos(elevation) * sin(azimuth), sin(elevation));
+}
+
+fn occlusion(texel: vec2<i32>, height: f32) -> f32 {
+    var total = 0.0;
+    for (var direction = 0; direction < 8; direction++) {
+        let angle = f32(direction) * 0.78539816;
+        let step = vec2<f32>(cos(angle), sin(angle));
+        for (var ring = 0; ring < 3; ring++) {
+            let radius = OCCLUSION_RADII[ring];
+            let neighbour = height_at(texel + vec2<i32>(round(step * radius)));
+            total += clamp((neighbour - height - 0.1) / radius, 0.0, 1.0);
+        }
+    }
+    return 1.0 - OCCLUSION_STRENGTH * total / 24.0;
+}
+
+fn shadow(texel: vec2<i32>, height: f32, light: vec3<f32>) -> f32 {
+    let horizontal = length(light.xy);
+    if (horizontal < 1e-3) { return 1.0; }
+    let step = light.xy / horizontal;
+    let rise = light.z / horizontal;
+    var blocked = 0.0;
+    for (var i = 1; i <= SHADOW_STEPS; i++) {
+        let distance = f32(i);
+        let sample_height = height_at(texel + vec2<i32>(round(step * distance)));
+        let ray_height = height + distance * rise;
+        blocked = max(blocked, clamp(sample_height - ray_height, 0.0, 1.0));
+    }
+    return 1.0 - composite.shadow_strength * blocked;
+}
+
 fn shade(albedo: vec3<f32>, texel: vec2<i32>, height: f32) -> vec3<f32> {
     let relief = smoothstep(0.0, 0.6, height);
     let slope_x = (smooth_height(texel + vec2<i32>(1, 0)) - smooth_height(texel - vec2<i32>(1, 0))) * 0.5 * relief;
     let slope_y = (smooth_height(texel + vec2<i32>(0, 1)) - smooth_height(texel - vec2<i32>(0, 1))) * 0.5 * relief;
     let normal = normalize(vec3<f32>(-slope_x, -slope_y, 1.0));
-    let light = normalize(LIGHT_DIRECTION);
+    let light = light_direction();
     let diffuse = max(dot(normal, light), 0.0);
     let halfway = normalize(light + vec3<f32>(0.0, 0.0, 1.0));
-    let specular = pow(max(dot(normal, halfway), 0.0), SHININESS) * SPECULAR * min(height, 1.0);
-    return albedo * (AMBIENT + DIFFUSE * diffuse) + vec3<f32>(specular);
+    let shininess = mix(8.0, 96.0, composite.gloss);
+    let specular = pow(max(dot(normal, halfway), 0.0), shininess) * composite.gloss * 0.5 * relief;
+    let lit = shadow(texel, height, light);
+    let ambient = composite.ambient * occlusion(texel, height);
+    return albedo * (ambient + (1.0 - composite.ambient) * diffuse * lit) + vec3<f32>(specular * lit);
 }
 
 @fragment
@@ -102,7 +142,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let column = column_sum(texel);
     let height = f32(column[0]) / PAINT_SCALE;
     if (height <= 1e-4) {
-        return vec4<f32>(paper, 1.0);
+        return vec4<f32>(shade(paper, texel, 0.0), 1.0);
     }
     let k = vec3<f32>(f32(column[1]), f32(column[2]), f32(column[3])) / PAINT_SCALE / height;
     let s = vec3<f32>(f32(column[4]), f32(column[5]), f32(column[6])) / PAINT_SCALE / height;

@@ -11,6 +11,7 @@ pub struct PointerSample {
     pub x: f32,
     pub y: f32,
     pub pressure: f32,
+    pub tilt: [f32; 2],
     pub time: f64,
 }
 
@@ -19,6 +20,7 @@ pub struct PointerState {
     pub x: f32,
     pub y: f32,
     pub pressure: f32,
+    pub tilt: [f32; 2],
     pub pressed: bool,
     pub fresh_press: bool,
 }
@@ -43,18 +45,20 @@ impl PointerTrack {
         let current = self.current?;
         let pressed = current.phase != PointerPhase::Up;
         let next = self.samples.front().filter(|n| pressed && n.phase != PointerPhase::Down);
-        let (x, y, pressure) = match next {
+        let blend = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        let (x, y, pressure, tilt) = match next {
             Some(next) if next.time > current.time => {
                 let t = ((time - current.time) / (next.time - current.time)).clamp(0.0, 1.0) as f32;
                 (
-                    current.x + (next.x - current.x) * t,
-                    current.y + (next.y - current.y) * t,
-                    current.pressure + (next.pressure - current.pressure) * t,
+                    blend(current.x, next.x, t),
+                    blend(current.y, next.y, t),
+                    blend(current.pressure, next.pressure, t),
+                    [blend(current.tilt[0], next.tilt[0], t), blend(current.tilt[1], next.tilt[1], t)],
                 )
             }
-            _ => (current.x, current.y, current.pressure),
+            _ => (current.x, current.y, current.pressure, current.tilt),
         };
-        Some(PointerState { x, y, pressure, pressed, fresh_press })
+        Some(PointerState { x, y, pressure, tilt, pressed, fresh_press })
     }
 }
 
@@ -63,7 +67,7 @@ mod tests {
     use super::*;
 
     fn sample(phase: PointerPhase, x: f32, time: f64) -> PointerSample {
-        PointerSample { phase, x, y: 0.0, pressure: 1.0, time }
+        PointerSample { phase, x, y: 0.0, pressure: 1.0, tilt: [0.0; 2], time }
     }
 
     #[test]
