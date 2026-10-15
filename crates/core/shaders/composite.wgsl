@@ -146,7 +146,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let k = vec3<f32>(f32(column[1]), f32(column[2]), f32(column[3])) / PAINT_SCALE / height;
     let s = vec3<f32>(f32(column[4]), f32(column[5]), f32(column[6])) / PAINT_SCALE / height;
-    let thickness = max(smooth_height(texel), 1e-4);
+    let thickness = max(mix(height, smooth_height(texel), 0.3), 1e-4);
     let albedo = layer_reflectance(max(k, vec3<f32>(0.0)), max(s, vec3<f32>(0.0)), thickness * composite.optical_thickness_per_pixel, paper);
     let color = shade(albedo, texel, height);
     return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);

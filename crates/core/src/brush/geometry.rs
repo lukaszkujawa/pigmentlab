@@ -5,11 +5,17 @@ use glam::{Vec2, Vec3, Vec4};
 pub const VERTICES_PER_BRISTLE: u32 = 10;
 const LENGTH_JITTER: f32 = 0.04;
 const DIRECTION_JITTER: f32 = 0.02;
+const BRISTLES_PER_CLUMP: u32 = 7;
+const CLUMP_SPREAD: f32 = 0.35;
 
 pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
     let mut positions = Vec::with_capacity((preset.bristle_count * VERTICES_PER_BRISTLE) as usize);
+    let clump_count = preset.bristle_count.div_ceil(BRISTLES_PER_CLUMP).max(1);
+    let clumps: Vec<Vec2> = (0..clump_count).map(|index| root_position(preset, index, clump_count, rng)).collect();
+    let clump_radius = clump_extent(preset, clump_count);
     for index in 0..preset.bristle_count {
-        let root = root_position(preset, index, rng);
+        let clump = clumps[(index % clump_count) as usize];
+        let root = clamp_to_ferrule(preset, clump + jitter(rng, clump_radius));
         let length = bristle_length(preset, root) * (1.0 + rng.range(-LENGTH_JITTER, LENGTH_JITTER));
         let direction = rest_direction(preset, root, rng);
         let segment = length / (VERTICES_PER_BRISTLE - 2) as f32;
@@ -22,13 +28,26 @@ pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
     positions
 }
 
-fn root_position(preset: &BrushPreset, index: u32, rng: &mut SplitMix64) -> Vec2 {
+fn root_position(preset: &BrushPreset, index: u32, count: u32, rng: &mut SplitMix64) -> Vec2 {
     let half = Vec2::new(preset.width, preset.thickness) * 0.5;
     match preset.shape {
-        BrushShape::Round => sunflower(index, preset.bristle_count, half.x) + jitter(rng, half.x * 0.02),
+        BrushShape::Round => sunflower(index, count, half.x) + jitter(rng, half.x * 0.05),
         BrushShape::Flat | BrushShape::Filbert => {
             Vec2::new(rng.range(-half.x, half.x), rng.range(-half.y, half.y))
         }
+    }
+}
+
+fn clump_extent(preset: &BrushPreset, clump_count: u32) -> f32 {
+    let area = preset.width * preset.thickness;
+    (area / clump_count as f32).sqrt() * CLUMP_SPREAD
+}
+
+fn clamp_to_ferrule(preset: &BrushPreset, root: Vec2) -> Vec2 {
+    let half = Vec2::new(preset.width, preset.thickness) * 0.5;
+    match preset.shape {
+        BrushShape::Round => root.clamp_length_max(half.x),
+        BrushShape::Flat | BrushShape::Filbert => root.clamp(-half, half),
     }
 }
 
@@ -93,7 +112,7 @@ mod tests {
         let preset = BrushPreset::round(300, cm(0.4), cm(2.0));
         let positions = rest_positions(&preset, &mut SplitMix64::new(5));
         for bristle in positions.chunks(VERTICES_PER_BRISTLE as usize) {
-            assert!(bristle[1].truncate().length() <= cm(0.4) * 1.03);
+            assert!(bristle[1].truncate().length() <= cm(0.4) * 1.001);
             assert!(bristle[0].z > 0.0 && bristle[1].z == 0.0);
         }
     }

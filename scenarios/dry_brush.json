@@ -1,0 +1,24 @@
+{
+  "seed": 1,
+  "canvas": { "width": 640, "height": 420 },
+  "steps": [
+    { "t": 0.0, "action": "tool", "name": "Flat" },
+    { "t": 0.0, "action": "param", "name": "load", "value": 1.0 },
+    { "t": 0.0, "action": "dip", "pigment": "quinacridone_rose" },
+    { "t": 0.0, "action": "press", "x": 100, "y": 90, "pressure": 0.5 },
+    { "t": 0.6, "action": "move", "x": 540, "y": 100, "pressure": 0.5 },
+    { "t": 0.6, "action": "release" },
+    { "t": 0.8, "action": "param", "name": "load", "value": 0.2 },
+    { "t": 0.8, "action": "dip", "pigment": "quinacridone_rose" },
+    { "t": 0.8, "action": "press", "x": 100, "y": 200, "pressure": 0.5 },
+    { "t": 1.4, "action": "move", "x": 540, "y": 210, "pressure": 0.5 },
+    { "t": 1.4, "action": "release" },
+    { "t": 1.6, "action": "tool", "name": "Round medium" },
+    { "t": 1.6, "action": "param", "name": "load", "value": 0.15 },
+    { "t": 1.6, "action": "dip", "pigment": "ivory_black" },
+    { "t": 1.6, "action": "press", "x": 100, "y": 320, "pressure": 0.5 },
+    { "t": 2.2, "action": "move", "x": 540, "y": 330, "pressure": 0.5 },
+    { "t": 2.2, "action": "release" },
+    { "t": 2.5, "action": "checkpoint", "name": "dry" }
+  ]
+}

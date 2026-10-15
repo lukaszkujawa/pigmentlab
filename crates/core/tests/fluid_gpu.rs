@@ -42,15 +42,19 @@ fn paint_moves_when_pushed() {
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width, height: 384 }, 3);
     engine.dip(by_name("ivory_black").unwrap());
     engine.pointer(sample(PointerPhase::Down, 200.0, 200.0, 1.0, 0.0));
-    engine.pointer(sample(PointerPhase::Up, 200.0, 200.0, 1.0, 0.5));
-    engine.advance_exact(0.6);
+    for pass in 0..6 {
+        let x = if pass % 2 == 0 { 215.0 } else { 185.0 };
+        engine.pointer(sample(PointerPhase::Move, x, 200.0, 1.0, 0.1 + pass as f64 * 0.15));
+    }
+    engine.pointer(sample(PointerPhase::Up, 200.0, 200.0, 1.0, 1.0));
+    engine.advance_exact(1.1);
     let before = centroid_x(&engine, width);
 
     engine.clean();
-    engine.pointer(sample(PointerPhase::Down, 140.0, 200.0, 0.5, 0.6));
-    engine.pointer(sample(PointerPhase::Move, 280.0, 200.0, 0.5, 1.0));
-    engine.pointer(sample(PointerPhase::Up, 280.0, 200.0, 0.5, 1.0));
-    engine.advance_exact(1.2);
+    engine.pointer(sample(PointerPhase::Down, 140.0, 200.0, 0.5, 1.1));
+    engine.pointer(sample(PointerPhase::Move, 280.0, 200.0, 0.5, 1.5));
+    engine.pointer(sample(PointerPhase::Up, 280.0, 200.0, 0.5, 1.5));
+    engine.advance_exact(1.7);
     let after = centroid_x(&engine, width);
 
     assert!((before - 200.0).abs() < 5.0, "blob should be centred where it was stabbed, got {before}");
@@ -91,10 +95,10 @@ fn dried_paint_is_not_pushed() {
     engine.dry();
     let before = centroid_x(&engine, width);
     engine.clean();
-    engine.pointer(sample(PointerPhase::Down, 140.0, 200.0, 0.5, 0.6));
-    engine.pointer(sample(PointerPhase::Move, 280.0, 200.0, 0.5, 1.0));
-    engine.pointer(sample(PointerPhase::Up, 280.0, 200.0, 0.5, 1.0));
-    engine.advance_exact(1.2);
+    engine.pointer(sample(PointerPhase::Down, 140.0, 200.0, 0.5, 1.1));
+    engine.pointer(sample(PointerPhase::Move, 280.0, 200.0, 0.5, 1.5));
+    engine.pointer(sample(PointerPhase::Up, 280.0, 200.0, 0.5, 1.5));
+    engine.advance_exact(1.7);
     let after = centroid_x(&engine, width);
     assert!((after - before).abs() < 2.0, "dry paint should stay put ({before} -> {after})");
 }

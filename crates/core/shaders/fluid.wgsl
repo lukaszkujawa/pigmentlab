@@ -274,10 +274,12 @@ fn face_velocity(solid_left: bool, solid_right: bool, left: vec3<i32>, right: ve
     if (!inside(left) || !inside(right) || !on_canvas(left) || !on_canvas(right)) { return 0.0; }
     if (is_dry(vec3<u32>(left)) || is_dry(vec3<u32>(right))) { return 0.0; }
     if (left.z < ADHERED_LAYERS || right.z < ADHERED_LAYERS) { return 0.0; }
+    if (!below_stroke_base(left) || !below_stroke_base(right)) { return 0.0; }
     let liquid_left = joint_density_at(left) > LIQUID_THRESHOLD;
     let liquid_right = joint_density_at(right) > LIQUID_THRESHOLD;
     if (!liquid_left && !liquid_right) { return 0.0; }
     if (solid_left || solid_right) {
+        if (!liquid_left || !liquid_right) { return 0.0; }
         var prescribed = vec3<f32>(0.0);
         if (solid_left && inside(left) && bristle_density(vec3<u32>(left)) > 0.0) {
             prescribed = bristle_velocity(vec3<u32>(left));
@@ -487,6 +489,12 @@ struct Particle {
 @group(0) @binding(18) var<storage, read_write> coarse_flags: array<atomic<u32>>;
 @group(0) @binding(19) var<storage, read_write> velocity_before: array<f32>;
 @group(0) @binding(20) var<storage, read_write> volume_atomic: array<atomic<i32>>;
+@group(0) @binding(21) var<storage, read_write> stroke_base: array<f32>;
+
+fn below_stroke_base(c: vec3<i32>) -> bool {
+    let pixel = c.xy + window.origin;
+    return f32(c.z) + 0.5 < stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
+}
 
 fn coarse_width() -> u32 {
     return (window.width + COARSE_CELL - 1u) / COARSE_CELL;

@@ -1,5 +1,6 @@
 use super::window::{ActiveWindow, WINDOW_SIZE};
 use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
+use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
 
 const SAMPLE_WORKGROUP: u32 = 128;
@@ -51,6 +52,7 @@ pub struct Fluid {
     particles_out: wgpu::Buffer,
     pub counters: wgpu::Buffer,
     coarse_flags: wgpu::Buffer,
+    stroke_base: wgpu::Buffer,
     rasterize: ComputePass,
     flag_regions: ComputePass,
     emit: ComputePass,
@@ -81,7 +83,7 @@ pub struct Fluid {
 }
 
 impl Fluid {
-    pub fn new(gpu: &Gpu, window: &ActiveWindow, brush: &Brush, settings: FluidSettings) -> Self {
+    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, brush: &Brush, settings: FluidSettings) -> Self {
         let [w, h, d] = [WINDOW_SIZE.x, WINDOW_SIZE.y, WINDOW_SIZE.z];
         let cells = w * h * d;
         let velocity_len = (w + 1) * h * d + w * (h + 1) * d + w * h * (d + 1);
@@ -105,6 +107,7 @@ impl Fluid {
         let counters = gpu.storage_buffer("particle counters", 8);
         let coarse_cells = u64::from(w.div_ceil(COARSE_CELL)) * u64::from(h.div_ceil(COARSE_CELL));
         let coarse_flags = gpu.storage_buffer("bristle region flags", coarse_cells * 4);
+        let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
 
         let shader = gpu.shader(
             "fluid",
@@ -146,7 +149,7 @@ impl Fluid {
         let boundaries = pass(
             "apply boundaries",
             "apply_boundaries",
-            &[(2, volume), (4, velocity_rw), (9, bristle_rw), (16, particle_volume_rw)],
+            &[(2, volume), (4, velocity_rw), (9, bristle_rw), (16, particle_volume_rw), (21, Binding::ReadWrite(&stroke_base))],
         );
         let flag_regions = pass("flag bristle regions", "flag_bristle_regions", &[(11, Binding::ReadOnly(&brush.curves)), (18, coarse_rw)]);
         let emit = pass(
@@ -220,6 +223,7 @@ impl Fluid {
             particles_out,
             counters,
             coarse_flags,
+            stroke_base,
             rasterize,
             flag_regions,
             emit,
@@ -252,6 +256,10 @@ impl Fluid {
 
     pub fn clear_velocity(&self, encoder: &mut wgpu::CommandEncoder) {
         encoder.clear_buffer(&self.velocity, 0, None);
+    }
+
+    pub fn encode_capture_stroke_base(&self, encoder: &mut wgpu::CommandEncoder, heights: &wgpu::Buffer) {
+        encoder.copy_buffer_to_buffer(heights, 0, &self.stroke_base, 0, self.stroke_base.size());
     }
 
     pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, brush_speed: f32) {

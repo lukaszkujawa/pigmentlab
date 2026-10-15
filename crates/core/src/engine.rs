@@ -71,7 +71,7 @@ impl Engine {
         let canvas = Canvas::new(&gpu, size, seed);
         let window = ActiveWindow::new(&gpu, &canvas);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window);
-        let fluid = Fluid::new(&gpu, &window, &brush, FLUID);
+        let fluid = Fluid::new(&gpu, &canvas, &window, &brush, FLUID);
         let deposit = Deposit::new(&gpu, &brush, &window, &fluid);
         let height_map = HeightMap::new(&gpu, &canvas, &window, &fluid);
         let composite = Composite::new(&gpu, &canvas, &window, &fluid, &height_map);
@@ -174,7 +174,7 @@ impl Engine {
     pub fn set_brush(&mut self, preset: BrushPreset) {
         self.fluid.submit_return_all_particles(&self.gpu);
         self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window);
-        self.fluid = Fluid::new(&self.gpu, &self.window, &self.brush, FLUID);
+        self.fluid = Fluid::new(&self.gpu, &self.canvas, &self.window, &self.brush, FLUID);
         self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.fluid);
         self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window, &self.fluid);
         self.composite = Composite::new(&self.gpu, &self.canvas, &self.window, &self.fluid, &self.height_map);
@@ -303,6 +303,8 @@ impl Engine {
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&mut encoder);
                     self.history.push(&mut encoder, &self.canvas.paint);
+                    self.height_map.encode(&mut encoder);
+                    self.fluid.encode_capture_stroke_base(&mut encoder, &self.height_map.heights);
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
             }

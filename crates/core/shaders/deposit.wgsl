@@ -105,11 +105,12 @@ fn give(cell: u32, deposit_share: f32, load: ptr<function, f32>, absorption: vec
     *load -= given;
 }
 
-fn film_weight(dx: i32, dy: i32) -> f32 {
+fn film_weight(dx: i32, dy: i32, fill: f32) -> f32 {
     let taps = abs(dx) + abs(dy);
-    if (taps == 0) { return FILM_CENTRE_WEIGHT; }
-    if (taps == 1) { return FILM_EDGE_WEIGHT; }
-    return FILM_CORNER_WEIGHT;
+    let spread = smoothstep(0.2, 0.8, fill);
+    if (taps == 0) { return mix(1.0, FILM_CENTRE_WEIGHT, spread); }
+    if (taps == 1) { return FILM_EDGE_WEIGHT * spread; }
+    return FILM_CORNER_WEIGHT * spread;
 }
 
 fn exchange(pixel: vec2<i32>, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>) {
@@ -127,7 +128,7 @@ fn exchange(pixel: vec2<i32>, deposit_share: f32, pickup_share: f32, load: ptr<f
             let neighbour = pixel + vec2<i32>(dx, dy);
             if (!window_contains(neighbour) || neighbour.x < 0 || neighbour.y < 0 || neighbour.x >= i32(window.canvas_width) || neighbour.y >= i32(window.canvas_height)) { continue; }
             let neighbour_local = vec2<u32>(neighbour - window.origin);
-            give(window_cell(vec3<u32>(neighbour_local, column_top(neighbour_local))), deposit_share * fill * film_weight(dx, dy), load, *absorption, *scattering);
+            give(window_cell(vec3<u32>(neighbour_local, column_top(neighbour_local))), deposit_share * fill * film_weight(dx, dy, fill), load, *absorption, *scattering);
         }
     }
 }
@@ -154,7 +155,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let pixel = vec2<i32>(floor(point.xy));
         if (!window_contains(pixel) || pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { continue; }
         let local = vec2<u32>(pixel - window.origin);
-        if (point.z > column_height(local) + deposit.contact_height) { continue; }
+        let film = mix(0.6, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
+        if (point.z > column_height(local) + film) { continue; }
         exchange(pixel, deposit.deposit_rate * share * motion, deposit.pickup_rate * share, &load, &absorption, &scattering);
     }
 
