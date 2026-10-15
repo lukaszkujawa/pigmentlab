@@ -24,6 +24,7 @@ impl Gpu {
         .expect("no compatible GPU adapter");
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("simpaint headless"),
+            required_limits: required_limits(),
             ..Default::default()
         }))
         .expect("failed to create GPU device");
@@ -63,6 +64,10 @@ impl Gpu {
             mapped_at_creation: false,
         })
     }
+}
+
+pub fn required_limits() -> wgpu::Limits {
+    wgpu::Limits { max_storage_buffers_per_shader_stage: 16, ..wgpu::Limits::default() }
 }
 
 pub fn buffer_layout_entry(

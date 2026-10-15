@@ -27,6 +27,7 @@ const FLUID: FluidSettings = FluidSettings {
 const MAX_COMPRESSION: f32 = 0.4;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
+const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
 const DILUTION_PER_MEDIUM: f32 = 0.9;
 
 pub struct Engine {
@@ -48,6 +49,7 @@ pub struct Engine {
     substeps: u64,
     pose_at_last_fluid_step: BrushPose,
     substeps_since_fluid: u32,
+    tuft_centre: Vec2,
     fluid_enabled: bool,
     fluid_active_until: f64,
     was_pressed: bool,
@@ -116,6 +118,7 @@ impl Engine {
             substeps: 0,
             pose_at_last_fluid_step: BrushPose::upright(lifted),
             substeps_since_fluid: 0,
+            tuft_centre: Vec2::ZERO,
             fluid_enabled: true,
             fluid_active_until: 0.0,
             was_pressed: false,
@@ -197,10 +200,10 @@ impl Engine {
     pub fn clear(&mut self) {
         self.fluid.submit_return_all_particles(&self.gpu);
         let mut encoder = self.encoder("clear");
-        self.window.encode_bake(&mut encoder);
+        self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.history.push(&mut encoder, &self.canvas.paint);
         encoder.clear_buffer(&self.canvas.paint, 0, None);
-        self.window.encode_unbake(&mut encoder);
+        self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
         self.fluid.clear_velocity(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
     }
@@ -208,7 +211,7 @@ impl Engine {
     pub fn dry(&mut self) {
         self.fluid.submit_return_all_particles(&self.gpu);
         let mut encoder = self.encoder("dry");
-        self.window.encode_bake(&mut encoder);
+        self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.history.push(&mut encoder, &self.canvas.paint);
         self.fluid.encode_dry_all(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -219,7 +222,7 @@ impl Engine {
         let mut encoder = self.encoder("undo");
         let restored = self.history.pop(&mut encoder, &self.canvas.paint);
         if restored {
-            self.window.encode_unbake(&mut encoder);
+            self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
             self.fluid.clear_velocity(&mut encoder);
         }
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -267,16 +270,16 @@ impl Engine {
         read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| f64::from(*load)).sum::<f64>() as f32
     }
 
-    pub fn paint_heights(&self) -> Vec<f32> {
+    pub fn paint_heights(&mut self) -> Vec<f32> {
         self.fluid.submit_return_all_particles(&self.gpu);
         let mut encoder = self.encoder("bake");
-        self.window.encode_bake(&mut encoder);
+        self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
         let store = read_buffer::<i32>(&self.gpu, &self.canvas.paint);
         store.chunks(PAINT_CHANNELS as usize).map(|pixel| pixel[0] as f32 / PAINT_SCALE).collect()
     }
 
-    pub fn paint_mass(&self) -> f32 {
+    pub fn paint_mass(&mut self) -> f32 {
         self.paint_heights().iter().map(|h| f64::from(*h)).sum::<f64>() as f32
     }
 
@@ -315,10 +318,11 @@ impl Engine {
                     self.fluid_active_until = self.time + FLUID_SETTLE_SECONDS;
                 }
                 if state.fresh_press {
+                    self.tuft_centre = self.handle_position();
                     self.brush.teleport(&self.gpu, &self.pose);
                     self.fluid.submit_return_all_particles(&self.gpu);
                     let mut encoder = self.encoder("stroke snapshot");
-                    self.window.encode_bake(&mut encoder);
+                    self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
                     self.history.push(&mut encoder, &self.canvas.paint);
                     self.height_map.encode(&mut encoder);
                     self.fluid.encode_capture_stroke_base(&mut encoder, &self.height_map.heights);
@@ -329,8 +333,11 @@ impl Engine {
                 .gpu
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("substep") });
-            let focus = Vec2::new(self.pose.position.x, self.pose.position.y);
-            if self.window.needs_relocation(focus) {
+            let preset = *self.brush.preset();
+            let reach = ((preset.length - preset.spread()) * 0.5).max(0.0);
+            let focus = self.tow_tuft_centre(reach);
+            let footprint_radius = (preset.length + preset.spread()) * 0.5 + FOOTPRINT_SLACK;
+            if self.window.needs_relocation(focus, footprint_radius) {
                 self.fluid.submit_return_all_particles(&self.gpu);
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
                 self.fluid.clear_velocity(&mut encoder);
@@ -361,6 +368,18 @@ impl Engine {
             }
             self.gpu.queue.submit(Some(encoder.finish()));
         }
+    }
+
+    fn handle_position(&self) -> Vec2 {
+        Vec2::new(self.pose.position.x, self.pose.position.y)
+    }
+
+    fn tow_tuft_centre(&mut self, reach: f32) -> Vec2 {
+        let offset = self.handle_position() - self.tuft_centre;
+        if offset.length() > reach {
+            self.tuft_centre = self.handle_position() - offset.normalize() * reach;
+        }
+        self.tuft_centre
     }
 
     fn pose_for(&self, state: PointerState) -> BrushPose {

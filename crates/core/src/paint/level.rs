@@ -4,7 +4,8 @@ use crate::gpu::{Binding, ComputePass, Gpu};
 use crate::render::HeightMap;
 
 pub struct StoreLevelling {
-    pass: ComputePass,
+    even: ComputePass,
+    odd: ComputePass,
     width: u32,
     height: u32,
 }
@@ -19,21 +20,22 @@ impl StoreLevelling {
                 include_str!("../../shaders/level_store.wgsl"),
             ],
         );
-        let pass = ComputePass::new(
-            gpu,
-            "level store",
-            &shader,
-            "level",
-            &[
-                (0, Binding::Uniform(&window.uniform)),
-                (1, Binding::ReadWrite(&canvas.paint)),
-                (2, Binding::ReadOnly(&height_map.heights)),
-            ],
-        );
-        Self { pass, width: canvas.size.width, height: canvas.size.height }
+        let bindings = [
+            (0, Binding::Uniform(&window.uniform)),
+            (1, Binding::ReadWrite(&canvas.paint)),
+            (2, Binding::ReadOnly(&height_map.heights)),
+        ];
+        Self {
+            even: ComputePass::new(gpu, "level store even", &shader, "level_even", &bindings),
+            odd: ComputePass::new(gpu, "level store odd", &shader, "level_odd", &bindings),
+            width: canvas.size.width,
+            height: canvas.size.height,
+        }
     }
 
     pub fn encode(&self, encoder: &mut wgpu::CommandEncoder) {
-        self.pass.dispatch(encoder, [self.width.div_ceil(16), self.height.div_ceil(16), 1]);
+        let groups = [self.width.div_ceil(32), self.height.div_ceil(16), 1];
+        self.even.dispatch(encoder, groups);
+        self.odd.dispatch(encoder, groups);
     }
 }

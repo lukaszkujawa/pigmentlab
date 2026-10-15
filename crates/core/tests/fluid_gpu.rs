@@ -25,7 +25,7 @@ fn pushing_a_clean_brush_through_paint_conserves_mass() {
     assert!(drift < 0.05, "mass drifted by {:.1}% ({blob} -> {pushed})", drift * 100.0);
 }
 
-fn centroid_x(engine: &Engine, width: u32) -> f32 {
+fn centroid_x(engine: &mut Engine, width: u32) -> f32 {
     let heights = engine.paint_heights();
     let mut weighted = 0.0;
     let mut total = 0.0;
@@ -48,14 +48,14 @@ fn paint_moves_when_pushed() {
     }
     engine.pointer(sample(PointerPhase::Up, 200.0, 200.0, 1.0, 1.0));
     engine.advance_exact(1.1);
-    let before = centroid_x(&engine, width);
+    let before = centroid_x(&mut engine, width);
 
     engine.clean();
     engine.pointer(sample(PointerPhase::Down, 140.0, 200.0, 0.5, 1.1));
     engine.pointer(sample(PointerPhase::Move, 280.0, 200.0, 0.5, 1.5));
     engine.pointer(sample(PointerPhase::Up, 280.0, 200.0, 0.5, 1.5));
     engine.advance_exact(1.7);
-    let after = centroid_x(&engine, width);
+    let after = centroid_x(&mut engine, width);
 
     assert!((before - 200.0).abs() < 5.0, "blob should be centred where it was stabbed, got {before}");
     assert!(after > before + 4.0, "paint centroid should move with the push ({before} -> {after})");
@@ -94,12 +94,12 @@ fn dried_paint_is_not_pushed() {
     engine.pointer(sample(PointerPhase::Up, 200.0, 200.0, 1.0, 0.5));
     engine.advance_exact(0.6);
     engine.dry();
-    let before = centroid_x(&engine, width);
+    let before = centroid_x(&mut engine, width);
     engine.clean();
     engine.pointer(sample(PointerPhase::Down, 140.0, 200.0, 0.5, 1.1));
     engine.pointer(sample(PointerPhase::Move, 280.0, 200.0, 0.5, 1.5));
     engine.pointer(sample(PointerPhase::Up, 280.0, 200.0, 0.5, 1.5));
     engine.advance_exact(1.7);
-    let after = centroid_x(&engine, width);
+    let after = centroid_x(&mut engine, width);
     assert!((after - before).abs() < 2.0, "dry paint should stay put ({before} -> {after})");
 }

@@ -4,6 +4,7 @@ const FULL_CELL: f32 = 0.999;
 
 struct WindowUniform {
     origin: vec2<i32>,
+    previous_origin: vec2<i32>,
     canvas_width: u32,
     canvas_height: u32,
     width: u32,

@@ -8,7 +8,7 @@ use simpaint_core::scenario::Recorder;
 use simpaint_core::pigment::{PALETTE, linear_to_srgb};
 use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
 use tablet::Tablet;
-use slint::wgpu_30::{WGPUConfiguration, WGPUSettings, wgpu};
+use slint::wgpu_30::{WGPUConfiguration, WGPUSettings};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
@@ -30,7 +30,7 @@ struct Requests {
 
 fn main() -> Result<(), slint::PlatformError> {
     let mut wgpu_settings = WGPUSettings::default();
-    wgpu_settings.device_required_limits = wgpu::Limits::default();
+    wgpu_settings.device_required_limits = simpaint_core::gpu::required_limits();
     slint::BackendSelector::new()
         .require_wgpu_30(WGPUConfiguration::Automatic(wgpu_settings))
         .select()?;

@@ -27,10 +27,14 @@ pub struct Deposit {
     base: DepositUniform,
     medium: f32,
     film: wgpu::Buffer,
+    pickup_demand: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::ComputePipeline,
     replenish: wgpu::ComputePipeline,
     apply_film: wgpu::ComputePipeline,
+    snapshot: wgpu::ComputePipeline,
+    grant_pickups: wgpu::ComputePipeline,
+    apply_pickups: wgpu::ComputePipeline,
     sample_count: u32,
     bristle_count: u32,
 }
@@ -52,6 +56,12 @@ impl Deposit {
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
+        let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
+        let column_heights = gpu.storage_buffer("deposit column heights", columns * 4);
+        let pickup_demand = gpu.storage_buffer("pickup demand", columns * 4);
+        let pickup_grant = gpu.storage_buffer("pickup grant", columns * 16);
+        let pickup_grant_scattering = gpu.storage_buffer("pickup grant scattering", columns * 16);
+        let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
         let compute = wgpu::ShaderStages::COMPUTE;
         let read_only = wgpu::BufferBindingType::Storage { read_only: true };
         let read_write = wgpu::BufferBindingType::Storage { read_only: false };
@@ -68,6 +78,11 @@ impl Deposit {
                 buffer_layout_entry(7, compute, wgpu::BufferBindingType::Uniform),
                 buffer_layout_entry(8, compute, read_only),
                 buffer_layout_entry(9, compute, read_write),
+                buffer_layout_entry(10, compute, read_write),
+                buffer_layout_entry(11, compute, read_write),
+                buffer_layout_entry(12, compute, read_write),
+                buffer_layout_entry(13, compute, read_write),
+                buffer_layout_entry(14, compute, read_write),
             ],
         });
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -84,6 +99,11 @@ impl Deposit {
                 buffer_binding(7, &window.uniform),
                 buffer_binding(8, &fluid.particle_volume),
                 buffer_binding(9, &film),
+                buffer_binding(10, &column_heights),
+                buffer_binding(11, &pickup_demand),
+                buffer_binding(12, &pickup_grant),
+                buffer_binding(13, &pickup_grant_scattering),
+                buffer_binding(14, &sample_request),
             ],
         });
         let shader = gpu.shader(
@@ -115,10 +135,14 @@ impl Deposit {
             base,
             medium: 0.0,
             film,
+            pickup_demand,
             bind_group,
             pipeline: compute_pipeline("step"),
             replenish: compute_pipeline("replenish"),
             apply_film: compute_pipeline("apply_film"),
+            snapshot: compute_pipeline("snapshot_columns"),
+            grant_pickups: compute_pipeline("grant_pickups"),
+            apply_pickups: compute_pipeline("apply_pickups"),
             sample_count,
             bristle_count: preset.bristle_count,
         }
@@ -145,12 +169,19 @@ impl Deposit {
 
     pub fn encode(&self, encoder: &mut wgpu::CommandEncoder) {
         encoder.clear_buffer(&self.film, 0, None);
+        encoder.clear_buffer(&self.pickup_demand, 0, None);
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("deposit"),
             timestamp_writes: None,
         });
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_pipeline(&self.snapshot);
+        pass.dispatch_workgroups(WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1);
+        pass.set_pipeline(&self.pipeline);
+        pass.dispatch_workgroups(self.sample_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+        pass.set_pipeline(&self.grant_pickups);
+        pass.dispatch_workgroups(WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1);
+        pass.set_pipeline(&self.apply_pickups);
         pass.dispatch_workgroups(self.sample_count.div_ceil(WORKGROUP_SIZE), 1, 1);
         pass.set_pipeline(&self.apply_film);
         pass.dispatch_workgroups(WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1);

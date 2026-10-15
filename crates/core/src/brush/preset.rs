@@ -1,5 +1,7 @@
 use crate::units::cm;
 
+const SPLAYED_WIDTH_FACTOR: f32 = 1.5;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BrushShape {
     Round,
@@ -60,6 +62,10 @@ impl BrushPreset {
             deposit_rate: cm(0.0022),
             pickup_rate: cm(0.00005),
         }
+    }
+
+    pub fn spread(&self) -> f32 {
+        self.width * 0.5 * SPLAYED_WIDTH_FACTOR
     }
 
     pub const fn flat(bristle_count: u32, width: f32, thickness: f32, length: f32) -> Self {

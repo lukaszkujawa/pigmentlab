@@ -28,9 +28,7 @@ fn flow_to(height: f32, neighbour: vec2<i32>) -> f32 {
     return beyond_yield * LEVEL_RATE * 0.25 * min(flowing / LEVEL_MIN_HEIGHT, 1.0);
 }
 
-@compute @workgroup_size(16, 16)
-fn level(@builtin(global_invocation_id) id: vec3<u32>) {
-    let pixel = vec2<i32>(id.xy);
+fn level_pixel(pixel: vec2<i32>) {
     if (!on_canvas(pixel) || window_contains(pixel)) { return; }
     let height = heights[pixel_index(pixel)];
     if (height <= 0.0 || is_dry(pixel)) { return; }
@@ -60,4 +58,16 @@ fn level(@builtin(global_invocation_id) id: vec3<u32>) {
         let own = f32(store[cell + 1u + channel]);
         store[cell + 1u + channel] = i32(round(own * keep + incoming_pigment[channel] * PAINT_SCALE));
     }
+}
+
+@compute @workgroup_size(16, 16)
+fn level_even(@builtin(global_invocation_id) id: vec3<u32>) {
+    let pixel = vec2<i32>(i32(id.x) * 2 + i32(id.y & 1u), i32(id.y));
+    level_pixel(pixel);
+}
+
+@compute @workgroup_size(16, 16)
+fn level_odd(@builtin(global_invocation_id) id: vec3<u32>) {
+    let pixel = vec2<i32>(i32(id.x) * 2 + 1 - i32(id.y & 1u), i32(id.y));
+    level_pixel(pixel);
 }
