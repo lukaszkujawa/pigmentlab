@@ -1,0 +1,11 @@
+[package]
+name = "simpaint"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+simpaint-core = { path = "../core" }
+slint = { version = "1.18", features = ["unstable-wgpu-30", "renderer-femtovg-wgpu"] }
+
+[build-dependencies]
+slint-build = "1.18"

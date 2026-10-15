@@ -1,0 +1,10 @@
+{
+  "seed": 1,
+  "canvas": { "width": 256, "height": 256 },
+  "steps": [
+    { "t": 0.0, "action": "dip", "pigment": "cerulean_blue" },
+    { "t": 0.0, "action": "press", "x": 128, "y": 128, "pressure": 0.5 },
+    { "t": 0.08, "action": "release" },
+    { "t": 0.4, "action": "checkpoint", "name": "dab" }
+  ]
+}

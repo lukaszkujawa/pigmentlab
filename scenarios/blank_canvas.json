@@ -1,0 +1,14 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 512,
+    "height": 384
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "checkpoint",
+      "name": "blank"
+    }
+  ]
+}

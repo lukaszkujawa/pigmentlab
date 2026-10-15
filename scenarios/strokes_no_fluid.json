@@ -1,0 +1,84 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 640,
+    "height": 480
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 120,
+      "y": 120,
+      "pressure": 0.6
+    },
+    {
+      "t": 0.7,
+      "action": "move",
+      "x": 520,
+      "y": 140,
+      "pressure": 0.6
+    },
+    {
+      "t": 0.7,
+      "action": "release"
+    },
+    {
+      "t": 0.9,
+      "action": "dip",
+      "pigment": "ivory_black"
+    },
+    {
+      "t": 0.9,
+      "action": "press",
+      "x": 120,
+      "y": 260,
+      "pressure": 0.5
+    },
+    {
+      "t": 1.6,
+      "action": "move",
+      "x": 520,
+      "y": 250,
+      "pressure": 0.5
+    },
+    {
+      "t": 1.6,
+      "action": "release"
+    },
+    {
+      "t": 1.8,
+      "action": "dip",
+      "pigment": "titanium_white"
+    },
+    {
+      "t": 1.8,
+      "action": "press",
+      "x": 120,
+      "y": 380,
+      "pressure": 0.7
+    },
+    {
+      "t": 2.3,
+      "action": "move",
+      "x": 520,
+      "y": 390,
+      "pressure": 0.7
+    },
+    {
+      "t": 2.3,
+      "action": "release"
+    },
+    {
+      "t": 2.6,
+      "action": "checkpoint",
+      "name": "strokes"
+    }
+  ],
+  "fluid": false
+}

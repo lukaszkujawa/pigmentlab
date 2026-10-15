@@ -1,0 +1,57 @@
+{
+  "seed": 3,
+  "canvas": {
+    "width": 512,
+    "height": 384
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "ivory_black"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 200,
+      "y": 200,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.5,
+      "action": "release"
+    },
+    {
+      "t": 0.6,
+      "action": "checkpoint",
+      "name": "blob"
+    },
+    {
+      "t": 0.6,
+      "action": "clean"
+    },
+    {
+      "t": 0.6,
+      "action": "press",
+      "x": 140,
+      "y": 200,
+      "pressure": 0.5
+    },
+    {
+      "t": 1.0,
+      "action": "move",
+      "x": 280,
+      "y": 200,
+      "pressure": 0.5
+    },
+    {
+      "t": 1.0,
+      "action": "release"
+    },
+    {
+      "t": 1.2,
+      "action": "checkpoint",
+      "name": "pushed"
+    }
+  ]
+}
