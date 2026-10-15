@@ -1,7 +1,7 @@
 const MAX_SEGMENT_STEPS: u32 = 16u;
 const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
 const STATIC_DEPOSIT_FRACTION: f32 = 0.05;
-const FILM_MAX_RADIUS: f32 = 0.075 * PIXELS_PER_CM;
+const FILM_MAX_RADIUS: f32 = 0.11 * PIXELS_PER_CM;
 const WICKING: f32 = 0.3;
 const SCRAPE_FRACTION: f32 = 0.25;
 const MAX_OVERLOAD: f32 = 2.0;
@@ -33,21 +33,27 @@ fn film_radius(fill: f32) -> f32 {
     return 0.5 + (FILM_MAX_RADIUS - 0.5) * smoothstep(0.2, 1.0, fill);
 }
 
+fn film_kernel(distance_to_centre: f32, radius: f32) -> f32 {
+    let normalised = clamp(distance_to_centre / radius, 0.0, 1.0);
+    let falloff = 1.0 - normalised * normalised;
+    return falloff * falloff;
+}
+
 fn splat_film(centre: vec2<f32>, radius: f32, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
     let reach = i32(ceil(radius));
     let base_pixel = vec2<i32>(floor(centre));
+    let fraction = centre - floor(centre) - 0.5;
     var covered = 0.0;
     for (var dy = -reach; dy <= reach; dy++) {
         for (var dx = -reach; dx <= reach; dx++) {
-            let offset = vec2<f32>(f32(dx), f32(dy));
-            if (length(offset) <= radius) { covered += 1.0; }
+            covered += film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius);
         }
     }
-    let share = amount / max(covered, 1.0);
     for (var dy = -reach; dy <= reach; dy++) {
         for (var dx = -reach; dx <= reach; dx++) {
-            let offset = vec2<f32>(f32(dx), f32(dy));
-            if (length(offset) > radius) { continue; }
+            let weight = film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius);
+            if (weight <= 0.0) { continue; }
+            let share = amount * weight / max(covered, 1e-6);
             let pixel = base_pixel + vec2<i32>(dx, dy);
             if (!window_contains(pixel)) { continue; }
             let local = vec2<u32>(pixel - window.origin);

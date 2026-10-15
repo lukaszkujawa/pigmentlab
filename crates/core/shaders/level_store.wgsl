@@ -1,4 +1,4 @@
-const LEVEL_RATE: f32 = 0.1;
+const LEVEL_RATE: f32 = 0.2;
 const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;

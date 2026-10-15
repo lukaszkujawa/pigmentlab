@@ -7,7 +7,7 @@ use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 const WORKGROUP_SIZE: u32 = 128;
 const CONTACT_HEIGHT: f32 = crate::units::cm(0.06);
 const FLOW_PER_MEDIUM: f32 = 1.0;
-const LIFT_BURST: f32 = 24.0;
+const LIFT_BURST: f32 = 10.0;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

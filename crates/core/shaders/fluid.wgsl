@@ -568,7 +568,7 @@ struct Particle {
 @group(0) @binding(24) var<storage, read_write> columns: array<vec4<f32>>;
 @group(0) @binding(25) var<storage, read_write> column_pigment: array<vec4<f32>>;
 
-const LEVEL_RATE: f32 = 0.1;
+const LEVEL_RATE: f32 = 0.2;
 const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 
 const REGION_MARGIN: i32 = 10;
