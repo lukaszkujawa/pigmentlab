@@ -1,0 +1,275 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 1024,
+    "height": 768
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 150,
+      "y": 200,
+      "pressure": 0.9
+    },
+    {
+      "t": 0.7,
+      "action": "move",
+      "x": 850,
+      "y": 200,
+      "pressure": 0.9
+    },
+    {
+      "t": 0.7,
+      "action": "release"
+    },
+    {
+      "t": 0.8,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 0.8,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.8,
+      "action": "press",
+      "x": 150,
+      "y": 330,
+      "pressure": 0.9
+    },
+    {
+      "t": 1.5,
+      "action": "move",
+      "x": 850,
+      "y": 330,
+      "pressure": 0.9
+    },
+    {
+      "t": 1.5,
+      "action": "release"
+    },
+    {
+      "t": 1.6,
+      "action": "dry"
+    },
+    {
+      "t": 1.7,
+      "action": "checkpoint",
+      "name": "first_dry"
+    },
+    {
+      "t": 1.7,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 1.7,
+      "action": "dip",
+      "pigment": "french_ultramarine"
+    },
+    {
+      "t": 1.7,
+      "action": "press",
+      "x": 300,
+      "y": 120,
+      "pressure": 0.9
+    },
+    {
+      "t": 2.4,
+      "action": "move",
+      "x": 300,
+      "y": 420,
+      "pressure": 0.9
+    },
+    {
+      "t": 2.4,
+      "action": "release"
+    },
+    {
+      "t": 2.5,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 2.5,
+      "action": "dip",
+      "pigment": "phthalo_green"
+    },
+    {
+      "t": 2.5,
+      "action": "press",
+      "x": 500,
+      "y": 120,
+      "pressure": 0.9
+    },
+    {
+      "t": 3.2,
+      "action": "move",
+      "x": 500,
+      "y": 420,
+      "pressure": 0.9
+    },
+    {
+      "t": 3.2,
+      "action": "release"
+    },
+    {
+      "t": 3.3,
+      "action": "dry"
+    },
+    {
+      "t": 3.4,
+      "action": "dry"
+    },
+    {
+      "t": 3.5,
+      "action": "checkpoint",
+      "name": "second_dry_pressed_twice"
+    },
+    {
+      "t": 3.5,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 3.5,
+      "action": "param",
+      "name": "load",
+      "value": 0.1
+    },
+    {
+      "t": 3.5,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 3.5,
+      "action": "press",
+      "x": 150,
+      "y": 480,
+      "pressure": 0.25
+    },
+    {
+      "t": 4.2,
+      "action": "move",
+      "x": 850,
+      "y": 480,
+      "pressure": 0.25
+    },
+    {
+      "t": 4.2,
+      "action": "release"
+    },
+    {
+      "t": 4.3,
+      "action": "dry"
+    },
+    {
+      "t": 4.4,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 4.4,
+      "action": "param",
+      "name": "medium",
+      "value": 1.0
+    },
+    {
+      "t": 4.4,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 4.4,
+      "action": "press",
+      "x": 150,
+      "y": 600,
+      "pressure": 0.9
+    },
+    {
+      "t": 5.1,
+      "action": "move",
+      "x": 850,
+      "y": 600,
+      "pressure": 0.9
+    },
+    {
+      "t": 5.1,
+      "action": "release"
+    },
+    {
+      "t": 5.2,
+      "action": "checkpoint",
+      "name": "glaze_wet"
+    },
+    {
+      "t": 5.2,
+      "action": "dry"
+    },
+    {
+      "t": 5.3,
+      "action": "checkpoint",
+      "name": "glaze_dry"
+    },
+    {
+      "t": 5.3,
+      "action": "tool",
+      "name": "Colour shaper"
+    },
+    {
+      "t": 5.3,
+      "action": "param",
+      "name": "angle",
+      "value": 90
+    },
+    {
+      "t": 5.3,
+      "action": "press",
+      "x": 200,
+      "y": 270,
+      "pressure": 0.9
+    },
+    {
+      "t": 6.1,
+      "action": "move",
+      "x": 800,
+      "y": 270,
+      "pressure": 0.9
+    },
+    {
+      "t": 6.1,
+      "action": "release"
+    },
+    {
+      "t": 6.2,
+      "action": "undo"
+    },
+    {
+      "t": 6.2,
+      "action": "undo"
+    },
+    {
+      "t": 6.2,
+      "action": "undo"
+    },
+    {
+      "t": 6.3,
+      "action": "checkpoint",
+      "name": "undo_three_times_removes_the_glaze"
+    }
+  ]
+}

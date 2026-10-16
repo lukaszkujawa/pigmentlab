@@ -13,7 +13,6 @@ const OCCLUSION_STRENGTH: f32 = 0.6;
 const SHADOW_STEPS: i32 = 24;
 const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 * PIXELS_PER_CM, 0.18 * PIXELS_PER_CM);
 
-@group(0) @binding(0) var substrate: texture_2d<f32>;
 @group(0) @binding(1) var<storage, read> paint: array<i32>;
 @group(0) @binding(2) var<uniform> composite: CompositeUniform;
 @group(0) @binding(3) var<uniform> window: WindowUniform;
@@ -21,7 +20,7 @@ const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 *
 @group(0) @binding(5) var<storage, read> heights: array<f32>;
 @group(0) @binding(6) var<storage, read> smooth_surface: array<f32>;
 @group(0) @binding(7) var<storage, read> smooth_paint: array<f32>;
-@group(0) @binding(8) var<storage, read> dry: array<i32>;
+@group(0) @binding(8) var<storage, read> dry: array<vec4<f32>>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -33,24 +32,6 @@ fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
     var out: VertexOutput;
     out.position = vec4<f32>(corner * 2.0 - 1.0, 0.0, 1.0);
     return out;
-}
-
-fn opaque_reflectance(k: vec3<f32>, s: vec3<f32>) -> vec3<f32> {
-    let ratio = k / max(s, vec3<f32>(1e-6));
-    return 1.0 + ratio - sqrt(ratio * ratio + 2.0 * ratio);
-}
-
-fn layer_reflectance(k: vec3<f32>, s: vec3<f32>, thickness: f32, substrate_color: vec3<f32>) -> vec3<f32> {
-    let safe_s = max(s, vec3<f32>(1e-5));
-    let a = 1.0 + k / safe_s;
-    let b = sqrt(max(a * a - 1.0, vec3<f32>(0.0)));
-    let argument = min(b * safe_s * thickness, vec3<f32>(20.0));
-    let coth = 1.0 / tanh(max(argument, vec3<f32>(1e-6)));
-    let layered = (1.0 - substrate_color * (a - b * coth)) / (a - substrate_color + b * coth);
-    let absorbing_only = substrate_color * exp(-2.0 * k * thickness);
-    let opaque = opaque_reflectance(k, safe_s);
-    let thin_scatter = select(layered, absorbing_only, s <= vec3<f32>(1e-5));
-    return select(thin_scatter, opaque, argument >= vec3<f32>(20.0));
 }
 
 fn column_sum(texel: vec2<i32>) -> array<i32, 7> {
@@ -136,20 +117,10 @@ fn shade(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32) -> vec3<f32> {
     return albedo * (ambient + (1.0 - composite.ambient) * diffuse * lit) + vec3<f32>(specular * lit);
 }
 
-fn dried_surface(texel: vec2<i32>, paper: vec3<f32>) -> vec3<f32> {
-    let cell = store_cell(vec2<u32>(texel));
-    let height = f32(dry[cell]) / PAINT_SCALE;
-    if (height <= 1e-4) { return paper; }
-    let k = vec3<f32>(f32(dry[cell + 1u]), f32(dry[cell + 2u]), f32(dry[cell + 3u])) / PAINT_SCALE / height;
-    let s = vec3<f32>(f32(dry[cell + 4u]), f32(dry[cell + 5u]), f32(dry[cell + 6u])) / PAINT_SCALE / height;
-    return layer_reflectance(max(k, vec3<f32>(0.0)), max(s, vec3<f32>(0.0)), height * composite.optical_thickness_per_pixel, paper);
-}
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let texel = vec2<i32>(in.position.xy);
-    let paper = textureLoad(substrate, texel, 0).rgb;
-    let base = dried_surface(texel, paper);
+    let base = dry[clamped_index(texel)].yzw;
     let column = column_sum(texel);
     let height = f32(column[0]) / PAINT_SCALE;
     if (height <= 1e-4) {

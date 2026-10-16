@@ -1,6 +1,7 @@
 mod substrate;
 
 use crate::gpu::{Binding, ComputePass, Gpu};
+use crate::pigment::OPTICAL_THICKNESS_PER_PIXEL;
 
 pub const PAINT_CHANNELS: u64 = 8;
 pub const PAINT_SCALE: f32 = 65536.0;
@@ -29,12 +30,11 @@ struct CanvasUniform {
     width: u32,
     height: u32,
     shrink: f32,
-    _padding: f32,
+    optical_thickness_per_pixel: f32,
 }
 
 pub struct Canvas {
     pub size: CanvasSize,
-    pub substrate: wgpu::Texture,
     pub paint: wgpu::Buffer,
     pub dry: wgpu::Buffer,
     pub relief: wgpu::Buffer,
@@ -43,38 +43,18 @@ pub struct Canvas {
     refresh_ground: ComputePass,
     relief_pattern: Vec<f32>,
     tooth: f32,
+    seed: u64,
 }
 
 impl Canvas {
     pub fn new(gpu: &Gpu, size: CanvasSize, seed: u64) -> Self {
-        let substrate = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("substrate"),
-            size: size.extent(),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let pixels = substrate::paper(size, seed);
-        gpu.queue.write_texture(
-            substrate.as_image_copy(),
-            &pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(size.width * 4),
-                rows_per_image: Some(size.height),
-            },
-            size.extent(),
-        );
         let paint = gpu.storage_buffer("canvas paint", size.pixel_count() * PAINT_CHANNELS * 4);
-        let dry = gpu.storage_buffer("canvas dry paint", size.pixel_count() * PAINT_CHANNELS * 4);
+        let dry = gpu.storage_buffer("canvas dry layer", size.pixel_count() * 16);
         let relief = gpu.storage_buffer("canvas relief", size.pixel_count() * 4);
         let ground = gpu.storage_buffer("canvas ground", size.pixel_count() * 4);
         let uniform = gpu.uniform_buffer("canvas uniform", std::mem::size_of::<CanvasUniform>() as u64);
-        gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&CanvasUniform { width: size.width, height: size.height, shrink: DRY_SHRINK, _padding: 0.0 }));
-        let shader = gpu.shader("canvas", &[include_str!("../../shaders/units.wgsl"), include_str!("../../shaders/canvas.wgsl")]);
+        gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&CanvasUniform { width: size.width, height: size.height, shrink: DRY_SHRINK, optical_thickness_per_pixel: OPTICAL_THICKNESS_PER_PIXEL }));
+        let shader = gpu.shader("canvas", &[include_str!("../../shaders/units.wgsl"), include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/canvas.wgsl")]);
         let bindings = [
             (0, Binding::Uniform(&uniform)),
             (1, Binding::ReadWrite(&paint)),
@@ -86,7 +66,6 @@ impl Canvas {
         let refresh_ground = ComputePass::new(gpu, "refresh ground", &shader, "refresh_ground", &bindings);
         let mut canvas = Self {
             size,
-            substrate,
             paint,
             dry,
             relief,
@@ -95,9 +74,15 @@ impl Canvas {
             refresh_ground,
             relief_pattern: substrate::relief(size, seed),
             tooth: DEFAULT_TOOTH,
+            seed,
         };
+        canvas.write_paper(gpu);
         canvas.set_tooth(gpu, DEFAULT_TOOTH);
         canvas
+    }
+
+    fn write_paper(&self, gpu: &Gpu) {
+        gpu.queue.write_buffer(&self.dry, 0, bytemuck::cast_slice(&substrate::paper(self.size, self.seed)));
     }
 
     pub fn tooth(&self) -> f32 {
@@ -121,9 +106,9 @@ impl Canvas {
         self.encode_refresh_ground(encoder);
     }
 
-    pub fn encode_clear(&self, encoder: &mut wgpu::CommandEncoder) {
+    pub fn clear(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) {
         encoder.clear_buffer(&self.paint, 0, None);
-        encoder.clear_buffer(&self.dry, 0, None);
+        self.write_paper(gpu);
         self.encode_refresh_ground(encoder);
     }
 

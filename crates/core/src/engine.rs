@@ -6,7 +6,7 @@ use crate::input::{PointerSample, PointerState, PointerTrack};
 use crate::paint::{ActiveWindow, Deposit, Levelling, NOZZLE_RADIUS, Tube, WetBounds};
 use crate::pigment::{Coefficients, Pigment};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
-use glam::{IVec2, Quat, Vec2, Vec3};
+use glam::{IVec2, Quat, Vec2, Vec3, Vec4};
 
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
@@ -152,9 +152,12 @@ impl Engine {
         self.canvas.relief_heights()
     }
 
+    pub fn dry_layer(&self) -> Vec<Vec4> {
+        read_buffer::<Vec4>(&self.gpu, &self.canvas.dry)
+    }
+
     pub fn dry_heights(&self) -> Vec<f32> {
-        let dry = read_buffer::<i32>(&self.gpu, &self.canvas.dry);
-        dry.chunks(PAINT_CHANNELS as usize).map(|pixel| pixel[0] as f32 / PAINT_SCALE).collect()
+        self.dry_layer().iter().map(|layer| layer.x).collect()
     }
 
     fn snapshot(&mut self, encoder: &mut wgpu::CommandEncoder) {
@@ -228,7 +231,7 @@ impl Engine {
         let mut encoder = self.encoder("clear");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.snapshot(&mut encoder);
-        self.canvas.encode_clear(&mut encoder);
+        self.canvas.clear(&self.gpu, &mut encoder);
         self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.wet_bounds = None;

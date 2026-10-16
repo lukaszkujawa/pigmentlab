@@ -17,15 +17,12 @@ const WOBBLE_SCALE: f32 = 48.0;
 const SAG_AMPLITUDE: f32 = 0.1;
 const SAG_SCALE: f32 = 96.0;
 
-pub fn paper(size: CanvasSize, seed: u64) -> Vec<u8> {
-    let mut pixels = Vec::with_capacity((size.width * size.height * 4) as usize);
+pub fn paper(size: CanvasSize, seed: u64) -> Vec<[f32; 4]> {
+    let mut pixels = Vec::with_capacity((size.width * size.height) as usize);
     for y in 0..size.height {
         for x in 0..size.width {
             let shade = 1.0 + (hash(x, y, seed) - 0.5) * 2.0 * GRAIN_AMPLITUDE;
-            for channel in BASE_COLOR {
-                pixels.push(to_srgb8(channel * shade));
-            }
-            pixels.push(255);
+            pixels.push([0.0, BASE_COLOR[0] * shade, BASE_COLOR[1] * shade, BASE_COLOR[2] * shade]);
         }
     }
     pixels
@@ -106,16 +103,6 @@ fn hash(x: u32, y: u32, seed: u64) -> f32 {
     (h >> 40) as f32 / (1u64 << 24) as f32
 }
 
-fn to_srgb8(linear: f32) -> u8 {
-    let clamped = linear.clamp(0.0, 1.0);
-    let srgb = if clamped <= 0.003_130_8 {
-        clamped * 12.92
-    } else {
-        1.055 * clamped.powf(1.0 / 2.4) - 0.055
-    };
-    (srgb * 255.0).round() as u8
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,11 +115,10 @@ mod tests {
     }
 
     #[test]
-    fn paper_stays_near_base_colour() {
-        let pixels = paper(CanvasSize { width: 32, height: 32 }, 1);
-        for pixel in pixels.chunks(4) {
-            assert!(pixel[0] > 200 && pixel[1] > 200 && pixel[2] > 190);
-            assert_eq!(pixel[3], 255);
+    fn paper_is_a_flat_dry_layer_near_the_base_colour() {
+        for pixel in paper(CanvasSize { width: 32, height: 32 }, 1) {
+            assert_eq!(pixel[0], 0.0);
+            assert!(pixel[1] > 0.9 && pixel[2] > 0.88 && pixel[3] > 0.83, "{pixel:?}");
         }
     }
 
@@ -148,12 +134,5 @@ mod tests {
         assert!(peaks > heights.len() / 4 && hollows > heights.len() / 50, "peaks {peaks} hollows {hollows}");
         assert_eq!(relief(size, 3), relief(size, 3));
         assert_ne!(relief(size, 3), relief(size, 4));
-    }
-
-    #[test]
-    fn srgb_encoding_endpoints() {
-        assert_eq!(to_srgb8(0.0), 0);
-        assert_eq!(to_srgb8(1.0), 255);
-        assert_eq!(to_srgb8(2.0), 255);
     }
 }

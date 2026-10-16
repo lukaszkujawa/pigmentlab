@@ -1,0 +1,25 @@
+{
+  "seed": 1,
+  "canvas": { "width": 1024, "height": 768 },
+  "steps": [
+    { "t": 0.0, "action": "tool", "name": "Round large" },
+    { "t": 0.0, "action": "dip", "pigment": "cadmium_yellow" },
+    { "t": 0.0, "action": "press", "x": 200, "y": 400, "pressure": 0.9 },
+    { "t": 0.8, "action": "move", "x": 800, "y": 400, "pressure": 0.9 },
+    { "t": 0.8, "action": "release" },
+    { "t": 0.9, "action": "dry" },
+    { "t": 1.0, "action": "dip", "pigment": "cadmium_red" },
+    { "t": 1.0, "action": "press", "x": 500, "y": 150, "pressure": 0.9 },
+    { "t": 1.8, "action": "move", "x": 500, "y": 650, "pressure": 0.9 },
+    { "t": 1.8, "action": "release" },
+    { "t": 1.9, "action": "checkpoint", "name": "red_wet_over_dry_yellow" },
+    { "t": 1.9, "action": "dry" },
+    { "t": 2.0, "action": "checkpoint", "name": "both_dry" },
+    { "t": 2.0, "action": "dip", "pigment": "french_ultramarine" },
+    { "t": 2.0, "action": "press", "x": 250, "y": 250, "pressure": 0.9 },
+    { "t": 2.8, "action": "move", "x": 750, "y": 550, "pressure": 0.9 },
+    { "t": 2.8, "action": "release" },
+    { "t": 2.9, "action": "dry" },
+    { "t": 3.0, "action": "checkpoint", "name": "three_dry_layers" }
+  ]
+}

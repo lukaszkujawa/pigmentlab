@@ -109,6 +109,32 @@ fn a_stroke_over_dry_paint_shows_on_top_and_leaves_the_dry_paint_in_place() {
 }
 
 #[test]
+fn drying_again_keeps_the_newest_layer_on_top() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
+    engine.select_brush("Round large");
+    engine.dip(by_name("cadmium_yellow").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 200.0, 400.0, 0.9, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 800.0, 400.0, 0.9, 0.8));
+    engine.pointer(sample(PointerPhase::Up, 800.0, 400.0, 0.0, 0.8));
+    engine.advance_exact(0.9);
+    engine.dry();
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 500.0, 150.0, 0.9, 1.0));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 650.0, 0.9, 1.8));
+    engine.pointer(sample(PointerPhase::Up, 500.0, 650.0, 0.0, 1.8));
+    engine.advance_exact(1.9);
+    let wet_red_over_yellow = mean_colour(&mut engine, 492, 392, 16);
+    engine.dry();
+    let dried_crossing = mean_colour(&mut engine, 492, 392, 16);
+    let dried_red_alone = mean_colour(&mut engine, 492, 242, 16);
+    assert!(dried_crossing[0] > 150.0 && dried_crossing[1] < 90.0, "the red on top must stay red after drying, got {dried_crossing:?}");
+    for channel in 0..3 {
+        assert!((dried_crossing[channel] - dried_red_alone[channel]).abs() < 40.0, "dried red over dried yellow should match dried red over canvas ({dried_crossing:?} vs {dried_red_alone:?})");
+        assert!((dried_crossing[channel] - wet_red_over_yellow[channel]).abs() < 60.0, "drying should not shift the colour much ({wet_red_over_yellow:?} -> {dried_crossing:?})");
+    }
+}
+
+#[test]
 fn undo_after_drying_restores_the_wet_paint() {
     let wet = wet_mass_of(thick_red_bar);
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);

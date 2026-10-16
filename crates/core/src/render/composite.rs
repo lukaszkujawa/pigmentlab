@@ -54,6 +54,7 @@ impl Composite {
             &[
                 include_str!("../../shaders/units.wgsl"),
                 include_str!("../../shaders/window.wgsl"),
+                include_str!("../../shaders/km.wgsl"),
                 include_str!("../../shaders/composite.wgsl"),
             ],
         );
@@ -62,16 +63,6 @@ impl Composite {
         let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("composite"),
             entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: fragment,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
                 buffer_layout_entry(1, fragment, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_layout_entry(2, fragment, wgpu::BufferBindingType::Uniform),
                 buffer_layout_entry(3, fragment, wgpu::BufferBindingType::Uniform),
@@ -86,12 +77,6 @@ impl Composite {
             label: Some("composite"),
             layout: &layout,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &canvas.substrate.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                },
                 buffer_binding(1, &canvas.paint),
                 buffer_binding(2, &uniform),
                 buffer_binding(3, &window.uniform),
