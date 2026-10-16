@@ -15,7 +15,7 @@ const LIMIT_ENCODING: i32 = 0x7fffffff;
 const MIN_DISPLACING_SPEED: f32 = 48.0;
 const DRAG_RADIUS: i32 = 2;
 const DRAG_RATE_PER_SECOND: f32 = 24.0;
-const WIPE_RATE_PER_SECOND: f32 = 1.2;
+const WIPE_RATE_PER_SECOND: f32 = 60.0;
 const CONTACT_RATE: f32 = 0.3;
 const LANDING_SUBSTEPS: f32 = 24.0;
 const DISPLACEMENT_SLOTS: u32 = 5u;
@@ -288,10 +288,10 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         if (brush_moving && travelled > 1e-3 && height > point.z) {
             mark_displacement(local, height, point.z, film, direction, DRAG_RATE_PER_SECOND * deposit.dt * motion);
         }
-        if (height > point.z + film) { continue; }
-        let buried = clamp(min(height, base_height(pixel)) - point.z, 0.0, film);
+        let submerged = height > point.z + film;
+        let buried = clamp(min(height, base_height(pixel)) - point.z, 0.0, deposit.contact_height);
         let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) * share * min(motion, brush_motion) * carries_film;
-        let deposit_share = select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE * landing) * f32(stride), depositing);
+        let deposit_share = select(select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE * landing) * f32(stride), depositing), 0.0, submerged);
         exchange(pixel, point.xy, height, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
     }
 

@@ -161,3 +161,34 @@ fn shaper_through_a_ring_leaves_a_thin_even_film_and_keeps_the_paint() {
     let drift = (engine.paint_mass() - mass_before).abs() / mass_before;
     assert!(drift < 0.001, "scraping drifted mass by {:.3}%", drift * 100.0);
 }
+
+#[test]
+fn a_brush_dragged_out_of_a_blob_loads_up_and_fades_gradually() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 150.0, 250.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 220.0, 250.0, 1.0, 0.5));
+    engine.pointer(sample(PointerPhase::Up, 220.0, 250.0, 0.0, 0.5));
+    engine.advance_exact(0.6);
+    let blob = engine.paint_mass();
+    engine.select_brush("Round medium");
+    engine.set_param("load", 0.22);
+    engine.set_param("medium", 1.0);
+    engine.dip(by_name("cadmium_red").unwrap());
+    let dipped = engine.brush_load();
+    engine.pointer(sample(PointerPhase::Down, 170.0, 250.0, 0.5, 0.6));
+    engine.pointer(sample(PointerPhase::Move, 300.0, 250.0, 0.5, 0.9));
+    engine.advance_exact(0.9);
+    let picked_up = engine.brush_load() - dipped;
+    engine.pointer(sample(PointerPhase::Move, 980.0, 250.0, 0.5, 2.4));
+    engine.pointer(sample(PointerPhase::Up, 980.0, 250.0, 0.0, 2.4));
+    engine.advance_exact(2.5);
+    assert!(picked_up > blob * 0.03, "the brush should load itself from the blob, took {:.0}% of it", picked_up / blob * 100.0);
+    let heights = engine.paint_heights();
+    let centre: Vec<f32> = (260..560).step_by(20).map(|x| (244..256).map(|y| heights[y * WIDTH as usize + x]).sum::<f32>() / 12.0).collect();
+    for pair in centre.windows(2) {
+        assert!(pair[1] > pair[0] * 0.55, "the trail should fade gradually, not step from {:.1} to {:.1} px within 20 px", pair[0], pair[1]);
+    }
+    assert!(centre[0] > 1.5 && *centre.last().unwrap() < 0.5, "the trail should start thick and end thin ({:.1} -> {:.1})", centre[0], centre.last().unwrap());
+}
