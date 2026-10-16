@@ -67,6 +67,7 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
                 engine.dip(pigment);
             }
             Action::DipColour { colour } => engine.dip(crate::pigment::Coefficients::from_srgb(*colour)),
+            Action::DipWater => engine.dip_water(),
             Action::Clean => engine.clean(),
             Action::Undo => {
                 engine.undo();

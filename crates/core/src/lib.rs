@@ -10,6 +10,7 @@ pub mod render;
 pub mod rng;
 pub mod scenario;
 pub mod units;
+pub mod watercolour;
 
 pub use canvas::CanvasSize;
 pub use engine::Engine;

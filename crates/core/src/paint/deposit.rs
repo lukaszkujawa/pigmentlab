@@ -140,6 +140,7 @@ impl Deposit {
                 include_str!("../../shaders/hermite.wgsl"),
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/deposit.wgsl"),
+                include_str!("../../shaders/chain.wgsl"),
             ],
         );
         let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

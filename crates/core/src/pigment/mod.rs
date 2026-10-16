@@ -10,6 +10,29 @@ const MIN_REFLECTANCE: f32 = 0.004;
 const MAX_REFLECTANCE: f32 = 0.95;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Behaviour {
+    pub density: f32,
+    pub staining: f32,
+    pub granulation: f32,
+}
+
+impl Behaviour {
+    pub const MIXED: Behaviour = Behaviour { density: 0.03, staining: 3.0, granulation: 0.4 };
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Paint {
+    pub coefficients: Coefficients,
+    pub behaviour: Behaviour,
+}
+
+impl From<Coefficients> for Paint {
+    fn from(coefficients: Coefficients) -> Self {
+        Paint { coefficients, behaviour: Behaviour::MIXED }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Coefficients {
     pub absorption: Vec3,
     pub scattering: Vec3,

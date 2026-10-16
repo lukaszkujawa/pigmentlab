@@ -1,10 +1,11 @@
 use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, PRESETS, Touch, preset_by_name};
-use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE, Surface};
+use crate::canvas::{Canvas, CanvasSize, Medium, PAINT_CHANNELS, PAINT_SCALE, Surface};
 use crate::gpu::{Gpu, read_buffer, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{PointerSample, PointerTrack};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, NOZZLE_RADIUS, StrokeState, Tube, WetBounds};
-use crate::pigment::Coefficients;
+use crate::pigment::{Coefficients, Paint};
+use crate::watercolour::{WaterBrush, Watercolour};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::{IVec2, Quat, Vec2, Vec3, Vec4};
 
@@ -22,6 +23,13 @@ const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
 const DILUTION_PER_MEDIUM: f32 = 0.9;
+const SUBSTEPS_PER_WATER_STEP: u64 = 4;
+const WATER_DT: f32 = SIMULATION_DT * SUBSTEPS_PER_WATER_STEP as f32;
+const WATER_SETTLE_SECONDS: f64 = 90.0;
+const WATERCOLOUR_PIGMENT: f32 = 0.08;
+const WATERCOLOUR_DILUTION: f32 = 0.95;
+const WATERCOLOUR_DRIEST_LOAD: f32 = 0.2;
+const WATERCOLOUR_SCRUB: f32 = 0.002;
 pub const TUBE_TOOL: &str = "Paint tube";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +61,9 @@ pub struct Engine {
     pose: BrushPose,
     position_at_last_deposit: Vec3,
     touch: Touch,
+    watercolour: Option<Watercolour>,
+    water_brush: Option<WaterBrush>,
+    water_settles_at: f64,
     brush_contents: BrushContents,
     contents_version: u64,
     gauge_version: u64,
@@ -133,6 +144,9 @@ impl Engine {
             pose: BrushPose::upright(lifted),
             position_at_last_deposit: lifted,
             touch: Touch::default(),
+            watercolour: None,
+            water_brush: None,
+            water_settles_at: 0.0,
             brush_contents: BrushContents::empty(),
             contents_version: 0,
             gauge_version: 0,
@@ -177,6 +191,17 @@ impl Engine {
     fn snapshot(&mut self, encoder: &mut wgpu::CommandEncoder) {
         self.history.push(encoder, &self.canvas.paint);
         self.dry_history.push(encoder, &self.canvas.dry);
+        if let Some(watercolour) = &mut self.watercolour {
+            watercolour.snapshot(encoder);
+        }
+    }
+
+    pub fn watercolour(&self) -> Option<&Watercolour> {
+        self.watercolour.as_ref()
+    }
+
+    pub fn medium(&self) -> Medium {
+        self.canvas.surface().medium()
     }
 
     pub fn gpu(&self) -> &Gpu {
@@ -233,6 +258,9 @@ impl Engine {
             "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),
             "tooth" => {
                 self.canvas.set_tooth(&self.gpu, value);
+                if let Some(watercolour) = &mut self.watercolour {
+                    watercolour.set_tooth(self.canvas.tooth());
+                }
                 self.mark_whole_canvas_stale();
             }
             _ => return false,
@@ -250,6 +278,7 @@ impl Engine {
         self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.canvas, &self.stroke_base, DEPOSIT_DT);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
+        self.rebuild_water_brush();
         self.brush_contents = BrushContents::empty();
         self.gauge_version = self.contents_version;
     }
@@ -260,6 +289,15 @@ impl Engine {
 
     pub fn set_surface(&mut self, surface: Surface) {
         self.canvas.set_surface(&self.gpu, surface);
+        match surface.medium() {
+            Medium::Watercolour => match &mut self.watercolour {
+                Some(watercolour) => watercolour.set_paper(&self.gpu, &self.canvas),
+                None => self.watercolour = Some(Watercolour::new(&self.gpu, &self.canvas, WATER_DT, WATERCOLOUR_SCRUB)),
+            },
+            Medium::Oil => self.watercolour = None,
+        }
+        self.rebuild_water_brush();
+        self.composite.attach_watercolour(&self.gpu, &self.canvas, &self.height_map, self.watercolour.as_ref());
         let mut encoder = self.encoder("new sheet");
         self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -269,7 +307,14 @@ impl Engine {
         self.mark_whole_canvas_stale();
     }
 
+    fn rebuild_water_brush(&mut self) {
+        self.water_brush = self.watercolour.as_ref().map(|water| WaterBrush::new(&self.gpu, &self.brush, water, &self.canvas, DEPOSIT_DT));
+    }
+
     pub fn clear(&mut self) {
+        if let Some(watercolour) = &mut self.watercolour {
+            watercolour.clear(&self.gpu);
+        }
         let mut encoder = self.encoder("clear");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.snapshot(&mut encoder);
@@ -284,6 +329,10 @@ impl Engine {
         let mut encoder = self.encoder("dry");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.snapshot(&mut encoder);
+        if let Some(watercolour) = &mut self.watercolour {
+            watercolour.encode_step(&self.gpu, &mut encoder, true);
+            watercolour.settle();
+        }
         self.canvas.encode_dry(&mut encoder);
         self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -296,6 +345,10 @@ impl Engine {
         let restored = self.history.pop(&mut encoder, &self.canvas.paint);
         if restored {
             self.dry_history.pop(&mut encoder, &self.canvas.dry);
+            if let Some(watercolour) = &mut self.watercolour {
+                watercolour.undo(&mut encoder);
+                self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
+            }
             self.canvas.encode_refresh_ground(&mut encoder);
             self.window.encode_unbake(&mut encoder);
             self.wet_bounds = Some(self.whole_canvas());
@@ -328,15 +381,36 @@ impl Engine {
         self.needs_render = true;
     }
 
-    pub fn dip(&mut self, paint: impl Into<Coefficients>) {
+    pub fn dip(&mut self, paint: impl Into<Paint>) {
         let paint = paint.into();
-        let dilution = 1.0 - DILUTION_PER_MEDIUM * self.paint.medium.clamp(0.0, 1.0);
+        let load = self.paint.load.clamp(0.0, 1.0);
+        let medium = self.paint.medium.clamp(0.0, 1.0);
+        if self.watercolour.is_some() {
+            let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * medium) / load.max(WATERCOLOUR_DRIEST_LOAD);
+            self.brush.dip_watercolour(&self.gpu, paint, load, concentration);
+            self.deposit.discard_brush_reading();
+            self.brush_contents = BrushContents { fill: load, paint: paint.coefficients };
+            return;
+        }
+        let paint = paint.coefficients;
+        let dilution = 1.0 - DILUTION_PER_MEDIUM * medium;
         let thinned = Coefficients { absorption: paint.absorption * dilution, scattering: paint.scattering * dilution };
         self.paint_on_tool = thinned;
-        let load = self.paint.load.clamp(0.0, 1.0);
-        self.brush.dip(&self.gpu, thinned, load, self.paint.medium.clamp(0.0, 1.0));
+        self.brush.dip(&self.gpu, thinned, load, medium);
         self.deposit.discard_brush_reading();
         self.brush_contents = BrushContents { fill: load, paint: thinned };
+    }
+
+    pub fn dip_water(&mut self) {
+        let load = self.paint.load.clamp(0.0, 1.0);
+        let clear = Paint::from(Coefficients { absorption: glam::Vec3::ZERO, scattering: glam::Vec3::ZERO });
+        if self.watercolour.is_some() {
+            self.brush.dip_watercolour(&self.gpu, clear, load, 0.0);
+        } else {
+            self.brush.clean(&self.gpu);
+        }
+        self.deposit.discard_brush_reading();
+        self.brush_contents = BrushContents { fill: if self.watercolour.is_some() { load } else { 0.0 }, paint: clear.coefficients };
     }
 
     pub fn brush_contents(&mut self) -> BrushContents {
@@ -436,6 +510,9 @@ impl Engine {
                     self.refresh_heights(&mut encoder);
                     self.height_map.encode_tuft_base(&self.gpu, &mut encoder, self.whole_canvas());
                     encoder.copy_buffer_to_buffer(&self.height_map.tuft_base, 0, &self.stroke_base, 0, self.stroke_base.size());
+                    if let Some(water_brush) = &self.water_brush {
+                        water_brush.start_stroke(&mut encoder, &self.brush);
+                    }
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
                 self.needs_render |= self.touch.engaged() || self.show_bristles;
@@ -454,13 +531,21 @@ impl Engine {
             }
             if self.touch.engaged() {
                 let touched = WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
-                self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched)));
+                match &mut self.watercolour {
+                    Some(watercolour) => {
+                        watercolour.wet(touched);
+                        self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
+                    }
+                    None => self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched))),
+                }
                 self.mark_stale(WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
             }
             match self.tool {
                 Tool::Brush => {
                     self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.touch.pressure, self.canvas.tooth(), canvas);
-                    if self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
+                    if let Some(water_brush) = self.water_brush.as_ref().filter(|_| self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT)) {
+                        water_brush.encode(&mut encoder, &self.brush);
+                    } else if self.water_brush.is_none() && self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
                         let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
                         let stroke = StrokeState { travel, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
                         self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke);
@@ -469,12 +554,20 @@ impl Engine {
                     }
                 }
                 Tool::Tube => {
-                    if self.pressed {
+                    if self.pressed && self.watercolour.is_none() {
                         let from = self.position_at_last_deposit.truncate();
                         self.tube.encode_squeeze(&self.gpu, &mut encoder, [from, self.handle_position()], self.touch.pressure, self.paint_on_tool, self.paint.medium.clamp(0.0, 1.0));
                     }
                     self.position_at_last_deposit = self.pose.position;
                 }
+            }
+            if let Some(watercolour) = self.watercolour.as_mut().filter(|water| water.is_wet() && self.substeps.is_multiple_of(SUBSTEPS_PER_WATER_STEP)) {
+                let settled = self.time > self.water_settles_at;
+                watercolour.encode_step(&self.gpu, &mut encoder, settled);
+                if settled {
+                    watercolour.settle();
+                }
+                self.needs_render = true;
             }
             self.substeps += 1;
             let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;

@@ -4,7 +4,7 @@ use super::preset::BrushPreset;
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use crate::canvas::Canvas;
 use crate::paint::ActiveWindow;
-use crate::pigment::Coefficients;
+use crate::pigment::{Coefficients, Paint};
 use crate::rng::SplitMix64;
 use glam::{Mat3, Vec2, Vec3, Vec4};
 use std::cell::Cell;
@@ -69,6 +69,7 @@ pub struct Brush {
     pub sample_load: wgpu::Buffer,
     pub sample_absorption: wgpu::Buffer,
     pub sample_scattering: wgpu::Buffer,
+    pub sample_behaviour: wgpu::Buffer,
     velocity: wgpu::Buffer,
     relative: wgpu::Buffer,
     pub packing: wgpu::Buffer,
@@ -94,6 +95,7 @@ impl Brush {
         let sample_load = gpu.storage_buffer("sample load", samples * 4);
         let sample_absorption = gpu.storage_buffer("sample absorption", samples * 16);
         let sample_scattering = gpu.storage_buffer("sample scattering", samples * 16);
+        let sample_behaviour = gpu.storage_buffer("sample behaviour", samples * 16);
         gpu.queue.write_buffer(&rest_buffer, 0, bytemuck::cast_slice(&rest));
         gpu.queue.write_buffer(&positions, 0, bytemuck::cast_slice(&rest));
         let uniform = gpu.uniform_buffer("brush uniform", std::mem::size_of::<BrushUniform>() as u64);
@@ -140,6 +142,7 @@ impl Brush {
             sample_load,
             sample_absorption,
             sample_scattering,
+            sample_behaviour,
             velocity,
             relative,
             packing: packing_buffer,
@@ -170,6 +173,15 @@ impl Brush {
 
     pub fn rest(&self) -> &[Vec4] {
         &self.rest
+    }
+
+    pub fn dip_watercolour(&self, gpu: &Gpu, paint: Paint, load_fraction: f32, concentration: f32) {
+        let samples = (self.preset.bristle_count * SAMPLES_PER_BRISTLE) as usize;
+        let behaviour = paint.behaviour;
+        gpu.queue.write_buffer(&self.sample_load, 0, bytemuck::cast_slice(&vec![self.preset.sample_capacity * load_fraction; samples]));
+        gpu.queue.write_buffer(&self.sample_absorption, 0, bytemuck::cast_slice(&vec![paint.coefficients.absorption.extend(0.0); samples]));
+        gpu.queue.write_buffer(&self.sample_scattering, 0, bytemuck::cast_slice(&vec![paint.coefficients.scattering.extend(concentration); samples]));
+        gpu.queue.write_buffer(&self.sample_behaviour, 0, bytemuck::cast_slice(&vec![Vec4::new(behaviour.density, behaviour.staining, behaviour.granulation, 0.0); samples]));
     }
 
     pub fn preset(&self) -> &BrushPreset {

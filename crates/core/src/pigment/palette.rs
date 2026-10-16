@@ -1,40 +1,48 @@
-use super::Coefficients;
+use super::{Behaviour, Coefficients, Paint};
 use glam::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pigment {
     pub name: &'static str,
     pub coefficients: Coefficients,
+    pub behaviour: Behaviour,
 }
 
 const OIL_BODY: f32 = 3.0;
 
-const fn pigment(name: &'static str, k: [f32; 3], s: [f32; 3]) -> Pigment {
+const fn pigment(name: &'static str, k: [f32; 3], s: [f32; 3], [density, staining, granulation]: [f32; 3]) -> Pigment {
     Pigment {
         name,
         coefficients: Coefficients {
             absorption: Vec3::from_array(k),
             scattering: Vec3::new(s[0] * OIL_BODY, s[1] * OIL_BODY, s[2] * OIL_BODY),
         },
+        behaviour: Behaviour { density, staining, granulation },
     }
 }
 
 pub const PALETTE: [Pigment; 10] = [
-    pigment("titanium_white", [0.01, 0.01, 0.01], [1.2, 1.2, 1.2]),
-    pigment("cadmium_yellow", [0.10, 0.36, 3.45], [0.97, 0.65, 0.007]),
-    pigment("cadmium_red", [0.14, 1.08, 1.68], [0.77, 0.015, 0.018]),
-    pigment("quinacridone_rose", [0.22, 1.47, 0.57], [0.05, 0.003, 0.03]),
-    pigment("french_ultramarine", [1.5, 0.5, 0.06], [0.005, 0.005, 0.09]),
-    pigment("cerulean_blue", [1.52, 0.32, 0.25], [0.06, 0.26, 0.40]),
-    pigment("phthalo_green", [1.55, 0.47, 0.63], [0.01, 0.05, 0.035]),
-    pigment("burnt_umber", [0.74, 1.54, 2.10], [0.09, 0.09, 0.004]),
-    pigment("indian_red", [0.46, 1.07, 1.50], [1.28, 0.38, 0.21]),
-    pigment("ivory_black", [2.5, 2.5, 2.5], [0.02, 0.02, 0.02]),
+    pigment("titanium_white", [0.01, 0.01, 0.01], [1.2, 1.2, 1.2], [0.04, 3.0, 0.4]),
+    pigment("cadmium_yellow", [0.10, 0.36, 3.45], [0.97, 0.65, 0.007], [0.05, 3.4, 0.81]),
+    pigment("cadmium_red", [0.14, 1.08, 1.68], [0.77, 0.015, 0.018], [0.02, 1.0, 0.63]),
+    pigment("quinacridone_rose", [0.22, 1.47, 0.57], [0.05, 0.003, 0.03], [0.02, 5.5, 0.81]),
+    pigment("french_ultramarine", [1.5, 0.5, 0.06], [0.005, 0.005, 0.09], [0.01, 3.1, 0.91]),
+    pigment("cerulean_blue", [1.52, 0.32, 0.25], [0.06, 0.26, 0.40], [0.01, 1.0, 0.31]),
+    pigment("phthalo_green", [1.55, 0.47, 0.63], [0.01, 0.05, 0.035], [0.02, 1.0, 0.12]),
+    pigment("burnt_umber", [0.74, 1.54, 2.10], [0.09, 0.09, 0.004], [0.09, 9.3, 0.90]),
+    pigment("indian_red", [0.46, 1.07, 1.50], [1.28, 0.38, 0.21], [0.05, 7.0, 0.40]),
+    pigment("ivory_black", [2.5, 2.5, 2.5], [0.02, 0.02, 0.02], [0.05, 3.0, 0.5]),
 ];
 
 impl From<Pigment> for Coefficients {
     fn from(pigment: Pigment) -> Self {
         pigment.coefficients
+    }
+}
+
+impl From<Pigment> for Paint {
+    fn from(pigment: Pigment) -> Self {
+        Paint { coefficients: pigment.coefficients, behaviour: pigment.behaviour }
     }
 }
 

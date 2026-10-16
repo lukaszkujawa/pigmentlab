@@ -5,6 +5,7 @@ mod tablet;
 use simpaint_core::brush::{BrushAdjustments, PRESETS};
 use simpaint_core::engine::{PaintSettings, tool_names};
 use simpaint_core::scenario::Recorder;
+use simpaint_core::canvas::{Medium, Surface};
 use simpaint_core::pigment::{Coefficients, PALETTE};
 use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
 use tablet::Tablet;
@@ -22,6 +23,7 @@ const MAX_CUSTOM_COLOURS: usize = 12;
 enum Dip {
     Pigment(usize),
     Colour([u8; 3]),
+    Water,
 }
 
 #[derive(Default)]
@@ -30,6 +32,7 @@ struct Requests {
     dip: Option<Dip>,
     clean: bool,
     pick: Option<(f32, f32)>,
+    surface: Option<Surface>,
     brush: Option<(usize, BrushAdjustments)>,
     paint: Option<PaintSettings>,
     tooth: Option<f32>,
@@ -53,6 +56,9 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_canvas_scale(scale);
     let custom: Rc<RefCell<Vec<[u8; 3]>>> = Rc::default();
     app.set_swatches(swatches(&custom.borrow()));
+    app.set_surface_names(slint::ModelRc::new(slint::VecModel::from(
+        Surface::ALL.iter().map(|surface| slint::SharedString::from(surface.name())).collect::<Vec<_>>(),
+    )));
     app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(
         tool_names().into_iter().map(slint::SharedString::from).collect::<Vec<_>>(),
     )));
@@ -97,6 +103,26 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     let shared = requests.clone();
     app.on_clean(move || shared.borrow_mut().clean = true);
+    let shared = requests.clone();
+    app.on_dip_water(move || shared.borrow_mut().dip = Some(Dip::Water));
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    let colours = custom.clone();
+    app.on_surface_selected(move |index| {
+        let app = app_weak.unwrap();
+        let surface = Surface::ALL[index.clamp(0, Surface::ALL.len() as i32 - 1) as usize];
+        app.set_watercolour(surface.medium() == Medium::Watercolour);
+        let mut requests = shared.borrow_mut();
+        requests.surface = Some(surface);
+        let active = app.get_active_swatch();
+        requests.dip = Some(match active {
+            index if index < 0 => Dip::Water,
+            index => match (index as usize).checked_sub(PALETTE.len()) {
+                Some(custom_index) => Dip::Colour(colours.borrow()[custom_index]),
+                None => Dip::Pigment(index as usize),
+            },
+        });
+    });
     let shared = requests.clone();
     let app_weak = app.as_weak();
     let colours = custom.clone();
@@ -220,9 +246,13 @@ fn main() -> Result<(), slint::PlatformError> {
 fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, requests: &Requests) {
     if app.get_recording() {
         let active = recorder.get_or_insert_with(|| Recorder::start(CANVAS, SEED, now));
+        if let Some(surface) = requests.surface {
+            active.surface(now, surface);
+        }
         match requests.dip {
             Some(Dip::Pigment(index)) => active.dip(now, PALETTE[index].name),
             Some(Dip::Colour(colour)) => active.dip_colour(now, colour),
+            Some(Dip::Water) => active.dip_water(now),
             None => {}
         }
         if requests.clean {
@@ -271,9 +301,13 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
         app.invoke_show_in_picker(slint::Color::from_rgb_u8(colour[0], colour[1], colour[2]));
         requests.dip = Some(Dip::Colour(colour));
     }
+    if let Some(surface) = requests.surface.take() {
+        engine.set_surface(surface);
+    }
     match requests.dip.take() {
         Some(Dip::Pigment(index)) => engine.dip(PALETTE[index]),
         Some(Dip::Colour(colour)) => engine.dip(Coefficients::from_srgb(colour)),
+        Some(Dip::Water) => engine.dip_water(),
         None => {}
     }
     if std::mem::take(&mut requests.clean) {

@@ -378,7 +378,7 @@ export component AppWindow inherits Window {
     in property <length> canvas-height: 768px;
     in property <float> canvas-scale: 1.0;
     in property <[color]> swatches: [];
-    in property <int> active-swatch: 2;
+    in-out property <int> active-swatch: 2;
     in property <float> brush-fill: 0;
     in property <color> brush-paint: #c0392b;
     in property <string> picker-hex: "";
@@ -395,6 +395,9 @@ export component AppWindow inherits Window {
     in property <bool> pen-present: false;
     in property <string> pen-status: "";
     in property <[string]> brush-names: [];
+    in property <[string]> surface-names: [];
+    in-out property <int> surface-index: 0;
+    in property <bool> watercolour: false;
     out property <float> pressure <=> pressure-slider.value;
     out property <int> brush-index: 1;
     out property <float> brush-scale <=> size-slider.value;
@@ -414,6 +417,8 @@ export component AppWindow inherits Window {
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
     callback clean();
+    callback dip-water();
+    callback surface-selected(int);
     callback use-colour(color);
     callback hex-entered(string);
     callback picker-changed(color);
@@ -457,7 +462,7 @@ export component AppWindow inherits Window {
                     padding-right: 16px;
                     spacing: 8px;
                     Text { text: "SimPaint"; color: Theme.text; font-size: 15px; font-weight: 700; vertical-alignment: center; }
-                    Text { text: "oil"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                    Text { text: root.watercolour ? "watercolour" : "oil"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
                     Rectangle { horizontal-stretch: 1; }
                     ToolButton { label: "Undo"; clicked => { root.undo(); } }
                     ToolButton { label: "Dry"; clicked => { root.dry(); } }
@@ -585,7 +590,7 @@ export component AppWindow inherits Window {
                             Card {
                                 title: "PALETTE";
                                 Rectangle {
-                                    height: ceil((root.swatches.length + 2) / root.swatch-columns) * root.swatch-cell - 8px;
+                                    height: ceil((root.swatches.length + (root.watercolour ? 3 : 2)) / root.swatch-columns) * root.swatch-cell - 8px;
                                     for swatch[index] in root.swatches: Swatch {
                                         x: mod(index, root.swatch-columns) * root.swatch-cell;
                                         y: floor(index / root.swatch-columns) * root.swatch-cell;
@@ -605,6 +610,13 @@ export component AppWindow inherits Window {
                                         icon: "M 2 14 L 4 14 L 10.5 7.5 M 2 14 L 2 12 L 8.5 5.5 M 7.5 4.5 L 11.5 8.5 M 9.5 6.5 L 12.5 3.5 C 13.5 2.5 14.5 3.5 13.5 4.5 L 10.5 7.5";
                                         active: root.eyedropper;
                                         clicked => { root.eyedropper = !root.eyedropper; }
+                                    }
+                                    if root.watercolour: IconSwatch {
+                                        x: mod(root.swatches.length + 2, root.swatch-columns) * root.swatch-cell;
+                                        y: floor((root.swatches.length + 2) / root.swatch-columns) * root.swatch-cell;
+                                        icon: "M 8 2 C 8 2 3.5 7.5 3.5 10.5 C 3.5 13 5.5 14.5 8 14.5 C 10.5 14.5 12.5 13 12.5 10.5 C 12.5 7.5 8 2 8 2 Z";
+                                        active: root.active-swatch == -1;
+                                        clicked => { root.active-swatch = -1; root.dip-water(); }
                                     }
                                 }
                                 if root.eyedropper: Text {
@@ -646,12 +658,20 @@ export component AppWindow inherits Window {
 
                             Card {
                                 title: "PAINT";
-                                load-slider := ParamSlider { label: "Load"; minimum: 0.05; maximum: 1; value: 1; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
-                                medium-slider := ParamSlider { label: "Medium"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                                load-slider := ParamSlider { label: root.watercolour ? "Water" : "Load"; minimum: 0.05; maximum: 1; value: 1; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                                medium-slider := ParamSlider { label: root.watercolour ? "Dilution" : "Medium"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
                             }
 
                             Card {
-                                title: "CANVAS";
+                                title: "SURFACE";
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    for name[index] in root.surface-names: PresetRow {
+                                        label: name;
+                                        selected: index == root.surface-index;
+                                        clicked => { root.surface-index = index; root.surface-selected(index); }
+                                    }
+                                }
                                 tooth-slider := ParamSlider { label: "Tooth"; minimum: 0; maximum: 2; value: 0.5; value-text: round(self.value * 100) / 100 + " px"; released => { root.canvas-changed(); } }
                             }
 

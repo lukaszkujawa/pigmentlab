@@ -1,0 +1,1056 @@
+{
+ "seed": 1,
+ "canvas": {
+  "width": 660,
+  "height": 400
+ },
+ "levelling": false,
+ "steps": [
+  {
+   "t": 0,
+   "action": "surface",
+   "surface": "cold_pressed"
+  },
+  {
+   "t": 0,
+   "action": "tool",
+   "name": "Round large"
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "medium",
+   "value": 0.0
+  },
+  {
+   "t": 0.0,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 0.0,
+   "action": "press",
+   "x": 60.0,
+   "y": 80.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.03,
+   "action": "move",
+   "x": 72.0,
+   "y": 80.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.06,
+   "action": "move",
+   "x": 84.0,
+   "y": 81.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.09,
+   "action": "move",
+   "x": 96.0,
+   "y": 81.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.12,
+   "action": "move",
+   "x": 108.0,
+   "y": 82.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.15,
+   "action": "move",
+   "x": 120.0,
+   "y": 82.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.18,
+   "action": "move",
+   "x": 132.0,
+   "y": 83.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.21,
+   "action": "move",
+   "x": 144.0,
+   "y": 83.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.24,
+   "action": "move",
+   "x": 156.0,
+   "y": 84.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.27,
+   "action": "move",
+   "x": 168.0,
+   "y": 84.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.3,
+   "action": "move",
+   "x": 180.0,
+   "y": 85.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.33,
+   "action": "move",
+   "x": 192.0,
+   "y": 85.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.36,
+   "action": "move",
+   "x": 204.0,
+   "y": 86.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.39,
+   "action": "move",
+   "x": 216.0,
+   "y": 86.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.42,
+   "action": "move",
+   "x": 228.0,
+   "y": 87.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.45,
+   "action": "move",
+   "x": 240.0,
+   "y": 87.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.48,
+   "action": "move",
+   "x": 252.0,
+   "y": 88.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.51,
+   "action": "move",
+   "x": 264.0,
+   "y": 88.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.54,
+   "action": "move",
+   "x": 276.0,
+   "y": 89.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.57,
+   "action": "move",
+   "x": 288.0,
+   "y": 89.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.6,
+   "action": "move",
+   "x": 300.0,
+   "y": 90.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.6,
+   "action": "release"
+  },
+  {
+   "t": 0.8,
+   "action": "dip_water"
+  },
+  {
+   "t": 0.8,
+   "action": "press",
+   "x": 360,
+   "y": 70,
+   "pressure": 0.8
+  },
+  {
+   "t": 1.0667,
+   "action": "move",
+   "x": 600,
+   "y": 75,
+   "pressure": 0.8
+  },
+  {
+   "t": 1.3333,
+   "action": "move",
+   "x": 360,
+   "y": 100,
+   "pressure": 0.8
+  },
+  {
+   "t": 1.6,
+   "action": "move",
+   "x": 600,
+   "y": 105,
+   "pressure": 0.8
+  },
+  {
+   "t": 1.6,
+   "action": "release"
+  },
+  {
+   "t": 1.8,
+   "action": "dip",
+   "pigment": "quinacridone_rose"
+  },
+  {
+   "t": 1.8,
+   "action": "press",
+   "x": 420.0,
+   "y": 88.0,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.82,
+   "action": "move",
+   "x": 426.0,
+   "y": 88.1,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.84,
+   "action": "move",
+   "x": 432.0,
+   "y": 88.2,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.86,
+   "action": "move",
+   "x": 438.0,
+   "y": 88.3,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.88,
+   "action": "move",
+   "x": 444.0,
+   "y": 88.4,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.9,
+   "action": "move",
+   "x": 450.0,
+   "y": 88.5,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.92,
+   "action": "move",
+   "x": 456.0,
+   "y": 88.6,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.94,
+   "action": "move",
+   "x": 462.0,
+   "y": 88.7,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.96,
+   "action": "move",
+   "x": 468.0,
+   "y": 88.8,
+   "pressure": 0.4
+  },
+  {
+   "t": 1.98,
+   "action": "move",
+   "x": 474.0,
+   "y": 88.9,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.0,
+   "action": "move",
+   "x": 480.0,
+   "y": 89.0,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.02,
+   "action": "move",
+   "x": 486.0,
+   "y": 89.1,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.04,
+   "action": "move",
+   "x": 492.0,
+   "y": 89.2,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.06,
+   "action": "move",
+   "x": 498.0,
+   "y": 89.3,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.08,
+   "action": "move",
+   "x": 504.0,
+   "y": 89.4,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.1,
+   "action": "move",
+   "x": 510.0,
+   "y": 89.5,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.12,
+   "action": "move",
+   "x": 516.0,
+   "y": 89.6,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.14,
+   "action": "move",
+   "x": 522.0,
+   "y": 89.7,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.16,
+   "action": "move",
+   "x": 528.0,
+   "y": 89.8,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.18,
+   "action": "move",
+   "x": 534.0,
+   "y": 89.9,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.2,
+   "action": "move",
+   "x": 540.0,
+   "y": 90.0,
+   "pressure": 0.4
+  },
+  {
+   "t": 2.2,
+   "action": "release"
+  },
+  {
+   "t": 2.4000000000000004,
+   "action": "dip",
+   "pigment": "cadmium_yellow"
+  },
+  {
+   "t": 2.4000000000000004,
+   "action": "press",
+   "x": 60,
+   "y": 200,
+   "pressure": 0.7
+  },
+  {
+   "t": 2.6667,
+   "action": "move",
+   "x": 300,
+   "y": 205,
+   "pressure": 0.7
+  },
+  {
+   "t": 2.9333,
+   "action": "move",
+   "x": 60,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.2,
+   "action": "move",
+   "x": 300,
+   "y": 235,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.2,
+   "action": "release"
+  },
+  {
+   "t": 3.4000000000000004,
+   "action": "param",
+   "name": "load",
+   "value": 0.15
+  },
+  {
+   "t": 3.4000000000000004,
+   "action": "dip",
+   "pigment": "burnt_umber"
+  },
+  {
+   "t": 3.4000000000000004,
+   "action": "press",
+   "x": 360.0,
+   "y": 210.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.4125,
+   "action": "move",
+   "x": 373.0,
+   "y": 210.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.425,
+   "action": "move",
+   "x": 386.0,
+   "y": 211.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.4375,
+   "action": "move",
+   "x": 399.0,
+   "y": 211.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.45,
+   "action": "move",
+   "x": 412.0,
+   "y": 212.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.4625,
+   "action": "move",
+   "x": 425.0,
+   "y": 212.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.475,
+   "action": "move",
+   "x": 438.0,
+   "y": 213.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.4875,
+   "action": "move",
+   "x": 451.0,
+   "y": 213.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.5,
+   "action": "move",
+   "x": 464.0,
+   "y": 214.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.5125,
+   "action": "move",
+   "x": 477.0,
+   "y": 214.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.525,
+   "action": "move",
+   "x": 490.0,
+   "y": 215.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.5375,
+   "action": "move",
+   "x": 503.0,
+   "y": 215.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.55,
+   "action": "move",
+   "x": 516.0,
+   "y": 216.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.5625,
+   "action": "move",
+   "x": 529.0,
+   "y": 216.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.575,
+   "action": "move",
+   "x": 542.0,
+   "y": 217.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.5875,
+   "action": "move",
+   "x": 555.0,
+   "y": 217.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.6,
+   "action": "move",
+   "x": 568.0,
+   "y": 218.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.6125,
+   "action": "move",
+   "x": 581.0,
+   "y": 218.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.625,
+   "action": "move",
+   "x": 594.0,
+   "y": 219.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.6375,
+   "action": "move",
+   "x": 607.0,
+   "y": 219.5,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.65,
+   "action": "move",
+   "x": 620.0,
+   "y": 220.0,
+   "pressure": 0.15
+  },
+  {
+   "t": 3.65,
+   "action": "release"
+  },
+  {
+   "t": 3.8500000000000005,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 3.8500000000000005,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 3.8500000000000005,
+   "action": "press",
+   "x": 60,
+   "y": 320,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.1167,
+   "action": "move",
+   "x": 300,
+   "y": 325,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.3833,
+   "action": "move",
+   "x": 60,
+   "y": 350,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.65,
+   "action": "move",
+   "x": 300,
+   "y": 355,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.65,
+   "action": "release"
+  },
+  {
+   "t": 4.8500000000000005,
+   "action": "param",
+   "name": "load",
+   "value": 0.05
+  },
+  {
+   "t": 4.8500000000000005,
+   "action": "dip_water"
+  },
+  {
+   "t": 4.8500000000000005,
+   "action": "press",
+   "x": 80.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.875,
+   "action": "move",
+   "x": 90.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9,
+   "action": "move",
+   "x": 100.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.925,
+   "action": "move",
+   "x": 110.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.95,
+   "action": "move",
+   "x": 120.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.975,
+   "action": "move",
+   "x": 130.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.0,
+   "action": "move",
+   "x": 140.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.025,
+   "action": "move",
+   "x": 150.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.05,
+   "action": "move",
+   "x": 160.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.075,
+   "action": "move",
+   "x": 170.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.1,
+   "action": "move",
+   "x": 180.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.125,
+   "action": "move",
+   "x": 190.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.15,
+   "action": "move",
+   "x": 200.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.175,
+   "action": "move",
+   "x": 210.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.2,
+   "action": "move",
+   "x": 220.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.225,
+   "action": "move",
+   "x": 230.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.25,
+   "action": "move",
+   "x": 240.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.275,
+   "action": "move",
+   "x": 250.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.3,
+   "action": "move",
+   "x": 260.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.325,
+   "action": "move",
+   "x": 270.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.35,
+   "action": "move",
+   "x": 280.0,
+   "y": 338.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.35,
+   "action": "release"
+  },
+  {
+   "t": 5.550000000000001,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 5.550000000000001,
+   "action": "dip",
+   "pigment": "quinacridone_rose"
+  },
+  {
+   "t": 5.550000000000001,
+   "action": "press",
+   "x": 360,
+   "y": 320,
+   "pressure": 0.7
+  },
+  {
+   "t": 5.8167,
+   "action": "move",
+   "x": 600,
+   "y": 325,
+   "pressure": 0.7
+  },
+  {
+   "t": 6.0833,
+   "action": "move",
+   "x": 360,
+   "y": 350,
+   "pressure": 0.7
+  },
+  {
+   "t": 6.35,
+   "action": "move",
+   "x": 600,
+   "y": 355,
+   "pressure": 0.7
+  },
+  {
+   "t": 6.35,
+   "action": "release"
+  },
+  {
+   "t": 6.550000000000001,
+   "action": "checkpoint",
+   "name": "wet"
+  },
+  {
+   "t": 12.55,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 12.55,
+   "action": "dip_water"
+  },
+  {
+   "t": 12.55,
+   "action": "press",
+   "x": 460.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.565,
+   "action": "move",
+   "x": 461.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.58,
+   "action": "move",
+   "x": 462.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.595,
+   "action": "move",
+   "x": 463.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.61,
+   "action": "move",
+   "x": 464.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.625,
+   "action": "move",
+   "x": 465.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.64,
+   "action": "move",
+   "x": 466.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.655,
+   "action": "move",
+   "x": 467.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.67,
+   "action": "move",
+   "x": 468.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.685,
+   "action": "move",
+   "x": 469.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.7,
+   "action": "move",
+   "x": 470.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.715,
+   "action": "move",
+   "x": 471.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.73,
+   "action": "move",
+   "x": 472.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.745,
+   "action": "move",
+   "x": 473.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.76,
+   "action": "move",
+   "x": 474.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.775,
+   "action": "move",
+   "x": 475.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.79,
+   "action": "move",
+   "x": 476.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.805,
+   "action": "move",
+   "x": 477.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.82,
+   "action": "move",
+   "x": 478.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.835,
+   "action": "move",
+   "x": 479.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.85,
+   "action": "move",
+   "x": 480.0,
+   "y": 338.0,
+   "pressure": 0.8
+  },
+  {
+   "t": 12.85,
+   "action": "release"
+  },
+  {
+   "t": 15.05,
+   "action": "checkpoint",
+   "name": "damp"
+  },
+  {
+   "t": 73.05,
+   "action": "checkpoint",
+   "name": "dried"
+  },
+  {
+   "t": 73.05,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 73.05,
+   "action": "param",
+   "name": "medium",
+   "value": 0.5
+  },
+  {
+   "t": 73.05,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 73.05,
+   "action": "press",
+   "x": 170,
+   "y": 190,
+   "pressure": 0.7
+  },
+  {
+   "t": 73.3167,
+   "action": "move",
+   "x": 300,
+   "y": 195,
+   "pressure": 0.7
+  },
+  {
+   "t": 73.5833,
+   "action": "move",
+   "x": 170,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 73.85,
+   "action": "move",
+   "x": 300,
+   "y": 240,
+   "pressure": 0.7
+  },
+  {
+   "t": 73.85,
+   "action": "release"
+  },
+  {
+   "t": 134.05,
+   "action": "checkpoint",
+   "name": "glazed"
+  }
+ ]
+}

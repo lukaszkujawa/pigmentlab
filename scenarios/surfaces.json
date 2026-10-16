@@ -1,0 +1,60 @@
+{
+ "seed": 1,
+ "canvas": {
+  "width": 400,
+  "height": 300
+ },
+ "levelling": false,
+ "steps": [
+  {
+   "t": 0.0,
+   "action": "surface",
+   "surface": "hot_pressed"
+  },
+  {
+   "t": 0.1,
+   "action": "checkpoint",
+   "name": "hot_pressed"
+  },
+  {
+   "t": 0.2,
+   "action": "surface",
+   "surface": "cold_pressed"
+  },
+  {
+   "t": 0.30000000000000004,
+   "action": "checkpoint",
+   "name": "cold_pressed"
+  },
+  {
+   "t": 0.4,
+   "action": "surface",
+   "surface": "rough"
+  },
+  {
+   "t": 0.5,
+   "action": "checkpoint",
+   "name": "rough"
+  },
+  {
+   "t": 0.6000000000000001,
+   "action": "surface",
+   "surface": "rice"
+  },
+  {
+   "t": 0.7000000000000001,
+   "action": "checkpoint",
+   "name": "rice"
+  },
+  {
+   "t": 0.8,
+   "action": "surface",
+   "surface": "linen"
+  },
+  {
+   "t": 0.9,
+   "action": "checkpoint",
+   "name": "linen"
+  }
+ ]
+}

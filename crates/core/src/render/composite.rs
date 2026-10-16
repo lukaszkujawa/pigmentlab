@@ -1,5 +1,6 @@
 use crate::canvas::Canvas;
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
+use crate::watercolour::Watercolour;
 use super::height_map::HeightMap;
 use crate::paint::ActiveWindow;
 
@@ -36,6 +37,8 @@ impl Default for Lighting {
 pub struct Composite {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
+    watercolour: Option<(wgpu::RenderPipeline, wgpu::BindGroup)>,
+    shader: wgpu::ShaderModule,
     uniform: wgpu::Buffer,
     canvas: CanvasExtent,
 }
@@ -54,6 +57,7 @@ impl Composite {
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/km.wgsl"),
                 include_str!("../../shaders/composite.wgsl"),
+                include_str!("../../shaders/composite_watercolour.wgsl"),
             ],
         );
         let uniform = gpu.uniform_buffer("composite uniform", std::mem::size_of::<CompositeUniform>() as u64);
@@ -85,40 +89,51 @@ impl Composite {
                 buffer_binding(8, &canvas.dry),
             ],
         });
-        let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("composite"),
-            bind_group_layouts: &[Some(&layout)],
-            immediate_size: 0,
-        });
-        let pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("composite"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(DISPLAY_FORMAT.into())],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = render_pipeline(gpu, &shader, &layout, "fs_main");
         let composite = Self {
             pipeline,
             bind_group,
+            watercolour: None,
+            shader,
             uniform,
             canvas: CanvasExtent { width: canvas.size.width, height: canvas.size.height },
         };
         composite.set_lighting(gpu, Lighting::default());
         composite
+    }
+
+    pub fn attach_watercolour(&mut self, gpu: &Gpu, canvas: &Canvas, height_map: &HeightMap, water: Option<&Watercolour>) {
+        self.watercolour = water.map(|water| {
+            let fragment = wgpu::ShaderStages::FRAGMENT;
+            let read_only = wgpu::BufferBindingType::Storage { read_only: true };
+            let kinds = [
+                (2, wgpu::BufferBindingType::Uniform),
+                (6, read_only),
+                (8, read_only),
+                (9, wgpu::BufferBindingType::Uniform),
+                (10, read_only),
+                (11, read_only),
+                (12, read_only),
+                (13, read_only),
+                (14, read_only),
+            ];
+            let entries: Vec<_> = kinds.iter().map(|(binding, kind)| buffer_layout_entry(*binding, fragment, *kind)).collect();
+            let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("watercolour composite"), entries: &entries });
+            let buffers = [
+                (2, &self.uniform),
+                (6, &height_map.smooth_surface),
+                (8, &canvas.dry),
+                (9, &water.uniform),
+                (10, &water.water),
+                (11, &water.suspended),
+                (12, &water.deposited),
+                (13, &water.paper),
+                (14, &canvas.relief),
+            ];
+            let bindings: Vec<_> = buffers.iter().map(|(binding, buffer)| buffer_binding(*binding, buffer)).collect();
+            let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("watercolour composite"), layout: &layout, entries: &bindings });
+            (render_pipeline(gpu, &self.shader, &layout, "fs_watercolour"), bind_group)
+        });
     }
 
     pub fn set_lighting(&self, gpu: &Gpu, lighting: Lighting) {
@@ -155,8 +170,33 @@ impl Composite {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.bind_group, &[]);
+        let (pipeline, bind_group) = self.watercolour.as_ref().map_or((&self.pipeline, &self.bind_group), |(pipeline, group)| (pipeline, group));
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(0, bind_group, &[]);
         pass.draw(0..3, 0..1);
     }
+}
+
+fn render_pipeline(gpu: &Gpu, shader: &wgpu::ShaderModule, layout: &wgpu::BindGroupLayout, fragment: &str) -> wgpu::RenderPipeline {
+    let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(fragment),
+        bind_group_layouts: &[Some(layout)],
+        immediate_size: 0,
+    });
+    gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(fragment),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState { module: shader, entry_point: Some("vs_main"), buffers: &[], compilation_options: Default::default() },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some(fragment),
+            compilation_options: Default::default(),
+            targets: &[Some(DISPLAY_FORMAT.into())],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
 }

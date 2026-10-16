@@ -32,6 +32,14 @@ impl Recorder {
         self.push(time, Action::DipColour { colour });
     }
 
+    pub fn dip_water(&mut self, time: f64) {
+        self.push(time, Action::DipWater);
+    }
+
+    pub fn surface(&mut self, time: f64, surface: crate::canvas::Surface) {
+        self.push(time, Action::Surface { surface });
+    }
+
     pub fn tool(&mut self, time: f64, name: &str) {
         self.push(time, Action::Tool { name: name.to_string() });
     }
