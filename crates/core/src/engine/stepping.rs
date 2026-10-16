@@ -1,0 +1,155 @@
+use super::{Engine, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
+use crate::paint::{NOZZLE_RADIUS, StrokeState, WetBounds};
+use glam::IVec2;
+
+const DEPOSIT_REACH: i32 = 24;
+const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
+const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
+const LEVELLING_SETTLE_SECONDS_PER_MEDIUM: f64 = 4.0;
+const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
+const SUBSTEPS_PER_LEVELLING: u64 = 8;
+const WET_MARGIN: i32 = 48;
+
+impl Engine {
+    pub fn advance_realtime(&mut self, target_time: f64) {
+        let dt = f64::from(SIMULATION_DT);
+        let needed = ((target_time - self.time) / dt).floor().max(0.0) as u32;
+        if needed > MAX_SUBSTEPS_PER_ADVANCE {
+            self.time = target_time - dt * f64::from(MAX_SUBSTEPS_PER_ADVANCE);
+        }
+        self.advance_steps(needed.min(MAX_SUBSTEPS_PER_ADVANCE));
+    }
+
+    pub fn advance_exact(&mut self, target_time: f64) {
+        let dt = f64::from(SIMULATION_DT);
+        let needed = ((target_time - self.time) / dt).round().max(0.0) as u32;
+        self.advance_steps(needed);
+    }
+
+    pub(super) fn advance_steps(&mut self, steps: u32) {
+        let dt = f64::from(SIMULATION_DT);
+        let canvas = [self.canvas.size.width as f32, self.canvas.size.height as f32];
+        for _ in 0..steps {
+            self.time += dt;
+            if let Some(state) = self.pointer.state_at(self.time) {
+                self.touch.update(&state, SIMULATION_DT);
+                self.pose = self.pose_for();
+                self.pressed = state.pressed;
+                if self.touch.engaged() {
+                    self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(self.paint.medium.clamp(0.0, 1.0));
+                }
+                if state.fresh_press {
+                    self.position_at_last_deposit = self.pose.position;
+                    self.brush.teleport(&self.gpu, &self.pose);
+                    let mut encoder = self.encoder("stroke snapshot");
+                    self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
+                    self.snapshot(&mut encoder);
+                    self.refresh_heights(&mut encoder);
+                    self.height_map.encode_tuft_base(&self.gpu, &mut encoder, self.whole_canvas());
+                    encoder.copy_buffer_to_buffer(&self.height_map.tuft_base, 0, &self.stroke_base, 0, self.stroke_base.size());
+                    if let Some(water_brush) = &self.water_brush {
+                        water_brush.start_stroke(&mut encoder, &self.brush);
+                    }
+                    self.gpu.queue.submit(Some(encoder.finish()));
+                }
+                self.needs_render |= self.touch.engaged() || self.show_bristles;
+            }
+            let mut encoder = self
+                .gpu
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("substep") });
+            let preset = *self.brush.preset();
+            let (focus, footprint_radius) = match self.tool {
+                Tool::Brush => (self.brush.tuft_centre(), preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK),
+                Tool::Tube => (self.handle_position(), NOZZLE_RADIUS + FOOTPRINT_SLACK),
+            };
+            if self.window.needs_relocation(focus, footprint_radius) {
+                self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
+            }
+            if self.touch.engaged() {
+                let touched = WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
+                match &mut self.watercolour {
+                    Some(watercolour) => {
+                        watercolour.wet(touched);
+                        self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
+                    }
+                    None => self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched))),
+                }
+                self.mark_stale(WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
+            }
+            match self.tool {
+                Tool::Brush => {
+                    self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.touch.pressure, self.canvas.tooth(), canvas);
+                    if let Some(water_brush) = self.water_brush.as_ref().filter(|_| self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT)) {
+                        water_brush.encode(&mut encoder, &self.brush);
+                    } else if self.water_brush.is_none() && self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
+                        let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
+                        let stroke = StrokeState { travel, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
+                        self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke);
+                        self.contents_version += 1;
+                        self.position_at_last_deposit = self.pose.position;
+                    }
+                }
+                Tool::Tube => {
+                    if self.pressed && self.watercolour.is_none() {
+                        let from = self.position_at_last_deposit.truncate();
+                        self.tube.encode_squeeze(&self.gpu, &mut encoder, [from, self.handle_position()], self.touch.pressure, self.paint_on_tool, self.paint.medium.clamp(0.0, 1.0));
+                    }
+                    self.position_at_last_deposit = self.pose.position;
+                }
+            }
+            if let Some(watercolour) = self.watercolour.as_mut().filter(|water| water.is_wet() && self.substeps.is_multiple_of(SUBSTEPS_PER_WATER_STEP)) {
+                let settled = self.time > self.water_settles_at;
+                watercolour.encode_step(&self.gpu, &mut encoder, settled);
+                if settled {
+                    watercolour.settle(&mut encoder);
+                }
+                self.needs_render = true;
+            }
+            self.substeps += 1;
+            let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;
+            if let Some(wet) = self.wet_bounds.filter(|_| levelling_due && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING)) {
+                self.refresh_heights(&mut encoder);
+                self.levelling.encode(&self.gpu, &mut encoder, wet);
+                self.mark_stale(wet.expand(1));
+            }
+            self.request_gauge_reading(&mut encoder);
+            self.gpu.queue.submit(Some(encoder.finish()));
+            self.deposit.after_submit();
+            self.collect_brush_contents();
+        }
+    }
+
+    pub(super) fn request_gauge_reading(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.gauge_version != self.contents_version && self.deposit.encode_gauge_reading(encoder) {
+            self.gauge_version = self.contents_version;
+        }
+    }
+
+    pub(super) fn whole_canvas(&self) -> WetBounds {
+        WetBounds { min: IVec2::ZERO, max: IVec2::new(self.canvas.size.width as i32, self.canvas.size.height as i32) }
+    }
+
+    pub(super) fn mark_whole_canvas_stale(&mut self) {
+        self.mark_stale(self.whole_canvas());
+    }
+
+    pub(super) fn mark_stale(&mut self, region: WetBounds) {
+        self.stale_heights = Some(self.stale_heights.map_or(region, |stale| stale.include(region)));
+        self.needs_render = true;
+    }
+
+    pub(super) fn refresh_heights(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if let Some(region) = self.stale_heights.take() {
+            self.height_map.encode_build(&self.gpu, encoder, region);
+            self.stale_blur = Some(self.stale_blur.map_or(region, |stale| stale.include(region)));
+        }
+    }
+
+    pub(super) fn refresh_blur(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        self.refresh_heights(encoder);
+        if let Some(region) = self.stale_blur.take() {
+            self.height_map.encode_blur(&self.gpu, encoder, region);
+        }
+    }
+}
