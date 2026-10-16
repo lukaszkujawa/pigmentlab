@@ -22,6 +22,10 @@ impl History {
         Self { snapshots, next: 0, stored: 0, capacity }
     }
 
+    pub fn forget(&mut self) {
+        self.stored = 0;
+    }
+
     pub fn push(&mut self, encoder: &mut wgpu::CommandEncoder, store: &wgpu::Buffer) {
         let slot = &self.snapshots[self.next];
         encoder.copy_buffer_to_buffer(store, 0, slot, 0, store.size());

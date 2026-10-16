@@ -1,5 +1,5 @@
 use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, PRESETS, Touch, preset_by_name};
-use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
+use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE, Surface};
 use crate::gpu::{Gpu, read_buffer, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{PointerSample, PointerTrack};
@@ -252,6 +252,21 @@ impl Engine {
         self.brush.teleport(&self.gpu, &self.pose);
         self.brush_contents = BrushContents::empty();
         self.gauge_version = self.contents_version;
+    }
+
+    pub fn surface(&self) -> Surface {
+        self.canvas.surface()
+    }
+
+    pub fn set_surface(&mut self, surface: Surface) {
+        self.canvas.set_surface(&self.gpu, surface);
+        let mut encoder = self.encoder("new sheet");
+        self.window.encode_unbake(&mut encoder);
+        self.gpu.queue.submit(Some(encoder.finish()));
+        self.history.forget();
+        self.dry_history.forget();
+        self.wet_bounds = None;
+        self.mark_whole_canvas_stale();
     }
 
     pub fn clear(&mut self) {

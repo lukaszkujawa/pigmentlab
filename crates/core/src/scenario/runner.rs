@@ -73,6 +73,7 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
             }
             Action::Clear => engine.clear(),
             Action::Dry => engine.dry(),
+            Action::Surface { surface } => engine.set_surface(*surface),
             Action::Tool { name } => {
                 assert!(engine.select_brush(name), "unknown brush {name}");
             }

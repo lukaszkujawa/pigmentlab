@@ -61,6 +61,7 @@ pub enum Action {
     Clear,
     Checkpoint { name: String },
     Dry,
+    Surface { surface: crate::canvas::Surface },
 }
 
 fn default_true() -> bool {

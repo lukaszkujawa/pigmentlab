@@ -1,4 +1,9 @@
-mod substrate;
+mod linen;
+mod noise;
+mod paper;
+mod surface;
+
+pub use surface::{Medium, PaperProperties, Surface};
 
 use crate::gpu::{Binding, ComputePass, Gpu};
 
@@ -42,6 +47,7 @@ pub struct Canvas {
     bake_dry: ComputePass,
     refresh_ground: ComputePass,
     relief_pattern: Vec<f32>,
+    surface: Surface,
     tooth: f32,
     seed: u64,
 }
@@ -72,7 +78,8 @@ impl Canvas {
             ground,
             bake_dry,
             refresh_ground,
-            relief_pattern: substrate::relief(size, seed),
+            relief_pattern: Surface::Linen.relief(size, seed),
+            surface: Surface::Linen,
             tooth: DEFAULT_TOOTH,
             seed,
         };
@@ -81,8 +88,25 @@ impl Canvas {
         canvas
     }
 
+    pub fn surface(&self) -> Surface {
+        self.surface
+    }
+
+    pub fn set_surface(&mut self, gpu: &Gpu, surface: Surface) {
+        self.surface = surface;
+        self.relief_pattern = surface.relief(self.size, self.seed);
+        gpu.queue.write_buffer(&self.paint, 0, &vec![0u8; self.paint.size() as usize]);
+        self.write_paper(gpu);
+        self.set_tooth(gpu, surface.tooth());
+    }
+
+    pub fn paper_heights(&self) -> &[f32] {
+        &self.relief_pattern
+    }
+
     fn write_paper(&self, gpu: &Gpu) {
-        gpu.queue.write_buffer(&self.dry, 0, bytemuck::cast_slice(&substrate::paper(self.size, self.seed)));
+        let layer = self.surface.colour_layer(&self.relief_pattern, self.size, self.seed);
+        gpu.queue.write_buffer(&self.dry, 0, bytemuck::cast_slice(&layer));
     }
 
     pub fn tooth(&self) -> f32 {

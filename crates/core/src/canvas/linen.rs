@@ -1,7 +1,6 @@
 use super::CanvasSize;
+use super::noise::{hash, hash1, lerp, smooth, value_noise};
 
-const BASE_COLOR: [f32; 3] = [0.93, 0.91, 0.86];
-const GRAIN_AMPLITUDE: f32 = 0.012;
 const THREAD_PERIOD: f32 = crate::units::cm(0.15);
 const THREAD_WIDTH_RANGE: (f32, f32) = (0.92, 1.08);
 const THREAD_HEIGHT_RANGE: (f32, f32) = (0.85, 1.0);
@@ -16,17 +15,6 @@ const WOBBLE_AMPLITUDE: f32 = 0.1;
 const WOBBLE_SCALE: f32 = 48.0;
 const SAG_AMPLITUDE: f32 = 0.1;
 const SAG_SCALE: f32 = 96.0;
-
-pub fn paper(size: CanvasSize, seed: u64) -> Vec<[f32; 4]> {
-    let mut pixels = Vec::with_capacity((size.width * size.height) as usize);
-    for y in 0..size.height {
-        for x in 0..size.width {
-            let shade = 1.0 + (hash(x, y, seed) - 0.5) * 2.0 * GRAIN_AMPLITUDE;
-            pixels.push([0.0, BASE_COLOR[0] * shade, BASE_COLOR[1] * shade, BASE_COLOR[2] * shade]);
-        }
-    }
-    pixels
-}
 
 pub fn relief(size: CanvasSize, seed: u64) -> Vec<f32> {
     let mut heights = Vec::with_capacity((size.width * size.height) as usize);
@@ -72,55 +60,9 @@ fn plateau(t: f32) -> f32 {
     smooth(((t - CROSSING_SHARPNESS.0) / (CROSSING_SHARPNESS.1 - CROSSING_SHARPNESS.0)).clamp(0.0, 1.0))
 }
 
-fn lerp(range: (f32, f32), t: f32) -> f32 {
-    range.0 + (range.1 - range.0) * t
-}
-
-fn value_noise(x: f32, y: f32, seed: u64) -> f32 {
-    let (x0, y0) = (x.floor(), y.floor());
-    let (fx, fy) = (smooth(x - x0), smooth(y - y0));
-    let corner = |dx: f32, dy: f32| hash((x0 + dx) as i64 as u32, (y0 + dy) as i64 as u32, seed);
-    let top = corner(0.0, 0.0) + (corner(1.0, 0.0) - corner(0.0, 0.0)) * fx;
-    let bottom = corner(0.0, 1.0) + (corner(1.0, 1.0) - corner(0.0, 1.0)) * fx;
-    top + (bottom - top) * fy
-}
-
-fn smooth(t: f32) -> f32 {
-    t * t * (3.0 - 2.0 * t)
-}
-
-fn hash1(seed: u64) -> f32 {
-    hash(0, 0, seed)
-}
-
-fn hash(x: u32, y: u32, seed: u64) -> f32 {
-    let mut h = seed ^ ((x as u64) << 32) ^ (y as u64);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xff51_afd7_ed55_8ccd);
-    h ^= h >> 33;
-    h = h.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
-    h ^= h >> 33;
-    (h >> 40) as f32 / (1u64 << 24) as f32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn paper_is_deterministic_for_a_seed() {
-        let size = CanvasSize { width: 16, height: 8 };
-        assert_eq!(paper(size, 7), paper(size, 7));
-        assert_ne!(paper(size, 7), paper(size, 8));
-    }
-
-    #[test]
-    fn paper_is_a_flat_dry_layer_near_the_base_colour() {
-        for pixel in paper(CanvasSize { width: 32, height: 32 }, 1) {
-            assert_eq!(pixel[0], 0.0);
-            assert!(pixel[1] > 0.9 && pixel[2] > 0.88 && pixel[3] > 0.83, "{pixel:?}");
-        }
-    }
 
     #[test]
     fn relief_is_a_woven_surface_within_unit_range() {
