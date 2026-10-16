@@ -116,7 +116,7 @@ fn wet_in_wet_spreads_far_wider_than_wet_on_dry() {
 }
 
 #[test]
-fn a_thirsty_brush_lifts_wet_paint() {
+fn a_thirsty_brush_lifts_wet_paint_and_it_stays_lifted_as_the_wash_dries() {
     let wash = |lift: bool| {
         let mut engine = paper(Surface::ColdPressed);
         let blank = engine.dry_layer();
@@ -130,13 +130,13 @@ fn a_thirsty_brush_lifts_wet_paint() {
             engine.dip_water();
             t = stroke(&mut engine, (150.0, 155.0), (490.0, 155.0), 0.6, t, 0.5);
         }
-        engine.advance_exact(t + 1.0);
+        engine.advance_exact(t + 90.0);
         engine.dry();
         darkness(&engine, &blank)
     };
     let (plain, lifted) = (wash(false), wash(true));
     let band = |values: &[f32]| (150..160).flat_map(|y| (250..390).map(move |x| (x, y))).map(|(x, y)| values[y * WIDTH + x]).sum::<f32>();
-    assert!(band(&lifted) < band(&plain) * 0.75, "lifting should pull paint out: {} vs {}", band(&lifted), band(&plain));
+    assert!(band(&lifted) < band(&plain) * 0.4, "paint should stay lifted after drying: {} vs {}", band(&lifted), band(&plain));
 }
 
 #[test]
@@ -343,4 +343,34 @@ fn thick_paste_fills_the_paper_tooth_instead_of_granulating() {
     let brushed = relative_variation(&dried_ultramarine_band("Round medium"));
     let paste = relative_variation(&dried_ultramarine_band("Paint tube"));
     assert!(paste < brushed * 0.6, "paste should granulate less than a wash: brushed {brushed} vs paste {paste}");
+}
+
+fn scrub_loaded_wash(engine: &mut Engine) -> f64 {
+    engine.set_param("load", 1.0);
+    engine.dip(by_name("quinacridone_rose").unwrap());
+    let path = [(40.0, 120.0), (280.0, 125.0), (40.0, 150.0), (280.0, 155.0)];
+    let leg = 0.27;
+    engine.pointer(sample(PointerPhase::Down, path[0].0, path[0].1, 0.7, 0.0));
+    for (i, point) in path.iter().enumerate().skip(1) {
+        engine.pointer(sample(PointerPhase::Move, point.0, point.1, 0.7, i as f64 * leg));
+    }
+    let end = (path.len() - 1) as f64 * leg;
+    engine.pointer(sample(PointerPhase::Up, path[3].0, path[3].1, 0.0, end));
+    end
+}
+
+#[test]
+fn standing_water_levels_out_instead_of_sloshing_into_streaks() {
+    let mut engine = paper(Surface::ColdPressed);
+    let end = scrub_loaded_wash(&mut engine);
+    let cells_wide = WIDTH / 2;
+    for settle in [0.05, 0.2, 0.4] {
+        engine.advance_exact(end + settle);
+        let water: Vec<Vec4> = read_buffer(engine.gpu(), &engine.watercolour().unwrap().water);
+        let depths: Vec<f32> = (62..76).flat_map(|y| (30..120).map(move |x| y * cells_wide + x)).map(|i| water[i].x).collect();
+        let holes = depths.iter().filter(|depth| **depth < 0.01).count();
+        let variation = relative_variation(&depths);
+        assert_eq!(holes, 0, "{settle} s after the stroke the wash has {holes} dry holes");
+        assert!(variation < 0.35, "{settle} s after the stroke water depth still varies by {variation}");
+    }
 }
