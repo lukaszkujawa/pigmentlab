@@ -6,6 +6,9 @@ use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
 const WIDTH: usize = 640;
 const HEIGHT: usize = 320;
+const MAX_GRID_LOCKING: f32 = 0.35;
+const OUTLINE_LEVEL: f32 = 0.2;
+const INTERIOR_DEPTH: usize = 5;
 
 fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, time: f64) -> PointerSample {
     PointerSample { phase, x, y, pressure, tilt: [0.0; 2], rotation: 0.0, time }
@@ -202,4 +205,77 @@ fn unsized_rice_paper_feathers_beyond_the_brush() {
     let sized = spread_of_a_stroke(Surface::ColdPressed);
     let rice = spread_of_a_stroke(Surface::Rice);
     assert!(rice > sized * 6 / 5, "rice paper should wick paint past the stroke: {sized} px sized vs {rice} px rice");
+}
+
+fn edge_profile(values: &[f32], threshold: f32, columns: std::ops::Range<usize>, from_top: bool) -> Vec<f32> {
+    columns
+        .map(|x| {
+            let column: Vec<f32> = if from_top { (0..HEIGHT).map(|y| values[y * WIDTH + x]).collect() } else { (0..HEIGHT).rev().map(|y| values[y * WIDTH + x]).collect() };
+            let first = column.iter().position(|v| *v >= threshold).unwrap_or(0);
+            let inside = (first + INTERIOR_DEPTH).min(HEIGHT - 1);
+            let reference = column[inside].max(1e-6);
+            let covered: f32 = column[..inside].iter().map(|v| (v / reference).clamp(0.0, 1.0)).sum();
+            inside as f32 - covered
+        })
+        .collect()
+}
+
+fn grid_locking(edge: &[f32]) -> f32 {
+    let (sum_cos, sum_sin) = edge.iter().fold((0.0f32, 0.0f32), |(c, s), y| {
+        let phase = std::f32::consts::PI * y;
+        (c + phase.cos(), s + phase.sin())
+    });
+    (sum_cos * sum_cos + sum_sin * sum_sin).sqrt() / edge.len() as f32
+}
+
+fn assert_smooth_outline(values: &[f32], columns: std::ops::Range<usize>, what: &str) {
+    let peak = values.iter().cloned().fold(0.0f32, f32::max);
+    for from_top in [true, false] {
+        let edge = edge_profile(values, peak * OUTLINE_LEVEL, columns.clone(), from_top);
+        let locking = grid_locking(&edge);
+        let side = if from_top { "top" } else { "bottom" };
+        assert!(locking < MAX_GRID_LOCKING, "the {side} edge of {what} locks onto the 2 px simulation grid ({locking:.2}, smooth edges stay under {MAX_GRID_LOCKING}): it is a staircase");
+    }
+}
+
+fn red_stroke_on_flat_paper(to: (f32, f32)) -> (Engine, Vec<Vec4>, f64) {
+    let mut engine = paper(Surface::HotPressed);
+    engine.set_param("tooth", 0.0);
+    let blank = engine.dry_layer();
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    let end = stroke(&mut engine, (100.0, 150.0), to, 0.5, 0.0, 0.8);
+    (engine, blank, end)
+}
+
+#[test]
+fn a_dried_wash_has_a_smooth_edge_not_a_cell_staircase() {
+    let (mut engine, blank, end) = red_stroke_on_flat_paper((540.0, 190.0));
+    engine.advance_exact(end + 4.0);
+    engine.dry();
+    assert_smooth_outline(&darkness(&engine, &blank), 180..460, "a dried stroke");
+}
+
+#[test]
+fn a_steep_dried_wash_has_a_smooth_edge_not_a_cell_staircase() {
+    let (mut engine, blank, end) = red_stroke_on_flat_paper((420.0, 260.0));
+    engine.advance_exact(end + 4.0);
+    engine.dry();
+    assert_smooth_outline(&darkness(&engine, &blank), 170..360, "a steep dried stroke");
+}
+
+#[test]
+fn a_wet_wash_renders_a_smooth_edge_not_a_cell_staircase() {
+    let (mut engine, _, end) = red_stroke_on_flat_paper((540.0, 190.0));
+    engine.advance_exact(end + 0.5);
+    let blank = {
+        let mut clean = paper(Surface::HotPressed);
+        clean.set_param("tooth", 0.0);
+        clean.render();
+        clean.read_back()
+    };
+    engine.render();
+    let frame = engine.read_back();
+    let shade: Vec<f32> = frame.pixels().zip(blank.pixels()).map(|(p, b)| (b.0[1] as f32 - p.0[1] as f32).max(0.0)).collect();
+    assert_smooth_outline(&shade, 180..460, "a wet stroke");
 }

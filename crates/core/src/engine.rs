@@ -258,8 +258,8 @@ impl Engine {
             "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),
             "tooth" => {
                 self.canvas.set_tooth(&self.gpu, value);
-                if let Some(watercolour) = &mut self.watercolour {
-                    watercolour.set_tooth(self.canvas.tooth());
+                if let Some(watercolour) = &self.watercolour {
+                    watercolour.set_tooth(&self.gpu, &self.canvas);
                 }
                 self.mark_whole_canvas_stale();
             }

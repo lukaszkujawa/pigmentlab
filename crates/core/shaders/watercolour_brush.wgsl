@@ -8,6 +8,7 @@ const WATER_PER_LOAD: f32 = 0.25;
 const MAX_LIFT_FRACTION: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const BLEED_RATE: f32 = 1.5;
+const HAIR_REACH: f32 = 2.5;
 const BLEED_ONSET: f32 = 4.0;
 const ACCUMULATOR_SCALE: f32 = 65536.0;
 const ACCUMULATORS: u32 = 13u;
@@ -43,6 +44,7 @@ struct Pigment {
 @group(0) @binding(13) var<storage, read> ground: array<f32>;
 @group(0) @binding(14) var<storage, read_write> sample_concentration_at_start: array<f32>;
 @group(0) @binding(15) var<storage, read> deposited: array<Pigment>;
+@group(0) @binding(16) var<storage, read_write> touched: array<atomic<u32>>;
 
 struct Touch {
     cell: u32,
@@ -102,6 +104,21 @@ fn touch_at(point: vec3<f32>, load: f32, share: f32, sample_concentration: f32) 
     return touch;
 }
 
+fn mark_contact(point: vec2<f32>) {
+    let pixel = vec2<i32>(floor(point));
+    let reach = i32(ceil(HAIR_REACH));
+    for (var dy = -reach; dy <= reach; dy++) {
+        for (var dx = -reach; dx <= reach; dx++) {
+            let target_pixel = pixel + vec2<i32>(dx, dy);
+            if (target_pixel.x < 0 || target_pixel.y < 0 || u32(target_pixel.x) >= exchange_uniform.canvas.x || u32(target_pixel.y) >= exchange_uniform.canvas.y) { continue; }
+            let distance_to_hair = length(vec2<f32>(target_pixel) + 0.5 - point) / HAIR_REACH;
+            let value = 1.0 - distance_to_hair * distance_to_hair;
+            if (value <= 0.0) { continue; }
+            atomicMax(&touched[u32(target_pixel.y) * exchange_uniform.canvas.x + u32(target_pixel.x)], u32(value * HAIR_TOUCH_SCALE));
+        }
+    }
+}
+
 @compute @workgroup_size(128)
 fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
     let sample = id.x;
@@ -138,6 +155,7 @@ fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
             bled += pigment;
         }
         if (touch.give > 0.0) {
+            mark_contact(point.xy);
             let position = point.xy / 2.0 - 0.5;
             let corner = vec2<i32>(floor(position));
             let f = position - floor(position);

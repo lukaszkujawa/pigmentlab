@@ -1,0 +1,419 @@
+{
+ "seed": 3,
+ "canvas": {
+  "width": 760,
+  "height": 460
+ },
+ "levelling": false,
+ "steps": [
+  {
+   "t": 0,
+   "action": "surface",
+   "surface": "cold_pressed"
+  },
+  {
+   "t": 0.0,
+   "action": "tool",
+   "name": "Round medium"
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "medium",
+   "value": 0.6
+  },
+  {
+   "t": 0.0,
+   "action": "dip",
+   "pigment": "burnt_umber"
+  },
+  {
+   "t": 0.0,
+   "action": "press",
+   "x": 120,
+   "y": 100,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.5,
+   "action": "move",
+   "x": 380,
+   "y": 110,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.5,
+   "action": "release"
+  },
+  {
+   "t": 0.8,
+   "action": "tool",
+   "name": "Round medium"
+  },
+  {
+   "t": 0.8,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 0.8,
+   "action": "param",
+   "name": "medium",
+   "value": 0.6
+  },
+  {
+   "t": 0.8,
+   "action": "dip",
+   "pigment": "phthalo_green"
+  },
+  {
+   "t": 0.8,
+   "action": "press",
+   "x": 300,
+   "y": 80,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.4,
+   "action": "move",
+   "x": 300,
+   "y": 420,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.4,
+   "action": "release"
+  },
+  {
+   "t": 1.7,
+   "action": "tool",
+   "name": "Round large"
+  },
+  {
+   "t": 1.7,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 1.7,
+   "action": "param",
+   "name": "medium",
+   "value": 0.0
+  },
+  {
+   "t": 1.7,
+   "action": "dip",
+   "pigment": "cadmium_yellow"
+  },
+  {
+   "t": 1.7,
+   "action": "press",
+   "x": 320.0,
+   "y": 300.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.74,
+   "action": "move",
+   "x": 317.0633909777092,
+   "y": 318.54101966249686,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.78,
+   "action": "move",
+   "x": 308.54101966249686,
+   "y": 335.2671151375484,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.82,
+   "action": "move",
+   "x": 295.2671151375484,
+   "y": 348.54101966249686,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.86,
+   "action": "move",
+   "x": 278.54101966249686,
+   "y": 357.0633909777092,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.9,
+   "action": "move",
+   "x": 260.0,
+   "y": 360.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.94,
+   "action": "move",
+   "x": 241.45898033750316,
+   "y": 357.0633909777092,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.98,
+   "action": "move",
+   "x": 224.7328848624516,
+   "y": 348.54101966249686,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.02,
+   "action": "move",
+   "x": 211.45898033750316,
+   "y": 335.2671151375484,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.06,
+   "action": "move",
+   "x": 202.93660902229078,
+   "y": 318.54101966249686,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.1,
+   "action": "move",
+   "x": 200.0,
+   "y": 300.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.14,
+   "action": "move",
+   "x": 202.93660902229078,
+   "y": 281.45898033750314,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.18,
+   "action": "move",
+   "x": 211.45898033750314,
+   "y": 264.7328848624516,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.22,
+   "action": "move",
+   "x": 224.7328848624516,
+   "y": 251.45898033750316,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.26,
+   "action": "move",
+   "x": 241.45898033750314,
+   "y": 242.93660902229078,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.3,
+   "action": "move",
+   "x": 260.0,
+   "y": 240.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.34,
+   "action": "move",
+   "x": 278.5410196624968,
+   "y": 242.93660902229078,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.38,
+   "action": "move",
+   "x": 295.2671151375484,
+   "y": 251.45898033750314,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.42,
+   "action": "move",
+   "x": 308.54101966249686,
+   "y": 264.7328848624516,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.46,
+   "action": "move",
+   "x": 317.0633909777092,
+   "y": 281.45898033750314,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.5,
+   "action": "move",
+   "x": 320.0,
+   "y": 300.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.5,
+   "action": "release"
+  },
+  {
+   "t": 2.8,
+   "action": "tool",
+   "name": "Round medium"
+  },
+  {
+   "t": 2.8,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 2.8,
+   "action": "param",
+   "name": "medium",
+   "value": 0.3
+  },
+  {
+   "t": 2.8,
+   "action": "dip",
+   "pigment": "cadmium_red"
+  },
+  {
+   "t": 2.8,
+   "action": "press",
+   "x": 420,
+   "y": 220,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0,
+   "action": "move",
+   "x": 380,
+   "y": 300,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.2,
+   "action": "move",
+   "x": 460,
+   "y": 330,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.4,
+   "action": "move",
+   "x": 520,
+   "y": 260,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.4,
+   "action": "release"
+  },
+  {
+   "t": 3.6999999999999997,
+   "action": "tool",
+   "name": "Round small"
+  },
+  {
+   "t": 3.6999999999999997,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 3.6999999999999997,
+   "action": "param",
+   "name": "medium",
+   "value": 0.0
+  },
+  {
+   "t": 3.6999999999999997,
+   "action": "dip",
+   "pigment": "indian_red"
+  },
+  {
+   "t": 3.6999999999999997,
+   "action": "press",
+   "x": 560,
+   "y": 180,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.9,
+   "action": "move",
+   "x": 600,
+   "y": 200,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.9,
+   "action": "release"
+  },
+  {
+   "t": 4.199999999999999,
+   "action": "tool",
+   "name": "Round medium"
+  },
+  {
+   "t": 4.199999999999999,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 4.199999999999999,
+   "action": "param",
+   "name": "medium",
+   "value": 0.7
+  },
+  {
+   "t": 4.199999999999999,
+   "action": "dip",
+   "pigment": "phthalo_green"
+  },
+  {
+   "t": 4.199999999999999,
+   "action": "press",
+   "x": 470,
+   "y": 90,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.5,
+   "action": "move",
+   "x": 700,
+   "y": 100,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.8,
+   "action": "move",
+   "x": 650,
+   "y": 200,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.8,
+   "action": "release"
+  },
+  {
+   "t": 6.1,
+   "action": "checkpoint",
+   "name": "wet"
+  },
+  {
+   "t": 75.1,
+   "action": "checkpoint",
+   "name": "dried"
+  }
+ ]
+}

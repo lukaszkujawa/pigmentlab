@@ -52,6 +52,7 @@ impl WaterBrush {
             "watercolour brush",
             &[
                 include_str!("../../shaders/hermite.wgsl"),
+                include_str!("../../shaders/wash_outline.wgsl"),
                 include_str!("../../shaders/watercolour_brush.wgsl"),
                 include_str!("../../shaders/chain.wgsl"),
             ],
@@ -73,6 +74,7 @@ impl WaterBrush {
             (13, Binding::ReadOnly(&canvas.ground)),
             (14, Binding::ReadWrite(&start_concentration)),
             (15, Binding::ReadOnly(&water.deposited)),
+            (16, Binding::ReadWrite(&water.touched)),
         ];
         debug_assert_eq!(ACCUMULATORS, 13);
         let pass = |label, entry| ComputePass::new(gpu, label, &shader, entry, &bindings);

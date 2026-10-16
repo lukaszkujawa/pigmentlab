@@ -38,7 +38,8 @@ pub struct Watercolour {
     pub suspended: wgpu::Buffer,
     pub deposited: wgpu::Buffer,
     pub accumulators: wgpu::Buffer,
-    pub coverage: wgpu::Buffer,
+    pub touched: wgpu::Buffer,
+    pub concentration: wgpu::Buffer,
     velocity_u: wgpu::Buffer,
     velocity_v: wgpu::Buffer,
     next_u: wgpu::Buffer,
@@ -52,6 +53,7 @@ pub struct Watercolour {
     advect: ComputePass,
     transfer: ComputePass,
     capillary: ComputePass,
+    mark_drying: ComputePass,
     dry_cells: ComputePass,
     bake_pixels: ComputePass,
     history: [History; 3],
@@ -73,12 +75,12 @@ impl Watercolour {
         let deposited = gpu.storage_buffer("watercolour deposited pigment", count * PIGMENT_BYTES);
         let impulse = gpu.storage_buffer("watercolour impulse", count * 16);
         let accumulators = gpu.storage_buffer("watercolour brush accumulators", count * ACCUMULATORS * 4);
-        let coverage = gpu.storage_buffer("watercolour wash coverage", count * 8);
-        let drying = gpu.storage_buffer("watercolour drying cells", count * PIGMENT_BYTES);
+        let touched = gpu.storage_buffer("watercolour hair contact", canvas.size.pixel_count() * 4);
+        let concentration = gpu.storage_buffer("watercolour pigment per wetted pixel", count * 4);
         let uniform = gpu.uniform_buffer("watercolour uniform", std::mem::size_of::<WaterUniform>() as u64);
         let shader = gpu.shader(
             "watercolour",
-            &[include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/watercolour.wgsl")],
+            &[include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/wash_outline.wgsl"), include_str!("../../shaders/watercolour.wgsl")],
         );
         let bindings = [
             (0, Binding::Uniform(&uniform)),
@@ -96,8 +98,8 @@ impl Watercolour {
             (12, Binding::ReadWrite(&accumulators)),
             (13, Binding::ReadWrite(&canvas.dry)),
             (14, Binding::ReadOnly(&canvas.relief)),
-            (15, Binding::ReadWrite(&coverage)),
-            (16, Binding::ReadWrite(&drying)),
+            (15, Binding::ReadWrite(&touched)),
+            (16, Binding::ReadWrite(&concentration)),
         ];
         let pass = |label, entry| ComputePass::new(gpu, label, &shader, entry, &bindings);
         let passes = [
@@ -108,10 +110,11 @@ impl Watercolour {
             pass("watercolour advect", "advect"),
             pass("watercolour transfer", "transfer"),
             pass("watercolour capillary", "capillary"),
+            pass("watercolour mark drying", "mark_drying"),
             pass("watercolour dry cells", "dry_cells"),
             pass("watercolour bake pixels", "bake_pixels"),
         ];
-        let [apply_brush, update_u, update_v, limit_outflow, advect, transfer, capillary, dry_cells, bake_pixels] = passes;
+        let [apply_brush, update_u, update_v, limit_outflow, advect, transfer, capillary, mark_drying, dry_cells, bake_pixels] = passes;
         let history = [&water, &suspended, &deposited].map(|buffer| History::new(gpu, buffer.size(), UNDO_DEPTH));
         let base = WaterUniform {
             cells: cells.to_array(),
@@ -134,7 +137,8 @@ impl Watercolour {
             suspended,
             deposited,
             accumulators,
-            coverage,
+            touched,
+            concentration,
             velocity_u,
             velocity_v,
             next_u,
@@ -148,6 +152,7 @@ impl Watercolour {
             advect,
             transfer,
             capillary,
+            mark_drying,
             dry_cells,
             bake_pixels,
             history,
@@ -161,18 +166,18 @@ impl Watercolour {
         let properties = surface.paper();
         self.base.absorbency = properties.absorbency;
         self.base.granulation = properties.granulation;
-        self.base.tooth = canvas.tooth().max(1e-6);
+        self.base.tooth = surface.tooth().max(1e-6);
         gpu.queue.write_buffer(&self.paper, 0, bytemuck::cast_slice(&paper_cells(canvas, surface, self.cells)));
         self.clear(gpu);
     }
 
-    pub fn set_tooth(&mut self, tooth: f32) {
-        self.base.tooth = tooth.max(1e-6);
+    pub fn set_tooth(&self, gpu: &Gpu, canvas: &Canvas) {
+        gpu.queue.write_buffer(&self.paper, 0, bytemuck::cast_slice(&paper_cells(canvas, canvas.surface(), self.cells)));
     }
 
     pub fn clear(&mut self, gpu: &Gpu) {
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("clear watercolour") });
-        for buffer in [&self.water, &self.suspended, &self.deposited, &self.velocity_u, &self.velocity_v, &self.next_u, &self.next_v, &self.accumulators, &self.coverage] {
+        for buffer in [&self.water, &self.suspended, &self.deposited, &self.velocity_u, &self.velocity_v, &self.next_u, &self.next_v, &self.accumulators, &self.touched, &self.concentration] {
             encoder.clear_buffer(buffer, 0, None);
         }
         gpu.queue.submit(Some(encoder.finish()));
@@ -215,13 +220,15 @@ impl Watercolour {
         self.advect.dispatch(encoder, cells);
         self.transfer.dispatch(encoder, cells);
         self.capillary.dispatch(encoder, cells);
+        self.mark_drying.dispatch(encoder, cells);
         self.dry_cells.dispatch(encoder, cells);
         self.bake_pixels.dispatch(encoder, [(extent.x as u32 * 2).div_ceil(16), (extent.y as u32 * 2).div_ceil(16), 1]);
     }
 
     pub fn settle(&mut self, encoder: &mut wgpu::CommandEncoder) {
         self.region = None;
-        encoder.clear_buffer(&self.coverage, 0, None);
+        encoder.clear_buffer(&self.touched, 0, None);
+        encoder.clear_buffer(&self.concentration, 0, None);
     }
 
     pub fn snapshot(&mut self, encoder: &mut wgpu::CommandEncoder) {
@@ -245,7 +252,8 @@ impl Watercolour {
 }
 
 fn paper_cells(canvas: &Canvas, surface: Surface, cells: UVec2) -> Vec<[f32; 4]> {
-    let heights = canvas.paper_heights();
+    let reference = surface.tooth().max(1e-6);
+    let heights: Vec<f32> = canvas.relief_heights().iter().map(|h| h / reference).collect();
     let (width, height) = (canvas.size.width, canvas.size.height);
     let (low, high) = surface.paper().capacity;
     let mut out = Vec::with_capacity((cells.x * cells.y) as usize);
