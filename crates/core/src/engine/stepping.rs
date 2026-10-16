@@ -92,9 +92,16 @@ impl Engine {
                     }
                 }
                 Tool::Tube => {
-                    if self.pressed && self.watercolour.is_none() {
-                        let from = self.position_at_last_deposit.truncate();
-                        self.tube.encode_squeeze(&self.gpu, &mut encoder, [from, self.handle_position()], self.touch.pressure, self.paint_on_tool, self.paint.medium.clamp(0.0, 1.0));
+                    if self.pressed {
+                        let path = [self.position_at_last_deposit.truncate(), self.handle_position()];
+                        let medium = self.paint.medium.clamp(0.0, 1.0);
+                        match (&self.water_tube, &mut self.watercolour) {
+                            (Some(tube), Some(water)) => {
+                                water.wet(tube.encode_squeeze(&self.gpu, &mut encoder, path, self.touch.pressure, self.paint_on_tool, medium));
+                                self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
+                            }
+                            _ => self.tube.encode_squeeze(&self.gpu, &mut encoder, path, self.touch.pressure, self.paint_on_tool.coefficients, medium),
+                        }
                     }
                     self.position_at_last_deposit = self.pose.position;
                 }

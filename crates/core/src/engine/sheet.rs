@@ -1,7 +1,7 @@
-use super::{Engine, SIMULATION_DT, SUBSTEPS_PER_WATER_STEP, WATER_SETTLE_SECONDS};
+use super::{DEPOSIT_DT, Engine, SIMULATION_DT, SUBSTEPS_PER_WATER_STEP, WATER_SETTLE_SECONDS};
 use crate::canvas::{Medium, Surface};
 use crate::gpu::read_buffer;
-use crate::watercolour::Watercolour;
+use crate::watercolour::{WaterTube, Watercolour};
 use glam::Vec4;
 
 const WATERCOLOUR_SCRUB: f32 = 0.002;
@@ -41,6 +41,7 @@ impl Engine {
             },
             Medium::Oil => self.watercolour = None,
         }
+        self.water_tube = self.watercolour.as_ref().map(|water| WaterTube::new(&self.gpu, water, &self.canvas, DEPOSIT_DT));
         self.rebuild_water_brush();
         self.composite.attach_watercolour(&self.gpu, &self.canvas, &self.height_map, self.watercolour.as_ref());
         let mut encoder = self.encoder("new sheet");

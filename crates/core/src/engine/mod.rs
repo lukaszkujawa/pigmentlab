@@ -4,8 +4,8 @@ use crate::gpu::{Gpu, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{PointerSample, PointerTrack};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Tube, WetBounds};
-use crate::pigment::Coefficients;
-use crate::watercolour::{WaterBrush, Watercolour};
+use crate::pigment::{Coefficients, Paint};
+use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::Vec3;
 
@@ -43,7 +43,7 @@ pub struct Engine {
     deposit: Deposit,
     tube: Tube,
     tool: Tool,
-    paint_on_tool: Coefficients,
+    paint_on_tool: Paint,
     height_map: HeightMap,
     levelling: Levelling,
     composite: Composite,
@@ -55,6 +55,7 @@ pub struct Engine {
     touch: Touch,
     watercolour: Option<Watercolour>,
     water_brush: Option<WaterBrush>,
+    water_tube: Option<WaterTube>,
     water_settles_at: f64,
     brush_contents: BrushContents,
     contents_version: u64,
@@ -126,7 +127,7 @@ impl Engine {
             deposit,
             tube,
             tool: Tool::Brush,
-            paint_on_tool: Coefficients { absorption: Vec3::ZERO, scattering: Vec3::ZERO },
+            paint_on_tool: Paint::from(Coefficients { absorption: Vec3::ZERO, scattering: Vec3::ZERO }),
             height_map,
             levelling,
             composite,
@@ -138,6 +139,7 @@ impl Engine {
             touch: Touch::default(),
             watercolour: None,
             water_brush: None,
+            water_tube: None,
             water_settles_at: 0.0,
             brush_contents: BrushContents::empty(),
             contents_version: 0,

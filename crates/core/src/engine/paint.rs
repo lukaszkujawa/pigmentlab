@@ -17,15 +17,15 @@ impl Engine {
         let medium = self.paint.medium.clamp(0.0, 1.0);
         if self.watercolour.is_some() {
             let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * medium) / load.max(WATERCOLOUR_DRIEST_LOAD);
+            self.paint_on_tool = paint;
             self.brush.dip_watercolour(&self.gpu, paint, load, concentration);
             self.gauge().invalidate();
             self.brush_contents = BrushContents { fill: load, paint: paint.coefficients, concentration };
             return;
         }
-        let paint = paint.coefficients;
         let dilution = 1.0 - DILUTION_PER_MEDIUM * medium;
-        let thinned = Coefficients { absorption: paint.absorption * dilution, scattering: paint.scattering * dilution };
-        self.paint_on_tool = thinned;
+        let thinned = Coefficients { absorption: paint.coefficients.absorption * dilution, scattering: paint.coefficients.scattering * dilution };
+        self.paint_on_tool = Paint { coefficients: thinned, ..paint };
         self.brush.dip(&self.gpu, thinned, load, medium);
         self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: load, paint: thinned, concentration: 1.0 };

@@ -94,8 +94,7 @@ fn fs_watercolour(in: VertexOutput) -> @location(0) vec4<f32> {
     if (total > 1e-7 && inside > 0.0) {
         let height = paper_relief[index] / max(water_sim.tooth, 1e-6) * 0.5 + 0.5;
         let granulation = wet.scattering.w / total * water_sim.granulation;
-        let weight = max(1.0 + granulation * (PAPER_MID_HEIGHT - height) * 1.4, 0.3);
-        let thickness = pigment_per_pixel(texel) * weight * inside * OPTICAL_THICKNESS_PER_PIXEL;
+        let thickness = granular_thickness(height, granulation, pigment_per_pixel(texel)) * inside * OPTICAL_THICKNESS_PER_PIXEL;
         albedo = layer_reflectance(wet.absorption.xyz / total, wet.scattering.xyz / total, thickness, albedo);
     }
     let soaked = clamp(wet.water.x / SATURATED_WATER, 0.0, 1.0) * inside;

@@ -25,11 +25,7 @@ const UNSIZED_WICKING: f32 = 3.0;
 const MAX_SCRUB: f32 = 0.2;
 const PIGMENT_DIFFUSION: f32 = 14.4;
 const MAX_MIXING: f32 = 0.24;
-const ACCUMULATOR_SCALE: f32 = 65536.0;
-const ACCUMULATORS: u32 = 13u;
 const MASK_RADIUS: i32 = 3;
-const GRANULATION_CONTRAST: f32 = 1.4;
-const GRANULATION_FLOOR: f32 = 0.3;
 
 struct WaterUniform {
     cells: vec2<u32>,
@@ -466,17 +462,13 @@ fn dry_cells(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var k = 0u; k < 4u; k++) {
         let pixel = cell_pixel(cell, k);
         if (!pixel_on_canvas(pixel)) { continue; }
-        weights[k] = drying.behaviour[k] * granular_weight(pixel, drying.scattering.w) * interpolated_concentration(pixel, own);
+        weights[k] = drying.behaviour[k] * granular_thickness(paper_height(vec2<u32>(pixel)), drying.scattering.w, interpolated_concentration(pixel, own));
     }
     let state = water[index];
     suspended[index] = no_pigment();
     deposited[index] = no_pigment();
     water[index] = vec4<f32>(0.0, select(state.y, 0.0, sim.force_dry != 0u), 0.0, state.w);
     suspended_next[index].behaviour = select(vec4<f32>(0.0), weights, total > 1e-11);
-}
-
-fn granular_weight(pixel: vec2<i32>, granulation: f32) -> f32 {
-    return max(1.0 + granulation * (PAPER_MID_HEIGHT - paper_height(vec2<u32>(pixel))) * GRANULATION_CONTRAST, GRANULATION_FLOOR);
 }
 
 fn neighbour_drying(pixel: vec2<i32>) -> i32 {
@@ -513,7 +505,7 @@ fn bake_pixels(@builtin(global_invocation_id) id: vec3<u32>) {
         let inside = outline_from(hair_touch(pixel), 0.0);
         if (neighbour < 0 || inside <= 0.0) { return; }
         source = u32(neighbour);
-        thickness = inside * granular_weight(pixel, suspended_next[source].scattering.w) * interpolated_concentration(pixel, concentration[source]);
+        thickness = inside * granular_thickness(paper_height(vec2<u32>(pixel)), suspended_next[source].scattering.w, interpolated_concentration(pixel, concentration[source]));
     } else {
         return;
     }

@@ -23,3 +23,13 @@ fn bilinear_cells(pixel: vec2<i32>) -> array<vec3<f32>, 4> {
         vec3<f32>(base + vec2<f32>(1.0, 1.0), f.x * f.y),
     );
 }
+
+const GRANULATION_CONTRAST: f32 = 1.4;
+const GRANULATION_FLOOR: f32 = 0.3;
+const TOOTH_FILLING_START: f32 = 0.12;
+const TOOTH_FILLED: f32 = 0.6;
+
+fn granular_thickness(paper_height: f32, granulation: f32, concentration: f32) -> f32 {
+    let settling = granulation * (1.0 - smoothstep(TOOTH_FILLING_START, TOOTH_FILLED, concentration));
+    return max(1.0 + settling * (PAPER_MID_HEIGHT - paper_height) * GRANULATION_CONTRAST, GRANULATION_FLOOR) * concentration;
+}

@@ -309,3 +309,38 @@ fn a_brush_of_clear_water_shows_as_water_not_black() {
     assert!(water.fill > 0.5, "dipping in water should fill the brush");
     assert!(water.display_srgb().iter().all(|c| *c > 200), "clear water should look clear, got {:?}", water.display_srgb());
 }
+
+fn dried_ultramarine_band(tool: &str) -> Vec<f32> {
+    let mut engine = paper(Surface::ColdPressed);
+    let blank = engine.dry_layer();
+    engine.select_brush(tool);
+    engine.dip(by_name("french_ultramarine").unwrap());
+    let end = stroke(&mut engine, (100.0, 160.0), (540.0, 160.0), 0.6, 0.0, 1.0);
+    engine.advance_exact(end + 4.0);
+    engine.dry();
+    let darkness = darkness(&engine, &blank);
+    (156..164).flat_map(|y| (200..440).map(move |x| y * WIDTH + x)).map(|i| darkness[i]).collect()
+}
+
+fn mean(values: &[f32]) -> f32 {
+    values.iter().sum::<f32>() / values.len() as f32
+}
+
+fn relative_variation(values: &[f32]) -> f32 {
+    let average = mean(values);
+    (values.iter().map(|v| (v - average).powi(2)).sum::<f32>() / values.len() as f32).sqrt() / average
+}
+
+#[test]
+fn tube_paste_on_paper_dries_far_darker_than_a_brushed_wash() {
+    let brushed = dried_ultramarine_band("Round medium");
+    let paste = dried_ultramarine_band("Paint tube");
+    assert!(mean(&paste) > mean(&brushed) * 1.5, "paste should dry darker: brushed {} vs paste {}", mean(&brushed), mean(&paste));
+}
+
+#[test]
+fn thick_paste_fills_the_paper_tooth_instead_of_granulating() {
+    let brushed = relative_variation(&dried_ultramarine_band("Round medium"));
+    let paste = relative_variation(&dried_ultramarine_band("Paint tube"));
+    assert!(paste < brushed * 0.6, "paste should granulate less than a wash: brushed {brushed} vs paste {paste}");
+}

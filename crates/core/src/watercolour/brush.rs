@@ -59,6 +59,7 @@ impl WaterBrush {
             &[
                 include_str!("../../shaders/hermite.wgsl"),
                 include_str!("../../shaders/wash_outline.wgsl"),
+                include_str!("../../shaders/wash_accumulators.wgsl"),
                 include_str!("../../shaders/watercolour_brush.wgsl"),
                 include_str!("../../shaders/chain.wgsl"),
             ],

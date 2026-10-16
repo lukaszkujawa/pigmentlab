@@ -1,6 +1,8 @@
 mod brush;
+mod tube;
 
 pub use brush::WaterBrush;
+pub use tube::WaterTube;
 
 use crate::canvas::{Canvas, Surface};
 use crate::gpu::{Binding, ComputePass, Gpu};
@@ -80,7 +82,7 @@ impl Watercolour {
         let uniform = gpu.uniform_buffer("watercolour uniform", std::mem::size_of::<WaterUniform>() as u64);
         let shader = gpu.shader(
             "watercolour",
-            &[include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/wash_outline.wgsl"), include_str!("../../shaders/watercolour.wgsl")],
+            &[include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/wash_outline.wgsl"), include_str!("../../shaders/wash_accumulators.wgsl"), include_str!("../../shaders/watercolour.wgsl")],
         );
         let bindings = [
             (0, Binding::Uniform(&uniform)),

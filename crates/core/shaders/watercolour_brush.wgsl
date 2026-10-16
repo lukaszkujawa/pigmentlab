@@ -12,8 +12,6 @@ const CONTENTS_SCALE: f32 = 16.0;
 const CONTENTS_CHANNELS: u32 = 8u;
 const HAIR_REACH: f32 = 2.5;
 const BLEED_ONSET: f32 = 4.0;
-const ACCUMULATOR_SCALE: f32 = 65536.0;
-const ACCUMULATORS: u32 = 13u;
 
 struct BrushWaterUniform {
     sample_count: u32,
@@ -54,14 +52,6 @@ struct Touch {
     give: f32,
     take: f32,
     bleed: f32,
-}
-
-fn fixed(value: f32) -> i32 {
-    return i32(round(value * ACCUMULATOR_SCALE));
-}
-
-fn accumulate(cell: u32, channel: u32, value: f32) {
-    atomicAdd(&accumulators[cell * ACCUMULATORS + channel], fixed(value));
 }
 
 fn cell_wetness(state: vec4<f32>) -> f32 {
@@ -144,16 +134,7 @@ fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
         if (touch.give <= 0.0 && touch.take <= 0.0 && touch.bleed <= 0.0) { continue; }
         if (touch.bleed > 0.0) {
             let pigment = touch.bleed * concentration;
-            accumulate(touch.cell, 1u, absorption.x * pigment);
-            accumulate(touch.cell, 2u, absorption.y * pigment);
-            accumulate(touch.cell, 3u, absorption.z * pigment);
-            accumulate(touch.cell, 4u, pigment);
-            accumulate(touch.cell, 5u, scattering.x * pigment);
-            accumulate(touch.cell, 6u, scattering.y * pigment);
-            accumulate(touch.cell, 7u, scattering.z * pigment);
-            accumulate(touch.cell, 8u, behaviour.z * pigment);
-            accumulate(touch.cell, 9u, behaviour.x * pigment);
-            accumulate(touch.cell, 10u, behaviour.y * pigment);
+            add_to_wash(touch.cell, 0.0, pigment, absorption, scattering, behaviour.xyz);
             bled += pigment;
         }
         if (touch.give > 0.0) {
@@ -166,18 +147,7 @@ fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
                 let target_cell = clamp(corner + vec2<i32>(i32(k & 1u), i32(k >> 1u)), vec2<i32>(0), vec2<i32>(exchange_uniform.cells) - 1);
                 let index = u32(target_cell.y) * exchange_uniform.cells.x + u32(target_cell.x);
                 let given = touch.give * weights[k];
-                let pigment = given * concentration;
-                accumulate(index, 0u, given * WATER_PER_LOAD);
-                accumulate(index, 1u, absorption.x * pigment);
-                accumulate(index, 2u, absorption.y * pigment);
-                accumulate(index, 3u, absorption.z * pigment);
-                accumulate(index, 4u, pigment);
-                accumulate(index, 5u, scattering.x * pigment);
-                accumulate(index, 6u, scattering.y * pigment);
-                accumulate(index, 7u, scattering.z * pigment);
-                accumulate(index, 8u, behaviour.z * pigment);
-                accumulate(index, 9u, behaviour.x * pigment);
-                accumulate(index, 10u, behaviour.y * pigment);
+                add_to_wash(index, given * WATER_PER_LOAD, given * concentration, absorption, scattering, behaviour.xyz);
             }
             load -= touch.give;
         }
