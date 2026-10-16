@@ -1,0 +1,652 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 1024,
+    "height": 768
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "tool",
+      "name": "Paint tube"
+    },
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 550.0,
+      "y": 380.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.067,
+      "action": "move",
+      "x": 547.7,
+      "y": 406.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.133,
+      "action": "move",
+      "x": 541.0,
+      "y": 431.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.2,
+      "action": "move",
+      "x": 529.9,
+      "y": 455.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.267,
+      "action": "move",
+      "x": 514.9,
+      "y": 476.4,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.333,
+      "action": "move",
+      "x": 496.4,
+      "y": 494.9,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.4,
+      "action": "move",
+      "x": 475.0,
+      "y": 509.9,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.467,
+      "action": "move",
+      "x": 451.3,
+      "y": 521.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.533,
+      "action": "move",
+      "x": 426.0,
+      "y": 527.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.6,
+      "action": "move",
+      "x": 400.0,
+      "y": 530.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.667,
+      "action": "move",
+      "x": 374.0,
+      "y": 527.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.733,
+      "action": "move",
+      "x": 348.7,
+      "y": 521.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.8,
+      "action": "move",
+      "x": 325.0,
+      "y": 509.9,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.867,
+      "action": "move",
+      "x": 303.6,
+      "y": 494.9,
+      "pressure": 1.0
+    },
+    {
+      "t": 0.933,
+      "action": "move",
+      "x": 285.1,
+      "y": 476.4,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.0,
+      "action": "move",
+      "x": 270.1,
+      "y": 455.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.067,
+      "action": "move",
+      "x": 259.0,
+      "y": 431.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.133,
+      "action": "move",
+      "x": 252.3,
+      "y": 406.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.2,
+      "action": "move",
+      "x": 250.0,
+      "y": 380.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.267,
+      "action": "move",
+      "x": 252.3,
+      "y": 354.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.333,
+      "action": "move",
+      "x": 259.0,
+      "y": 328.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.4,
+      "action": "move",
+      "x": 270.1,
+      "y": 305.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.467,
+      "action": "move",
+      "x": 285.1,
+      "y": 283.6,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.533,
+      "action": "move",
+      "x": 303.6,
+      "y": 265.1,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.6,
+      "action": "move",
+      "x": 325.0,
+      "y": 250.1,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.667,
+      "action": "move",
+      "x": 348.7,
+      "y": 239.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.733,
+      "action": "move",
+      "x": 374.0,
+      "y": 232.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.8,
+      "action": "move",
+      "x": 400.0,
+      "y": 230.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.867,
+      "action": "move",
+      "x": 426.0,
+      "y": 232.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.933,
+      "action": "move",
+      "x": 451.3,
+      "y": 239.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.0,
+      "action": "move",
+      "x": 475.0,
+      "y": 250.1,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.067,
+      "action": "move",
+      "x": 496.4,
+      "y": 265.1,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.133,
+      "action": "move",
+      "x": 514.9,
+      "y": 283.6,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.2,
+      "action": "move",
+      "x": 529.9,
+      "y": 305.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.267,
+      "action": "move",
+      "x": 541.0,
+      "y": 328.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.333,
+      "action": "move",
+      "x": 547.7,
+      "y": 354.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.4,
+      "action": "move",
+      "x": 550.0,
+      "y": 380.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.4,
+      "action": "release"
+    },
+    {
+      "t": 2.5,
+      "action": "dip",
+      "pigment": "french_ultramarine"
+    },
+    {
+      "t": 2.5,
+      "action": "press",
+      "x": 510.0,
+      "y": 420.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.556,
+      "action": "move",
+      "x": 511.7,
+      "y": 400.9,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.611,
+      "action": "move",
+      "x": 516.6,
+      "y": 382.4,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.667,
+      "action": "move",
+      "x": 524.7,
+      "y": 365.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.722,
+      "action": "move",
+      "x": 535.7,
+      "y": 349.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.778,
+      "action": "move",
+      "x": 549.3,
+      "y": 335.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.833,
+      "action": "move",
+      "x": 565.0,
+      "y": 324.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.889,
+      "action": "move",
+      "x": 582.4,
+      "y": 316.6,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.944,
+      "action": "move",
+      "x": 600.9,
+      "y": 311.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.0,
+      "action": "move",
+      "x": 620.0,
+      "y": 310.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.056,
+      "action": "move",
+      "x": 639.1,
+      "y": 311.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.111,
+      "action": "move",
+      "x": 657.6,
+      "y": 316.6,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.167,
+      "action": "move",
+      "x": 675.0,
+      "y": 324.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.222,
+      "action": "move",
+      "x": 690.7,
+      "y": 335.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.278,
+      "action": "move",
+      "x": 704.3,
+      "y": 349.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.333,
+      "action": "move",
+      "x": 715.3,
+      "y": 365.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.389,
+      "action": "move",
+      "x": 723.4,
+      "y": 382.4,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.444,
+      "action": "move",
+      "x": 728.3,
+      "y": 400.9,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.5,
+      "action": "move",
+      "x": 730.0,
+      "y": 420.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.556,
+      "action": "move",
+      "x": 728.3,
+      "y": 439.1,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.611,
+      "action": "move",
+      "x": 723.4,
+      "y": 457.6,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.667,
+      "action": "move",
+      "x": 715.3,
+      "y": 475.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.722,
+      "action": "move",
+      "x": 704.3,
+      "y": 490.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.778,
+      "action": "move",
+      "x": 690.7,
+      "y": 504.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.833,
+      "action": "move",
+      "x": 675.0,
+      "y": 515.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.889,
+      "action": "move",
+      "x": 657.6,
+      "y": 523.4,
+      "pressure": 1.0
+    },
+    {
+      "t": 3.944,
+      "action": "move",
+      "x": 639.1,
+      "y": 528.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.0,
+      "action": "move",
+      "x": 620.0,
+      "y": 530.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.056,
+      "action": "move",
+      "x": 600.9,
+      "y": 528.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.111,
+      "action": "move",
+      "x": 582.4,
+      "y": 523.4,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.167,
+      "action": "move",
+      "x": 565.0,
+      "y": 515.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.222,
+      "action": "move",
+      "x": 549.3,
+      "y": 504.3,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.278,
+      "action": "move",
+      "x": 535.7,
+      "y": 490.7,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.333,
+      "action": "move",
+      "x": 524.7,
+      "y": 475.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.389,
+      "action": "move",
+      "x": 516.6,
+      "y": 457.6,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.444,
+      "action": "move",
+      "x": 511.7,
+      "y": 439.1,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.5,
+      "action": "move",
+      "x": 510.0,
+      "y": 420.0,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.5,
+      "action": "release"
+    },
+    {
+      "t": 4.6,
+      "action": "checkpoint",
+      "name": "squeezed"
+    },
+    {
+      "t": 6.5,
+      "action": "checkpoint",
+      "name": "rested"
+    },
+    {
+      "t": 6.5,
+      "action": "tool",
+      "name": "Colour shaper"
+    },
+    {
+      "t": 6.5,
+      "action": "param",
+      "name": "angle",
+      "value": 0
+    },
+    {
+      "t": 6.5,
+      "action": "press",
+      "x": 500,
+      "y": 150,
+      "pressure": 0.9
+    },
+    {
+      "t": 7.5,
+      "action": "move",
+      "x": 500,
+      "y": 620,
+      "pressure": 0.9
+    },
+    {
+      "t": 7.5,
+      "action": "release"
+    },
+    {
+      "t": 7.6,
+      "action": "checkpoint",
+      "name": "scraped_down"
+    },
+    {
+      "t": 7.6,
+      "action": "param",
+      "name": "angle",
+      "value": 90
+    },
+    {
+      "t": 7.6,
+      "action": "press",
+      "x": 230,
+      "y": 430,
+      "pressure": 0.6
+    },
+    {
+      "t": 8.8,
+      "action": "move",
+      "x": 800,
+      "y": 430,
+      "pressure": 0.6
+    },
+    {
+      "t": 8.8,
+      "action": "release"
+    },
+    {
+      "t": 8.9,
+      "action": "checkpoint",
+      "name": "scraped_across"
+    },
+    {
+      "t": 8.9,
+      "action": "param",
+      "name": "angle",
+      "value": 45
+    },
+    {
+      "t": 8.9,
+      "action": "press",
+      "x": 320,
+      "y": 580,
+      "pressure": 0.9
+    },
+    {
+      "t": 9.7,
+      "action": "move",
+      "x": 620,
+      "y": 280,
+      "pressure": 0.9
+    },
+    {
+      "t": 9.7,
+      "action": "release"
+    },
+    {
+      "t": 11.2,
+      "action": "checkpoint",
+      "name": "settled"
+    }
+  ]
+}

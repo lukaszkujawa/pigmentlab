@@ -108,3 +108,56 @@ fn shaper_leaves_no_paint_on_bare_canvas() {
     let mass = engine.paint_mass();
     assert!(mass < 1.0, "a rigid shaper carries no paint, yet it left {mass:.1}");
 }
+
+fn squeeze_ring(engine: &mut Engine, start: f64, cx: f32, cy: f32, radius: f32, pigment: &str) -> f64 {
+    engine.select_brush("Paint tube");
+    engine.dip(by_name(pigment).unwrap());
+    let duration = 2.4;
+    for i in 0..=36 {
+        let angle = std::f32::consts::TAU * i as f32 / 36.0;
+        let phase = if i == 0 { PointerPhase::Down } else { PointerPhase::Move };
+        engine.pointer(sample(phase, cx + radius * angle.cos(), cy + radius * angle.sin(), 1.0, start + duration * i as f64 / 36.0));
+    }
+    engine.pointer(sample(PointerPhase::Up, cx + radius, cy, 0.0, start + duration));
+    engine.advance_exact(start + duration + 0.1);
+    start + duration + 0.1
+}
+
+#[test]
+fn tube_drawn_in_a_circle_leaves_an_even_ring() {
+    let mut engine = fresh_engine();
+    squeeze_ring(&mut engine, 0.0, 400.0, 380.0, 150.0, "cadmium_yellow");
+    let heights = engine.paint_heights();
+    let at = |x: f32, y: f32| heights[y.round() as usize * WIDTH as usize + x.round() as usize];
+    let crest: Vec<f32> = (0..72).map(|i| {
+        let angle = std::f32::consts::TAU * i as f32 / 72.0;
+        at(400.0 + 150.0 * angle.cos(), 380.0 + 150.0 * angle.sin())
+    }).collect();
+    let (lowest, highest) = crest.iter().fold((f32::MAX, f32::MIN), |(lo, hi), h| (lo.min(*h), hi.max(*h)));
+    assert!(lowest > highest * 0.7, "the ring crest should be even all the way round ({lowest:.1} to {highest:.1} px)");
+    let ring_width = (200..300).filter(|&x| at(x as f32, 380.0) > 0.2).count();
+    assert!((34..=46).contains(&ring_width), "ring should be about one nozzle diameter wide, got {ring_width} px");
+    assert!(at(400.0, 380.0) == 0.0 && at(400.0, 100.0) == 0.0, "inside and outside the ring must stay bare");
+}
+
+#[test]
+fn shaper_through_a_ring_leaves_a_thin_even_film_and_keeps_the_paint() {
+    let mut engine = fresh_engine();
+    let released = squeeze_ring(&mut engine, 0.0, 400.0, 380.0, 150.0, "cadmium_yellow");
+    let mass_before = engine.paint_mass();
+    engine.select_brush("Colour shaper");
+    engine.set_param("angle", 0.0);
+    engine.pointer(sample(PointerPhase::Down, 500.0, 150.0, 0.9, released));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 620.0, 0.9, released + 1.0));
+    engine.pointer(sample(PointerPhase::Up, 500.0, 620.0, 0.0, released + 1.0));
+    engine.advance_exact(released + 1.1);
+    let heights = engine.paint_heights();
+    let at = |x: usize, y: usize| heights[y * WIDTH as usize + x];
+    for x in (465..=535).step_by(5) {
+        let film = at(x, 560);
+        assert!((0.8..=1.6).contains(&film), "film behind the blade should be about one clearance thick, got {film:.2} px at x {x}");
+    }
+    assert!(at(450, 560) == 0.0 && at(550, 560) == 0.0, "no paint should appear beyond the blade's edges on bare canvas");
+    let drift = (engine.paint_mass() - mass_before).abs() / mass_before;
+    assert!(drift < 0.001, "scraping drifted mass by {:.3}%", drift * 100.0);
+}
