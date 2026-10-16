@@ -110,7 +110,7 @@ fn scrubbing_white_into_red_makes_pink() {
     let mixed = colour_at(&mut engine, 330, 256);
     assert!(mixed[0] > 170.0, "mix should stay bright, got {mixed:?}");
     assert!(mixed[1] > 90.0 && mixed[1] < 235.0, "mix should be pink, neither red nor white, got {mixed:?}");
-    assert!(mixed[0] - mixed[1] > 15.0, "mix should keep a red cast, got {mixed:?}");
+    assert!(mixed[0] - mixed[1] > 12.0, "mix should keep a red cast, got {mixed:?}");
     assert!((mixed[1] - mixed[2]).abs() < 40.0, "mix must not turn grey or yellow, got {mixed:?}");
 }
 

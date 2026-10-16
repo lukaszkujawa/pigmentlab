@@ -6,6 +6,7 @@ use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 const WORKGROUP_SIZE: u32 = 128;
 const CONTACT_HEIGHT: f32 = crate::units::cm(0.08);
 const FLOW_PER_MEDIUM: f32 = 1.0;
+pub const MEDIUM_THINNING: f32 = 0.6;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -19,14 +20,24 @@ struct DepositUniform {
     dt: f32,
     brush_travel: f32,
     rigidity: f32,
-    _padding: [f32; 3],
+    wet_floor_keep: f32,
+    contact: f32,
+    lifting: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct StrokeState {
+    pub travel: f32,
+    pub pressure: f32,
+    pub contact: f32,
+    pub lifting: bool,
 }
 
 pub struct Deposit {
     uniform: wgpu::Buffer,
     base: DepositUniform,
     medium: f32,
-    previous_curves: wgpu::Buffer,
+    previous_chain: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::ComputePipeline,
     replenish: wgpu::ComputePipeline,
@@ -55,19 +66,20 @@ impl Deposit {
             dt,
             brush_travel: 0.0,
             rigidity: if preset.is_rigid() { 1.0 } else { 0.0 },
-            _padding: [0.0; 3],
+            wet_floor_keep: 1.0,
+            contact: 1.0,
+            lifting: 0,
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
         let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
-        let pickup_demand = gpu.storage_buffer("pickup demand", (columns + 1) * 4);
+        let pickup_demand = gpu.storage_buffer("pickup demand", (2 * columns + 1) * 4);
         let pickup_grant = gpu.storage_buffer("pickup grant", columns * 32);
         let stir_depth = gpu.storage_buffer("stir depth", columns * 4);
         let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
         let displacement = gpu.storage_buffer("displacement marks", columns * 20);
-        let previous_curves = gpu.storage_buffer("deposit previous curves", brush.curves.size());
+        let previous_chain = gpu.storage_buffer("deposit previous chain", brush.chain.size());
         let coarse_marks = gpu.storage_buffer("coarse displacement marks", u64::from(WINDOW_SIZE.x.div_ceil(16) * WINDOW_SIZE.y.div_ceil(16)) * 4);
-        let column_state = gpu.storage_buffer("column snapshot", columns * 16);
         let compute = wgpu::ShaderStages::COMPUTE;
         let read_only = wgpu::BufferBindingType::Storage { read_only: true };
         let read_write = wgpu::BufferBindingType::Storage { read_only: false };
@@ -99,12 +111,12 @@ impl Deposit {
             layout: &layout,
             entries: &[
                 buffer_binding(0, &uniform),
-                buffer_binding(1, &brush.curves),
+                buffer_binding(1, &brush.chain),
                 buffer_binding(2, &brush.sample_load),
                 buffer_binding(3, &brush.sample_absorption),
                 buffer_binding(4, &brush.sample_scattering),
                 buffer_binding(5, &window.volume),
-                buffer_binding(6, &previous_curves),
+                buffer_binding(6, &previous_chain),
                 buffer_binding(7, &window.uniform),
                 buffer_binding(8, stroke_base),
                 buffer_binding(9, &film),
@@ -113,7 +125,7 @@ impl Deposit {
                 buffer_binding(12, &stir_depth),
                 buffer_binding(13, &sample_request),
                 buffer_binding(14, &displacement),
-                buffer_binding(15, &column_state),
+                buffer_binding(15, &window.columns),
                 buffer_binding(16, &coarse_marks),
                 buffer_binding(17, &canvas.ground),
             ],
@@ -145,7 +157,7 @@ impl Deposit {
             uniform,
             base,
             medium: 0.0,
-            previous_curves,
+            previous_chain,
             bind_group,
             pipeline: compute_pipeline("step"),
             replenish: compute_pipeline("replenish"),
@@ -163,9 +175,16 @@ impl Deposit {
         self.medium = medium.clamp(0.0, 1.0);
     }
 
-    pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, brush_travel: f32) {
+    pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, stroke: StrokeState) {
         let flow = 1.0 + FLOW_PER_MEDIUM * self.medium;
-        let uniform = DepositUniform { deposit_rate: self.base.deposit_rate * flow, brush_travel, ..self.base };
+        let uniform = DepositUniform {
+            deposit_rate: self.base.deposit_rate * flow,
+            brush_travel: stroke.travel,
+            wet_floor_keep: brush.preset().wet_floor_keep(stroke.pressure),
+            contact: stroke.contact,
+            lifting: u32::from(stroke.lifting),
+            ..self.base
+        };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("deposit"),
@@ -187,6 +206,6 @@ impl Deposit {
         pass.set_pipeline(&self.replenish);
         pass.dispatch_workgroups(self.bristle_count.div_ceil(64), 1, 1);
         drop(pass);
-        encoder.copy_buffer_to_buffer(&brush.curves, 0, &self.previous_curves, 0, brush.curves.size());
+        encoder.copy_buffer_to_buffer(&brush.chain, 0, &self.previous_chain, 0, brush.chain.size());
     }
 }

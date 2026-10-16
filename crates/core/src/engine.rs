@@ -1,9 +1,9 @@
-use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, PRESETS, preset_by_name};
+use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, PRESETS, Touch, preset_by_name};
 use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::{Gpu, read_buffer, read_rgba8};
 use crate::history::History;
-use crate::input::{PointerSample, PointerState, PointerTrack};
-use crate::paint::{ActiveWindow, Deposit, Levelling, NOZZLE_RADIUS, Tube, WetBounds};
+use crate::input::{PointerSample, PointerTrack};
+use crate::paint::{ActiveWindow, Deposit, Levelling, NOZZLE_RADIUS, StrokeState, Tube, WetBounds};
 use crate::pigment::{Coefficients, Pigment};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::{IVec2, Quat, Vec2, Vec3, Vec4};
@@ -52,13 +52,12 @@ pub struct Engine {
     pointer: PointerTrack,
     pose: BrushPose,
     position_at_last_deposit: Vec3,
-    pressure: f32,
+    touch: Touch,
     pressed: bool,
     levelling_active_until: f64,
     show_bristles: bool,
     time: f64,
     substeps: u64,
-    tuft_centre: Vec2,
     levelling_enabled: bool,
     wet_bounds: Option<WetBounds>,
     stale_heights: Option<WetBounds>,
@@ -130,13 +129,12 @@ impl Engine {
             pointer: PointerTrack::default(),
             pose: BrushPose::upright(lifted),
             position_at_last_deposit: lifted,
-            pressure: 0.0,
+            touch: Touch::default(),
             pressed: false,
             levelling_active_until: 0.0,
             show_bristles: false,
             time: 0.0,
             substeps: 0,
-            tuft_centre: Vec2::ZERO,
             levelling_enabled: true,
             wet_bounds: None,
             stale_heights: None,
@@ -173,6 +171,10 @@ impl Engine {
     fn snapshot(&mut self, encoder: &mut wgpu::CommandEncoder) {
         self.history.push(encoder, &self.canvas.paint);
         self.dry_history.push(encoder, &self.canvas.dry);
+    }
+
+    pub fn gpu(&self) -> &Gpu {
+        &self.gpu
     }
 
     pub fn brush(&self) -> &Brush {
@@ -378,14 +380,13 @@ impl Engine {
         for _ in 0..steps {
             self.time += dt;
             if let Some(state) = self.pointer.state_at(self.time) {
-                self.pose = self.pose_for(state);
-                self.pressure = if state.pressed { state.pressure.clamp(0.0, 1.0) } else { 0.0 };
+                self.touch.update(&state, SIMULATION_DT);
+                self.pose = self.pose_for();
                 self.pressed = state.pressed;
-                if state.pressed {
+                if self.touch.engaged() {
                     self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(self.paint.medium.clamp(0.0, 1.0));
                 }
                 if state.fresh_press {
-                    self.tuft_centre = self.handle_position();
                     self.position_at_last_deposit = self.pose.position;
                     self.brush.teleport(&self.gpu, &self.pose);
                     let mut encoder = self.encoder("stroke snapshot");
@@ -396,7 +397,7 @@ impl Engine {
                     encoder.copy_buffer_to_buffer(&self.height_map.tuft_base, 0, &self.stroke_base, 0, self.stroke_base.size());
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
-                self.needs_render |= state.pressed || self.show_bristles;
+                self.needs_render |= self.touch.engaged() || self.show_bristles;
             }
             let mut encoder = self
                 .gpu
@@ -404,30 +405,31 @@ impl Engine {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("substep") });
             let preset = *self.brush.preset();
             let (focus, footprint_radius) = match self.tool {
-                Tool::Brush => (self.tow_tuft_centre(preset.bend_reach()), preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK),
+                Tool::Brush => (self.brush.tuft_centre(), preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK),
                 Tool::Tube => (self.handle_position(), NOZZLE_RADIUS + FOOTPRINT_SLACK),
             };
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
-            if self.pressed {
+            if self.touch.engaged() {
                 let touched = WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
                 self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched)));
                 self.mark_stale(WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
             }
             match self.tool {
                 Tool::Brush => {
-                    self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, self.canvas.tooth(), canvas);
-                    if self.pressed && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
+                    self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.touch.pressure, self.canvas.tooth(), canvas);
+                    if self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
                         let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
-                        self.deposit.encode(&self.gpu, &mut encoder, &self.brush, travel);
+                        let stroke = StrokeState { travel, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
+                        self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke);
                         self.position_at_last_deposit = self.pose.position;
                     }
                 }
                 Tool::Tube => {
                     if self.pressed {
                         let from = self.position_at_last_deposit.truncate();
-                        self.tube.encode_squeeze(&self.gpu, &mut encoder, [from, self.handle_position()], self.pressure, self.paint_on_tool, self.paint.medium.clamp(0.0, 1.0));
+                        self.tube.encode_squeeze(&self.gpu, &mut encoder, [from, self.handle_position()], self.touch.pressure, self.paint_on_tool, self.paint.medium.clamp(0.0, 1.0));
                     }
                     self.position_at_last_deposit = self.pose.position;
                 }
@@ -474,25 +476,27 @@ impl Engine {
         Vec2::new(self.pose.position.x, self.pose.position.y)
     }
 
-    fn tow_tuft_centre(&mut self, reach: f32) -> Vec2 {
-        let offset = self.handle_position() - self.tuft_centre;
-        if offset.length() > reach {
-            self.tuft_centre = self.handle_position() - offset.normalize() * reach;
-        }
-        self.tuft_centre
+    fn handle_heights(&self) -> (f32, f32) {
+        let length = self.brush.preset().length;
+        (length * LIFTED_HEIGHT, length * (1.0 - MAX_COMPRESSION * self.touch.pressure))
     }
 
-    fn pose_for(&self, state: PointerState) -> BrushPose {
-        let length = self.brush.preset().length;
-        let along_handle = if state.pressed {
-            length * (1.0 - MAX_COMPRESSION * state.pressure.clamp(0.0, 1.0))
-        } else {
-            length * LIFTED_HEIGHT
-        };
-        let handle = handle_direction(state.tilt);
-        let spin = Quat::from_rotation_z((self.brush_angle_degrees + state.rotation).to_radians());
+    fn contact(&self) -> f32 {
+        let depth = self.touch.depth();
+        if depth >= 1.0 {
+            return 1.0;
+        }
+        let (lifted, pressed) = self.handle_heights();
+        let reaching = (lifted - self.brush.preset().length) / (lifted - pressed);
+        ((depth - reaching) / (1.0 - reaching).max(1e-3)).clamp(0.0, 1.0)
+    }
+
+    fn pose_for(&self) -> BrushPose {
+        let (lifted, pressed) = self.handle_heights();
+        let handle = handle_direction(self.touch.tilt);
+        let spin = Quat::from_rotation_z((self.brush_angle_degrees + self.touch.rotation).to_radians());
         BrushPose {
-            position: Vec3::new(state.x, state.y, 0.0) + handle * along_handle,
+            position: self.touch.position.extend(0.0) + handle * (lifted + (pressed - lifted) * self.touch.depth()),
             orientation: Quat::from_rotation_arc(Vec3::Z, handle) * spin,
         }
     }

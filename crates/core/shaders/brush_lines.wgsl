@@ -5,14 +5,17 @@ struct BrushUniform {
     rotation_y: vec4<f32>,
     rotation_z: vec4<f32>,
     translation: vec4<f32>,
+    previous_rotation_x: vec4<f32>,
+    previous_rotation_y: vec4<f32>,
+    previous_rotation_z: vec4<f32>,
+    previous_translation: vec4<f32>,
+    tuft: vec4<f32>,
     friction: f32,
-    recovery: f32,
-    splay: f32,
+    stiffness: f32,
+    inertia: f32,
     bristle_count: u32,
     canvas_width: f32,
     canvas_height: f32,
-    sink: f32,
-    ferrule_extent: f32,
 };
 
 @group(0) @binding(0) var<uniform> brush: BrushUniform;

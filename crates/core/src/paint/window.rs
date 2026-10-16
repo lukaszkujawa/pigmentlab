@@ -24,6 +24,7 @@ pub struct ActiveWindow {
     canvas_size: Vec2,
     pub uniform: wgpu::Buffer,
     pub volume: wgpu::Buffer,
+    pub columns: wgpu::Buffer,
     previous: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     bake: wgpu::ComputePipeline,
@@ -36,6 +37,7 @@ impl ActiveWindow {
         let cells = u64::from(WINDOW_SIZE.x) * u64::from(WINDOW_SIZE.y) * u64::from(WINDOW_SIZE.z);
         let volume = gpu.storage_buffer("active window volume", cells * PAINT_CHANNELS * 4);
         let previous = gpu.storage_buffer("active window previous volume", cells * PAINT_CHANNELS * 4);
+        let columns = gpu.storage_buffer("active window column snapshot", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * 16);
         let uniform = gpu.uniform_buffer("active window uniform", std::mem::size_of::<WindowUniform>() as u64);
         let compute = wgpu::ShaderStages::COMPUTE;
         let read_write = wgpu::BufferBindingType::Storage { read_only: false };
@@ -84,6 +86,7 @@ impl ActiveWindow {
             canvas_size,
             uniform,
             volume,
+            columns,
             previous,
             bind_group,
             bake: pipeline("bake"),

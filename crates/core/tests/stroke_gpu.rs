@@ -114,3 +114,40 @@ fn a_light_pass_smooths_ridges_while_a_heavy_pass_reshapes_the_paint() {
     assert!(after_light < before, "a light pass should plane the ridges down: {before:.0} -> {after_light:.0}");
     assert!(moved_heavy > moved_light * 2.0, "a heavy pass should move far more paint than a light one: {moved_heavy:.0} vs {moved_light:.0}");
 }
+
+#[test]
+fn a_stroke_ends_in_a_narrowing_tail() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 200.0, 256.0, 0.8, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 600.0, 256.0, 0.8, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 600.0, 256.0, 0.0, 1.0));
+    engine.advance_exact(1.3);
+    let heights = engine.paint_heights();
+    let width_at = |x: usize| (156..356).filter(|y| heights[y * WIDTH + x] > 0.05).count();
+    let body = width_at(400);
+    let tail: Vec<usize> = (560..680).step_by(20).map(width_at).collect();
+    assert!(tail.iter().any(|&w| w > 0 && w < body / 2), "the stroke should end in a narrowing tail, body {body} px, tail {tail:?}");
+    assert!(tail.windows(2).all(|pair| pair[1] <= pair[0] + 2), "the tail should narrow towards its end: {tail:?}");
+}
+
+#[test]
+fn releasing_a_still_brush_leaves_the_paint_alone() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Round large");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 200.0, 256.0, 0.9, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 600.0, 256.0, 0.9, 0.8));
+    engine.pointer(sample(PointerPhase::Move, 600.0, 256.0, 0.9, 1.2));
+    engine.pointer(sample(PointerPhase::Up, 600.0, 256.0, 0.0, 1.2));
+    engine.advance_exact(1.19);
+    let held = engine.paint_heights();
+    engine.advance_exact(1.6);
+    let released = engine.paint_heights();
+    let total: f32 = held.iter().sum();
+    let changed: f32 = held.iter().zip(&released).map(|(a, b)| (a - b).abs()).sum();
+    assert!(changed < total * 0.005, "lifting a still brush reshaped {:.1}% of the paint", changed / total * 100.0);
+}

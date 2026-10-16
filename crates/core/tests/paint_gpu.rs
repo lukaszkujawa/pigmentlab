@@ -282,3 +282,21 @@ fn levelling_keeps_pigment_consistent_across_the_window_edge() {
     }
     assert!(checked > 20_000, "the bar should cover plenty of pixels, checked {checked}");
 }
+
+fn dab_mass(pressure: f32) -> f32 {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: 512, height: 384 }, 3);
+    engine.set_levelling_enabled(false);
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 250.0, 200.0, pressure, 0.0));
+    engine.pointer(sample(PointerPhase::Up, 250.0, 200.0, 0.0, 0.4));
+    engine.advance_exact(0.6);
+    engine.paint_mass()
+}
+
+#[test]
+fn pressing_harder_leaves_a_heavier_dab() {
+    let light = dab_mass(0.2);
+    let heavy = dab_mass(1.0);
+    assert!(light > 0.0, "a light dab should still leave paint");
+    assert!(heavy > light * 2.0, "a heavy dab should leave far more paint ({light:.0} light vs {heavy:.0} heavy)");
+}

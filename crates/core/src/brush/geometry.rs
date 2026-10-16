@@ -3,15 +3,19 @@ use crate::rng::SplitMix64;
 use glam::{Vec2, Vec3, Vec4};
 
 pub const VERTICES_PER_BRISTLE: u32 = 10;
-const LENGTH_JITTER: f32 = 0.04;
+const LENGTH_JITTER: f32 = 0.02;
 const DIRECTION_JITTER: f32 = 0.02;
 const BRISTLES_PER_CLUMP: u32 = 7;
 const CLUMP_SPREAD: f32 = 0.35;
-const TIP_RADIUS_FRACTION: f32 = 0.3;
+const TIP_RADIUS_FRACTION: f32 = 0.2;
+const BELLY: f32 = 0.35;
+const MAX_LEAN: f32 = 0.5;
+const CURL: f32 = 0.04;
+const CURL_RANDOMNESS: f32 = 0.35;
 
 pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
     let mut positions = Vec::with_capacity((preset.bristle_count * VERTICES_PER_BRISTLE) as usize);
-    let clump_count = preset.bristle_count.div_ceil(BRISTLES_PER_CLUMP).max(1);
+    let clump_count = clump_count(preset);
     let clumps: Vec<Vec2> = (0..clump_count).map(|index| root_position(preset, index, clump_count, rng)).collect();
     let clump_radius = clump_extent(preset, clump_count);
     for index in 0..preset.bristle_count {
@@ -21,15 +25,46 @@ pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
             _ => clamp_to_ferrule(preset, clump + jitter(rng, clump_radius)),
         };
         let length = bristle_length(preset, root) * (1.0 + rng.range(-LENGTH_JITTER, LENGTH_JITTER));
-        let direction = rest_direction(preset, root, rng);
+        let wobble = jitter(rng, DIRECTION_JITTER) * preset.length;
+        let curl = curl_direction(preset, root, jitter(rng, 1.0)) * CURL * preset.length;
         let segment = length / (VERTICES_PER_BRISTLE - 2) as f32;
-        positions.push(Vec3::new(root.x, root.y, segment).extend(0.0));
-        for vertex in 1..VERTICES_PER_BRISTLE {
-            let along = segment * (vertex - 1) as f32;
-            positions.push((root.extend(0.0) + direction * along).extend(0.0));
+        positions.push(Vec4::new(root.x, root.y, segment, rng.unit()));
+        let mut point = root.extend(0.0);
+        positions.push(point.extend(0.0));
+        for vertex in 2..VERTICES_PER_BRISTLE {
+            let along = (vertex - 1) as f32 / (VERTICES_PER_BRISTLE - 2) as f32;
+            let across = profile(preset, root, along) + wobble * along + curl * (std::f32::consts::PI * along).sin();
+            let step = (across - point.truncate()).clamp_length_max(segment * MAX_LEAN);
+            let drop = (segment * segment - step.length_squared()).sqrt();
+            point = Vec3::new(point.x + step.x, point.y + step.y, point.z - drop);
+            positions.push(point.extend(0.0));
         }
     }
     positions
+}
+
+fn curl_direction(preset: &BrushPreset, root: Vec2, random: Vec2) -> Vec2 {
+    let half = Vec2::new(preset.width, preset.thickness) * 0.5;
+    let outward = match preset.shape {
+        BrushShape::Round => root / half.x,
+        BrushShape::Flat | BrushShape::Filbert => Vec2::new(0.0, root.y / half.y),
+        BrushShape::Shaper => return Vec2::ZERO,
+    };
+    (outward + random * CURL_RANDOMNESS).normalize_or_zero()
+}
+
+pub fn clump_count(preset: &BrushPreset) -> u32 {
+    preset.bristle_count.div_ceil(BRISTLES_PER_CLUMP).max(1)
+}
+
+fn profile(preset: &BrushPreset, root: Vec2, along: f32) -> Vec2 {
+    let belly = 1.0 + BELLY * preset.splay * (std::f32::consts::PI * along.powf(0.8)).sin();
+    let taper = |fraction: f32| 1.0 + (fraction - 1.0) * along * along;
+    match preset.shape {
+        BrushShape::Round => root * belly * taper(TIP_RADIUS_FRACTION),
+        BrushShape::Flat | BrushShape::Filbert => Vec2::new(root.x, root.y * belly * taper(TIP_RADIUS_FRACTION)),
+        BrushShape::Shaper => root,
+    }
 }
 
 fn root_position(preset: &BrushPreset, index: u32, count: u32, rng: &mut SplitMix64) -> Vec2 {
@@ -85,20 +120,6 @@ fn bristle_length(preset: &BrushPreset, root: Vec2) -> f32 {
         }
         BrushShape::Round | BrushShape::Flat | BrushShape::Shaper => preset.length,
     }
-}
-
-fn rest_tip(preset: &BrushPreset, root: Vec2) -> Vec2 {
-    match preset.shape {
-        BrushShape::Round => root * TIP_RADIUS_FRACTION,
-        BrushShape::Flat | BrushShape::Filbert => Vec2::new(root.x, root.y * TIP_RADIUS_FRACTION),
-        BrushShape::Shaper => root,
-    }
-}
-
-fn rest_direction(preset: &BrushPreset, root: Vec2, rng: &mut SplitMix64) -> Vec3 {
-    let wobble = jitter(rng, DIRECTION_JITTER) * preset.length;
-    let towards_tip = rest_tip(preset, root) - root + wobble;
-    Vec3::new(towards_tip.x, towards_tip.y, -preset.length).normalize()
 }
 
 #[cfg(test)]

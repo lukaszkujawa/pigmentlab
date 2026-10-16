@@ -55,13 +55,14 @@ fn blur(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var dy = -1; dy <= 1; dy++) {
         for (var dx = -1; dx <= 1; dx++) {
             let index = clamped_index(texel + vec2<i32>(dx, dy));
-            surface_total += surface[index];
-            paint_total += heights[index];
+            let weight = f32((2 - abs(dx)) * (2 - abs(dy)));
+            surface_total += surface[index] * weight;
+            paint_total += heights[index] * weight;
         }
     }
     let index = u32(texel.y) * window.canvas_width + u32(texel.x);
-    smooth_surface[index] = surface_total / 9.0;
-    smooth_paint[index] = paint_total / 9.0;
+    smooth_surface[index] = surface_total / 16.0;
+    smooth_paint[index] = paint_total / 16.0;
 }
 
 @compute @workgroup_size(16, 16)

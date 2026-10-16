@@ -1,8 +1,9 @@
 const MAX_SEGMENT_STEPS: u32 = 16u;
 const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
-const FILM_MAX_RADIUS: f32 = 0.11 * PIXELS_PER_CM;
+const FILM_MAX_RADIUS: f32 = 0.035 * PIXELS_PER_CM;
 const FILM_MIN_RADIUS: f32 = 0.015 * PIXELS_PER_CM;
-const WICKING: f32 = 0.3;
+const VALLEY_SOFTNESS: f32 = 0.5;
+const WICKING_PER_SECOND: f32 = 0.5;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 1;
 const PUSH_DISTANCE: f32 = 2.5;
@@ -16,10 +17,9 @@ const MIN_DISPLACING_SPEED: f32 = 48.0;
 const DRAG_RADIUS: i32 = 2;
 const DRAG_RATE_PER_SECOND: f32 = 24.0;
 const WIPE_RATE_PER_SECOND: f32 = 60.0;
-const CONTACT_RATE: f32 = 0.3;
+const PICKUP_FILM: f32 = 0.15;
 const SATURATED_BLEED: f32 = 0.5;
 const STIR_RATE_PER_SECOND: f32 = 30.0;
-const LANDING_SUBSTEPS: f32 = 24.0;
 const DISPLACEMENT_SLOTS: u32 = 5u;
 const COARSE_CELL: u32 = 16u;
 
@@ -33,14 +33,14 @@ struct DepositUniform {
     dt: f32,
     brush_travel: f32,
     rigidity: f32,
-    padding_0: f32,
-    padding_1: f32,
-    padding_2: f32,
+    wet_floor_keep: f32,
+    contact: f32,
+    lifting: u32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
-@group(0) @binding(1) var<storage, read> curves: array<vec4<f32>>;
-@group(0) @binding(6) var<storage, read> previous_curves: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> chain: array<vec4<f32>>;
+@group(0) @binding(6) var<storage, read> previous_chain: array<vec4<f32>>;
 @group(0) @binding(2) var<storage, read_write> sample_load: array<f32>;
 @group(0) @binding(3) var<storage, read_write> sample_absorption: array<vec4<f32>>;
 @group(0) @binding(4) var<storage, read_write> sample_scattering: array<vec4<f32>>;
@@ -122,10 +122,10 @@ fn film_kernel(distance_to_centre: f32, radius: f32) -> f32 {
     return falloff * falloff;
 }
 
-fn surface_within_reach(pixel: vec2<i32>, reach_floor: f32) -> bool {
-    if (!window_contains(pixel)) { return false; }
+fn surface_reach(pixel: vec2<i32>, reach_floor: f32) -> f32 {
+    if (!window_contains(pixel)) { return 0.0; }
     let state = column_state[column_index(vec2<u32>(pixel - window.origin))];
-    return state.x + state.w >= reach_floor;
+    return smoothstep(reach_floor - VALLEY_SOFTNESS, reach_floor, state.x + state.w);
 }
 
 fn splat_film(centre: vec2<f32>, radius: f32, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32, reach_floor: f32) {
@@ -135,16 +135,14 @@ fn splat_film(centre: vec2<f32>, radius: f32, amount: f32, absorption: vec3<f32>
     var covered = 0.0;
     for (var dy = -reach; dy <= reach; dy++) {
         for (var dx = -reach; dx <= reach; dx++) {
-            if (!surface_within_reach(base_pixel + vec2<i32>(dx, dy), reach_floor)) { continue; }
-            covered += film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius);
+            covered += film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius) * surface_reach(base_pixel + vec2<i32>(dx, dy), reach_floor);
         }
     }
     if (covered <= 0.0) { return; }
     for (var dy = -reach; dy <= reach; dy++) {
         for (var dx = -reach; dx <= reach; dx++) {
             let pixel = base_pixel + vec2<i32>(dx, dy);
-            if (!surface_within_reach(pixel, reach_floor)) { continue; }
-            let weight = film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius);
+            let weight = film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius) * surface_reach(pixel, reach_floor);
             if (weight <= 0.0) { continue; }
             let share = amount * weight / covered;
             let local = vec2<u32>(pixel - window.origin);
@@ -185,13 +183,20 @@ fn load_vec3(cell: u32, offset: u32) -> vec3<f32> {
     ) / PAINT_SCALE;
 }
 
-fn control(previous: bool, index: u32) -> vec3<f32> {
-    return select(curves[index].xyz, previous_curves[index].xyz, previous);
+fn chain_vertex(previous: bool, bristle: u32, vertex: i32) -> vec3<f32> {
+    let index = bristle * BRISTLE_VERTICES + u32(clamp(vertex, 1, i32(BRISTLE_VERTICES) - 1));
+    return select(chain[index].xyz, previous_chain[index].xyz, previous);
 }
 
 fn curve_point(previous: bool, bristle: u32, t: f32) -> vec3<f32> {
-    let base = bristle * 4u;
-    return hermite(control(previous, base), control(previous, base + 1u), control(previous, base + 2u), control(previous, base + 3u), t);
+    let along = t * f32(BRISTLE_VERTICES - 2u);
+    let span = min(i32(floor(along)), i32(BRISTLE_VERTICES) - 3);
+    let f = along - f32(span);
+    let before = chain_vertex(previous, bristle, span);
+    let p0 = chain_vertex(previous, bristle, span + 1);
+    let p1 = chain_vertex(previous, bristle, span + 2);
+    let after = chain_vertex(previous, bristle, span + 3);
+    return hermite(p0, (p1 - before) * 0.5, p1, (after - p0) * 0.5, f);
 }
 
 fn column_height(local: vec2<u32>) -> f32 {
@@ -224,19 +229,23 @@ fn snapshot_height(local: vec2<u32>) -> f32 {
 fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
     var height = 0;
+    var medium = 0;
     var top = -1.0;
     for (var z = 0u; z < window.depth; z++) {
         let cell = window_cell(vec3<u32>(id.xy, z));
         let density = atomicLoad(&paint[cell]);
         if (density <= 0) { continue; }
         height += density;
+        medium += atomicLoad(&paint[cell + 7u]);
         top = f32(z);
     }
     let column = column_index(id.xy);
     let ground_here = ground_at(vec2<i32>(id.xy) + window.origin);
-    column_state[column] = vec4<f32>(f32(height) / PAINT_SCALE, top, 0.0, ground_here);
+    let medium_fraction = select(0.0, clamp(f32(medium) / f32(height), 0.0, 1.0), height > 0);
+    column_state[column] = vec4<f32>(f32(height) / PAINT_SCALE, top, medium_fraction, ground_here);
     atomicMax(&pickup_demand[max_surface_slot()], fixed(f32(height) / PAINT_SCALE + ground_here));
     atomicStore(&pickup_demand[column], 0);
+    atomicStore(&pickup_demand[hair_floor_slot(column)], 0);
     atomicStore(&stir_depth[column], 0);
     for (var channel = 0u; channel < CHANNELS; channel++) { atomicStore(&film[column * CHANNELS + channel], 0); }
     for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
@@ -245,6 +254,10 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
 
 fn max_surface_slot() -> u32 {
     return window.width * window.height;
+}
+
+fn hair_floor_slot(column: u32) -> u32 {
+    return window.width * window.height + 1u + column;
 }
 
 fn topmost_filled_cell(local: vec2<u32>) -> i32 {
@@ -261,6 +274,10 @@ fn ground_at(pixel: vec2<i32>) -> f32 {
 
 fn base_height(pixel: vec2<i32>) -> f32 {
     return stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
+}
+
+fn above_floor(point: vec3<f32>, pixel: vec2<i32>) -> vec3<f32> {
+    return vec3<f32>(point.xy, max(point.z, ground_at(pixel) + base_height(pixel) * deposit.wet_floor_keep));
 }
 
 fn base_surface(pixel: vec2<i32>) -> f32 {
@@ -308,7 +325,7 @@ fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, 
 
 fn release(point_xy: vec2<f32>, reach_floor: f32, deposit_share: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
-    let given = min(deposit_share * fill, *load);
+    let given = min(deposit_share * pow(fill, 1.5), *load);
     if (given <= 0.0) { return; }
     *load -= given;
     splat_film(point_xy, film_radius(fill), given, absorption, scattering, medium, reach_floor);
@@ -318,8 +335,6 @@ fn release(point_xy: vec2<f32>, reach_floor: f32, deposit_share: f32, load: ptr<
 fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let sample = id.x;
     if (sample >= deposit.sample_count) { return; }
-    let bristle = sample / deposit.samples_per_bristle;
-    let landing = clamp(1.0 - curves[bristle * 4u].w / LANDING_SUBSTEPS, 0.0, 1.0);
     let initial_load = sample_load[sample];
     let segment = segment_of(sample, initial_load);
     let max_surface = f32(atomicLoad(&pickup_demand[max_surface_slot()])) / PAINT_SCALE;
@@ -342,14 +357,15 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
     let direction = select(vec2<f32>(0.0), (segment.end.xy - segment.start.xy) / max(travelled, 1e-6), travelled > 1e-3);
     for (var i = 1u; i <= segment.steps; i++) {
-        let point = mix(segment.start, segment.end, f32(i) / f32(segment.steps));
-        let pixel = vec2<i32>(floor(point.xy));
+        let pixel = vec2<i32>(floor(mix(segment.start.xy, segment.end.xy, f32(i) / f32(segment.steps))));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
+        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel);
         let local = vec2<u32>(pixel - window.origin);
         let state = column_state[column_index(local)];
         let wanted = pickup_wanted(segment, point, pixel, state, &remaining_capacity);
         if (wanted > 0.0) {
             atomicAdd(&pickup_demand[column_index(local)], fixed(wanted));
+            atomicMax(&pickup_demand[hair_floor_slot(column_index(local))], LIMIT_ENCODING - fixed(point.z));
             requested += wanted;
         }
         if (state.x > 0.0) {
@@ -363,7 +379,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
             mark_displacement(local, height, point.z, film, direction, DRAG_RATE_PER_SECOND * deposit.dt * segment.motion);
         }
         if (height > point.z + film) { continue; }
-        let deposit_share = select(0.0, deposit.deposit_rate * share * max(segment.motion, CONTACT_RATE * landing) * f32(stride), depositing);
+        let lift_carry = select(1.0, brush_motion, deposit.lifting != 0u);
+        let deposit_share = select(0.0, deposit.deposit_rate * share * segment.motion * deposit.contact * lift_carry * f32(stride), depositing);
         release(point.xy, point.z - film, deposit_share, &load, absorption, scattering, medium);
     }
 
@@ -415,7 +432,11 @@ fn grant_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     let cell = window_cell(vec3<u32>(id.xy, u32(top)));
     let available = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
     if (available <= 0.0) { return; }
-    let granted = min(demand, available);
+    let state = column_state[column];
+    let lowest_hair = f32(LIMIT_ENCODING - atomicLoad(&pickup_demand[hair_floor_slot(column)])) / PAINT_SCALE;
+    let above_hairs = max(state.x + state.w - lowest_hair, 0.0) + PICKUP_FILM;
+    let granted = min(min(demand, available), above_hairs);
+    if (granted <= 0.0) { return; }
     let absorption = load_vec3(cell, 1u) / available;
     let scattering = load_vec3(cell, 4u) / available;
     let medium = f32(atomicLoad(&paint[cell + 7u])) / PAINT_SCALE / available;
@@ -484,7 +505,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     let paint_here = column_height(id.xy);
     let height = paint_here + ground_at(pixel);
     let hair_level = f32(LIMIT_ENCODING - level_code) / PAINT_SCALE;
-    let drag = f32(drag_code) / PAINT_SCALE;
+    let drag = f32(drag_code) / PAINT_SCALE * (1.0 - MEDIUM_THINNING * column_state[column_index(id.xy)].z);
     var excess = ridge_amount(height, f32(LIMIT_ENCODING - limit_code) / PAINT_SCALE, drag);
     if (groove_code != 0) {
         excess = groove_amount(height, hair_level, f32(LIMIT_ENCODING - groove_code) / PAINT_SCALE, base_surface(pixel), drag);
@@ -543,9 +564,9 @@ fn apply_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     var medium = own_medium * load;
     let returned_share = returned_portion(segment);
     for (var i = 1u; i <= segment.steps; i++) {
-        let point = mix(segment.start, segment.end, f32(i) / f32(segment.steps));
-        let pixel = vec2<i32>(floor(point.xy));
+        let pixel = vec2<i32>(floor(mix(segment.start.xy, segment.end.xy, f32(i) / f32(segment.steps))));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
+        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel);
         let column = column_index(vec2<u32>(pixel - window.origin));
         let wanted = pickup_wanted(segment, point, pixel, column_state[column], &remaining_capacity);
         if (wanted <= 0.0) { continue; }
@@ -575,30 +596,35 @@ fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
     let bristle = id.x;
     if (bristle * deposit.samples_per_bristle >= deposit.sample_count) { return; }
     let base = bristle * deposit.samples_per_bristle;
-    var previous_load = sample_load[base];
-    var previous_absorption = sample_absorption[base];
-    var previous_scattering = sample_scattering[base];
-    for (var i = 1u; i < deposit.samples_per_bristle; i++) {
+    var total = 0.0;
+    for (var i = 0u; i < deposit.samples_per_bristle; i++) { total += sample_load[base + i]; }
+    let mean = total / f32(deposit.samples_per_bristle);
+    let rate = min(WICKING_PER_SECOND * deposit.dt, 1.0);
+    var given = 0.0;
+    var given_absorption = vec4<f32>(0.0);
+    var given_scattering = vec4<f32>(0.0);
+    for (var i = 0u; i < deposit.samples_per_bristle; i++) {
+        let surplus = (sample_load[base + i] - mean) * rate;
+        if (surplus <= 0.0) { continue; }
+        given += surplus;
+        given_absorption += sample_absorption[base + i] * surplus;
+        given_scattering += sample_scattering[base + i] * surplus;
+    }
+    if (given <= 0.0) { return; }
+    given_absorption /= given;
+    given_scattering /= given;
+    for (var i = 0u; i < deposit.samples_per_bristle; i++) {
         let here = base + i;
         let load = sample_load[here];
-        let transfer = (previous_load - load) * WICKING * 0.5;
-        if (transfer > 0.0) {
-            let total = load + transfer;
-            sample_absorption[here] = (sample_absorption[here] * load + previous_absorption * transfer) / max(total, 1e-6);
-            sample_scattering[here] = (sample_scattering[here] * load + previous_scattering * transfer) / max(total, 1e-6);
-            sample_load[here] = total;
-            sample_load[here - 1u] = previous_load - transfer;
-        } else if (transfer < 0.0) {
-            let gained = -transfer;
-            let total = previous_load + gained;
-            sample_absorption[here - 1u] = (previous_absorption * previous_load + sample_absorption[here] * gained) / max(total, 1e-6);
-            sample_scattering[here - 1u] = (previous_scattering * previous_load + sample_scattering[here] * gained) / max(total, 1e-6);
-            sample_load[here - 1u] = total;
-            sample_load[here] = load - gained;
+        let received = (mean - load) * rate;
+        if (received <= 0.0) {
+            sample_load[here] = load + received;
+            continue;
         }
-        previous_load = sample_load[here];
-        previous_absorption = sample_absorption[here];
-        previous_scattering = sample_scattering[here];
+        let total_here = load + received;
+        sample_absorption[here] = (sample_absorption[here] * load + given_absorption * received) / total_here;
+        sample_scattering[here] = (sample_scattering[here] * load + given_scattering * received) / total_here;
+        sample_load[here] = total_here;
     }
 }
 

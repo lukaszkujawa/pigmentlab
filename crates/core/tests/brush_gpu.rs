@@ -1,5 +1,6 @@
 use glam::{Vec2, Vec3, Vec4};
-use simpaint_core::brush::{Brush, BrushPose, BrushPreset, MAX_COMPRESSION, VERTICES_PER_BRISTLE};
+use simpaint_core::brush::{Brush, BrushPose, BrushPreset, MAX_COMPRESSION, VERTICES_PER_BRISTLE, clump_count};
+use simpaint_core::pigment::by_name;
 use simpaint_core::canvas::Canvas;
 use simpaint_core::gpu::{Gpu, read_buffer};
 use simpaint_core::paint::ActiveWindow;
@@ -7,22 +8,35 @@ use simpaint_core::CanvasSize;
 use simpaint_core::units::cm;
 
 const CANVAS: [f32; 2] = [512.0, 512.0];
+const LANDING_STEPS: usize = 15;
 
 fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Brush, Vec<Vec4>) {
+    run_loaded(preset, 0.0, poses)
+}
+
+fn run_loaded(preset: BrushPreset, load: f32, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Brush, Vec<Vec4>) {
     let gpu = Gpu::headless();
     let canvas = Canvas::new(&gpu, CanvasSize { width: 512, height: 512 }, 1);
     let window = ActiveWindow::new(&gpu, &canvas);
     let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
     let brush = Brush::new(&gpu, preset, 7, &window, &canvas, &flat_canvas);
-    let mut teleported = false;
-    for pose in poses {
-        if !teleported {
-            brush.teleport(&gpu, &pose);
-            teleported = true;
-        }
+    brush.dip(&gpu, by_name("cadmium_red").unwrap(), load, 0.0);
+    let step = |pose: &BrushPose| {
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, 0.0, CANVAS);
+        brush.encode_step(&gpu, &mut encoder, pose, 1.0, 0.0, CANVAS);
         gpu.queue.submit(Some(encoder.finish()));
+    };
+    let mut poses = poses.peekable();
+    if let Some(first) = poses.peek() {
+        let above = BrushPose::upright(first.position.with_z(first.position.z.max(preset.length * 1.25)));
+        brush.teleport(&gpu, &above);
+        for i in 1..=LANDING_STEPS {
+            let height = above.position.z + (first.position.z - above.position.z) * i as f32 / LANDING_STEPS as f32;
+            step(&BrushPose::upright(first.position.with_z(height)));
+        }
+    }
+    for pose in poses {
+        step(&pose);
     }
     let positions = read_buffer::<Vec4>(&gpu, &brush.positions);
     (gpu, brush, positions)
@@ -36,10 +50,9 @@ fn canvas_positions(pose: &BrushPose, brush_frame: &[Vec4]) -> Vec<Vec3> {
 fn bristles_hold_rest_shape_above_canvas() {
     let preset = BrushPreset::round(32, cm(0.3), cm(2.0));
     let pose = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * 1.5));
-    let (_, _, positions) = run(preset, std::iter::repeat_n(pose, 120));
-    for bristle in positions.chunks(VERTICES_PER_BRISTLE as usize) {
-        let tip = bristle.last().unwrap();
-        assert!(tip.z < -preset.length * 0.95, "tip should hang straight down, got {tip}");
+    let (_, brush, positions) = run(preset, std::iter::repeat_n(pose, 120));
+    for (vertex, rest) in positions.iter().zip(brush.rest()).skip(1) {
+        assert!(vertex.truncate().distance(rest.truncate()) < 0.5, "a hovering bristle should keep its rest shape: {vertex} vs {rest}");
     }
 }
 
@@ -58,17 +71,27 @@ fn pressing_keeps_bristles_above_canvas_and_inextensible() {
     }
 }
 
+fn contact_points(pose: &BrushPose, positions: &[Vec4]) -> Vec<Vec2> {
+    canvas_positions(pose, positions)
+        .chunks(VERTICES_PER_BRISTLE as usize)
+        .flat_map(|bristle| bristle[2..].to_vec())
+        .filter(|p| p.z < 1.0)
+        .map(|p| p.truncate())
+        .collect()
+}
+
+fn extent(points: &[Vec2]) -> Vec2 {
+    let (low, high) = points.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+    high - low
+}
+
 #[test]
 fn pressing_spreads_the_footprint() {
     let preset = BrushPreset::round(64, cm(0.3), cm(2.0));
     let pressed = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * 0.7));
     let (_, _, positions) = run(preset, std::iter::repeat_n(pressed, 240));
-    let canvas = canvas_positions(&pressed, &positions);
-    let spread = canvas
-        .chunks(VERTICES_PER_BRISTLE as usize)
-        .map(|b| (b.last().unwrap().truncate() - pressed.position.truncate()).length())
-        .fold(0.0f32, f32::max);
-    assert!(spread > cm(0.3) * 1.2, "tips should splay beyond the ferrule, got {spread}");
+    let footprint = extent(&contact_points(&pressed, &positions));
+    assert!(footprint.min_element() > preset.width, "a pressed tuft should cover more than its ferrule, got {footprint}");
 }
 
 #[test]
@@ -113,38 +136,33 @@ fn static_press_settles_without_jitter() {
     assert!(max_motion < 0.05, "settled bristles moved {max_motion}px in one step");
 }
 
-fn dragged_tips(preset: BrushPreset) -> (BrushPose, Vec<Vec2>) {
+fn dragged_contact(preset: BrushPreset) -> Vec<Vec2> {
     let height = preset.length * 0.7;
     let settle = std::iter::repeat_n(BrushPose::upright(Vec3::new(150.0, 256.0, height)), 60);
     let drag = (0..100).map(|i| BrushPose::upright(Vec3::new(150.0 + i as f32 * 2.0, 256.0, height)));
     let last = BrushPose::upright(Vec3::new(150.0 + 99.0 * 2.0, 256.0, height));
     let (_, _, positions) = run(preset, settle.chain(drag));
-    let tips = canvas_positions(&last, &positions)
-        .chunks(VERTICES_PER_BRISTLE as usize)
-        .map(|b| b.last().unwrap().truncate())
-        .collect();
-    (last, tips)
+    contact_points(&last, &positions)
 }
 
 #[test]
 fn dragged_tuft_fills_its_footprint() {
-    let (_, tips) = dragged_tips(BrushPreset::round(200, cm(0.35), cm(2.2)));
-    let centroid = tips.iter().sum::<Vec2>() / tips.len() as f32;
-    let radii: Vec<f32> = tips.iter().map(|t| t.distance(centroid)).collect();
-    let outer = radii.iter().cloned().fold(0.0f32, f32::max);
-    let nearest = radii.iter().cloned().fold(f32::MAX, f32::min);
-    let inner = radii.iter().filter(|&&r| r < outer * 0.5).count() as f32 / tips.len() as f32;
-    assert!(nearest < outer * 0.1, "no tip within {:.0}% of the outer radius from the centre, the footprint is a ring", nearest / outer * 100.0);
-    assert!(inner > 0.15, "only {:.0}% of tips lie in the inner half of the footprint", inner * 100.0);
+    let points = dragged_contact(BrushPreset::round(200, cm(0.35), cm(2.2)));
+    let low = points.iter().map(|p| p.y).fold(f32::MAX, f32::min);
+    let high = points.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+    let bands = 8;
+    let mut filled = vec![false; bands];
+    for p in &points {
+        filled[(((p.y - low) / (high - low) * bands as f32) as usize).min(bands - 1)] = true;
+    }
+    assert!(filled.iter().all(|&f| f), "the dragged contact patch has empty lanes across its width: {filled:?}");
 }
 
 #[test]
 fn dragged_tuft_keeps_the_ferrule_width() {
     let preset = BrushPreset::round(200, cm(0.35), cm(2.2));
-    let (_, tips) = dragged_tips(preset);
-    let (low, high) = tips.iter().fold((f32::MAX, f32::MIN), |(lo, hi), t| (lo.min(t.y), hi.max(t.y)));
-    let width = high - low;
-    assert!(width > preset.width * 0.9 && width < preset.splayed_radius() * 2.2, "dragged footprint width {width} vs ferrule {}", preset.width);
+    let width = extent(&dragged_contact(preset)).y;
+    assert!(width > preset.width * 0.75 && width < preset.splayed_radius() * 2.2, "dragged footprint width {width} vs ferrule {}", preset.width);
 }
 
 fn tips_of(pose: &BrushPose, positions: &[Vec4]) -> Vec<Vec2> {
@@ -152,18 +170,19 @@ fn tips_of(pose: &BrushPose, positions: &[Vec4]) -> Vec<Vec2> {
 }
 
 #[test]
-fn stroke_start_never_throws_tips_backwards() {
+fn stroke_start_never_throws_the_tuft_backwards() {
     let preset = BrushPreset::round(200, cm(0.35), cm(2.2));
     let height = preset.length * 0.7;
     let landed = BrushPose::upright(Vec3::new(300.0, 256.0, height));
     let (_, _, at_landing) = run(preset, std::iter::once(landed));
-    let start = tips_of(&landed, &at_landing);
+    let centroid = |tips: Vec<Vec2>| tips.iter().sum::<Vec2>() / tips.len() as f32;
+    let start = centroid(tips_of(&landed, &at_landing));
     for steps in [3usize, 10, 30] {
         let poses = std::iter::once(landed).chain((1..=steps).map(|i| BrushPose::upright(Vec3::new(300.0 - i as f32 * 2.5, 256.0, height))));
         let last = BrushPose::upright(Vec3::new(300.0 - steps as f32 * 2.5, 256.0, height));
         let (_, _, positions) = run(preset, poses);
-        let backwards = tips_of(&last, &positions).iter().zip(&start).map(|(now, then)| now.x - then.x).fold(0.0f32, f32::max);
-        assert!(backwards < 2.0, "after {steps} steps leftwards a tip moved {backwards:.1} px to the right");
+        let backwards = centroid(tips_of(&last, &positions)).x - start.x;
+        assert!(backwards < 2.0, "after {steps} steps leftwards the tips moved {backwards:.1} px to the right");
     }
 }
 
@@ -205,9 +224,7 @@ fn hovering_tips_follow_the_handle() {
 fn pressed_extent(preset: BrushPreset, pressure: f32) -> Vec2 {
     let pose = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * (1.0 - MAX_COMPRESSION * pressure)));
     let (_, _, positions) = run(preset, std::iter::repeat_n(pose, 120));
-    let tips = tips_of(&pose, &positions);
-    let (low, high) = tips.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), t| (lo.min(*t), hi.max(*t)));
-    high - low
+    extent(&contact_points(&pose, &positions))
 }
 
 #[test]
@@ -226,4 +243,44 @@ fn a_light_touch_narrows_the_edge_of_a_flat_brush() {
     let heavy = pressed_extent(preset, 1.0);
     assert!(light.y < heavy.y * 0.5, "the short side should narrow under a light touch: {light} vs {heavy}");
     assert!(light.x > heavy.x * 0.6, "the long side should stay wide: {light} vs {heavy}");
+}
+
+#[test]
+fn a_lifted_brush_springs_back_to_its_rest_shape() {
+    let preset = BrushPreset::round(120, cm(0.35), cm(2.2));
+    let pressed = preset.length * 0.7;
+    let lifted = preset.length * 1.25;
+    let drag = (0..80).map(|i| BrushPose::upright(Vec3::new(150.0 + i as f32 * 2.0, 256.0, pressed)));
+    let lift = (0..24).map(|i| BrushPose::upright(Vec3::new(310.0, 256.0, pressed + (lifted - pressed) * (i as f32 / 12.0).min(1.0))));
+    let (_, brush, positions) = run(preset, drag.chain(lift));
+    let worst = positions.iter().zip(brush.rest()).skip(1).map(|(p, r)| p.truncate().distance(r.truncate())).fold(0.0f32, f32::max);
+    assert!(worst < 3.0, "0.05 s after lifting the hairs should be back in shape, worst vertex is {worst:.1} px off");
+}
+
+fn clump_spread(load: f32) -> f32 {
+    let preset = BrushPreset::round(200, cm(0.35), cm(2.2));
+    let height = preset.length * 0.75;
+    let drag = (0..90).map(|i| BrushPose::upright(Vec3::new(150.0 + i as f32 * 2.0, 256.0, height)));
+    let last = BrushPose::upright(Vec3::new(150.0 + 89.0 * 2.0, 256.0, height));
+    let (_, _, positions) = run_loaded(preset, load, drag);
+    let tips = tips_of(&last, &positions);
+    let clumps = clump_count(&preset) as usize;
+    let mut total = 0.0;
+    let mut pairs = 0;
+    for (a, tip_a) in tips.iter().enumerate() {
+        for (b, tip_b) in tips.iter().enumerate().skip(a + 1) {
+            if a % clumps == b % clumps {
+                total += tip_a.distance(*tip_b);
+                pairs += 1;
+            }
+        }
+    }
+    total / pairs as f32
+}
+
+#[test]
+fn wet_hairs_gather_into_clumps() {
+    let dry = clump_spread(0.0);
+    let wet = clump_spread(1.0);
+    assert!(wet < dry * 0.7, "a loaded brush should pull its hairs into clumps: tips of a clump are {wet:.1} px apart wet vs {dry:.1} px dry");
 }

@@ -41,9 +41,9 @@ fn geometric_mix(stiff: f32, oily: f32, medium: f32) -> f32 {
 
 fn flow_between(surface: f32, other_surface: f32, wet: f32, medium: f32) -> f32 {
     let mobility = min(wet / geometric_mix(LEVEL_FULL_MOBILITY_HEIGHT, LEVEL_FULL_MOBILITY_HEIGHT_OILY, medium), 1.0);
-    let difference = surface - other_surface;
-    let beyond_yield = sign(difference) * max(abs(difference) - geometric_mix(LEVEL_YIELD_SLOPE, LEVEL_YIELD_SLOPE_OILY, medium), 0.0);
-    return beyond_yield * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) * 0.25 * mobility;
+    let stress = (surface - other_surface) * mobility;
+    let beyond_yield = sign(stress) * max(abs(stress) - geometric_mix(LEVEL_YIELD_SLOPE, LEVEL_YIELD_SLOPE_OILY, medium), 0.0);
+    return beyond_yield * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) * 0.25;
 }
 
 fn shared_medium(paint: f32, medium: f32, other_paint: f32, other_medium: f32) -> f32 {

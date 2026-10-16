@@ -1,8 +1,9 @@
 use crate::units::cm;
 
 pub const MAX_COMPRESSION: f32 = 0.4;
-pub const SPREAD_PER_COMPRESSION: f32 = 2.5;
 const BEND_REACH_FRACTION: f32 = 0.66;
+const SINK_AT_LIGHT: f32 = 0.75;
+const SINK_AT_FULL: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BrushShape {
@@ -20,7 +21,8 @@ pub struct BrushPreset {
     pub width: f32,
     pub thickness: f32,
     pub friction: f32,
-    pub recovery: f32,
+    pub stiffness: f32,
+    pub inertia: f32,
     pub splay: f32,
     pub cohesion: f32,
     pub sink: f32,
@@ -57,7 +59,8 @@ impl BrushPreset {
             width: radius * 2.0,
             thickness: radius * 2.0,
             friction: 0.6,
-            recovery: 0.25,
+            stiffness: 0.05,
+            inertia: 0.05,
             splay: 0.55,
             cohesion: 0.85,
             sink: 0.5,
@@ -68,7 +71,20 @@ impl BrushPreset {
     }
 
     pub fn splayed_radius(&self) -> f32 {
-        self.width.max(self.thickness) * 0.5 * (1.0 + self.splay * MAX_COMPRESSION * SPREAD_PER_COMPRESSION)
+        self.width.max(self.thickness) * 0.5 * (1.0 + self.splay)
+    }
+
+    pub fn wet_floor_keep(&self, pressure: f32) -> f32 {
+        let light_touch = 1.0 - pressure.clamp(0.0, 1.0);
+        let press = 1.0 - light_touch * light_touch;
+        1.0 - press * (SINK_AT_LIGHT + (SINK_AT_FULL - SINK_AT_LIGHT) * self.sink)
+    }
+
+    pub fn ferrule_area(&self) -> f32 {
+        match self.shape {
+            BrushShape::Round => std::f32::consts::PI * self.width * self.thickness * 0.25,
+            BrushShape::Flat | BrushShape::Filbert | BrushShape::Shaper => self.width * self.thickness,
+        }
     }
 
     pub fn bend_reach(&self) -> f32 {
@@ -87,9 +103,10 @@ impl BrushPreset {
         Self {
             shape: BrushShape::Shaper,
             friction: 1.0,
-            recovery: 1.0,
-            splay: 0.02,
-            cohesion: 1.0,
+            stiffness: 0.9,
+            inertia: 0.0,
+            splay: 0.0,
+            cohesion: 0.0,
             sink: 1.0,
             sample_capacity: cm(0.0005),
             deposit_rate: 0.0,
@@ -126,6 +143,7 @@ impl BrushPreset {
             splay: 0.3 + 0.5 * (1.0 - stiffness),
             sink: 0.3 + 0.4 * (1.0 - stiffness),
             friction: 0.4 + 0.4 * stiffness,
+            stiffness: 0.02 + 0.06 * stiffness,
             ..scaled
         }
     }

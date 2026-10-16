@@ -2,8 +2,10 @@ mod frame;
 mod geometry;
 mod preset;
 mod simulation;
+mod touch;
 
 pub use frame::BrushPose;
-pub use geometry::VERTICES_PER_BRISTLE;
-pub use preset::{MAX_COMPRESSION, SPREAD_PER_COMPRESSION, BrushAdjustments, BrushPreset, BrushShape, NamedPreset, PRESETS, preset_by_name};
+pub use geometry::{VERTICES_PER_BRISTLE, clump_count};
+pub use preset::{MAX_COMPRESSION, BrushAdjustments, BrushPreset, BrushShape, NamedPreset, PRESETS, preset_by_name};
 pub use simulation::{Brush, SAMPLES_PER_BRISTLE};
+pub use touch::Touch;
