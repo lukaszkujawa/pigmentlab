@@ -4,6 +4,7 @@ const PAPER_SLOPE: f32 = 0.03;
 const VISCOSITY: f32 = 0.1;
 const DRAG: f32 = 0.1;
 const THIN_DRAG: f32 = 0.6;
+const PREWETTED_SLIP: f32 = 0.9;
 const THIN_WATER: f32 = 0.25;
 const MAX_SPEED: f32 = 0.45;
 const IMPULSE_GAIN: f32 = 0.5;
@@ -12,6 +13,7 @@ const DESORPTION_RATE: f32 = 1.5;
 const FILM_WATER: f32 = 0.05;
 const FILM_DEPOSITION: f32 = 6.0;
 const SETTLING_DEPTH: f32 = 0.15;
+const REWETTING: f32 = 2.0;
 const ABSORPTION_RATE: f32 = 0.6;
 const EVAPORATION: f32 = 0.012;
 const EDGE_EVAPORATION: f32 = 8.0;
@@ -172,8 +174,16 @@ fn unsized_share() -> f32 {
     return clamp((sim.absorbency - SIZED_ABSORBENCY) / (1.0 - SIZED_ABSORBENCY), 0.0, 1.0);
 }
 
-fn face_drag(depth: f32) -> f32 {
-    return DRAG + THIN_DRAG * max(1.0 - depth / THIN_WATER, 0.0);
+fn dampness(index: u32) -> f32 {
+    return clamp(water[index].y / max(paper[index].y, 1e-6), 0.0, 1.0);
+}
+
+fn face_drag(a: vec2<i32>, b: vec2<i32>, depth: f32) -> f32 {
+    let first = cell_index(a);
+    let second = cell_index(b);
+    let slip = PREWETTED_SLIP * min(dampness(first), dampness(second));
+    let thin = THIN_DRAG * max(1.0 - depth / THIN_WATER, 0.0) * (1.0 - slip);
+    return DRAG + thin;
 }
 
 fn limited(speed: f32) -> f32 {
@@ -194,7 +204,7 @@ fn update_u(@builtin(global_invocation_id) id: vec3<u32>) {
     let diffusion = u_at(face + vec2<i32>(1, 0)) + u_at(face - vec2<i32>(1, 0)) + u_at(face + vec2<i32>(0, 1)) + u_at(face - vec2<i32>(0, 1)) - 4.0 * u;
     let depth = 0.5 * (water[cell_index(left)].x + water[cell_index(face)].x);
     let push = 0.5 * (impulse[cell_index(left)].x + impulse[cell_index(face)].x);
-    let accelerated = u + (VISCOSITY * diffusion + pressure_push(left, face, depth) - face_drag(depth) * u) + push;
+    let accelerated = u + (VISCOSITY * diffusion + pressure_push(left, face, depth) - face_drag(left, face, depth) * u) + push;
     next_u[u_index(face)] = limited(accelerated);
 }
 
@@ -212,7 +222,7 @@ fn update_v(@builtin(global_invocation_id) id: vec3<u32>) {
     let diffusion = v_at(face + vec2<i32>(1, 0)) + v_at(face - vec2<i32>(1, 0)) + v_at(face + vec2<i32>(0, 1)) + v_at(face - vec2<i32>(0, 1)) - 4.0 * v;
     let depth = 0.5 * (water[cell_index(up)].x + water[cell_index(face)].x);
     let push = 0.5 * (impulse[cell_index(up)].y + impulse[cell_index(face)].y);
-    let accelerated = v + (VISCOSITY * diffusion + pressure_push(up, face, depth) - face_drag(depth) * v) + push;
+    let accelerated = v + (VISCOSITY * diffusion + pressure_push(up, face, depth) - face_drag(up, face, depth) * v) + push;
     next_v[v_index(face)] = limited(accelerated);
 }
 
@@ -311,7 +321,9 @@ fn transfer(@builtin(global_invocation_id) id: vec3<u32>) {
         let soak = 1.0 + unsized_share() * UNSIZED_STAINING;
         let sinking = SETTLING_DEPTH / max(state.x, SETTLING_DEPTH);
         let down = clamp((max(1.0 - height * granulation, 0.0) * density * ADSORPTION_RATE * soak * sinking + film * FILM_DEPOSITION) * sim.dt, 0.0, 1.0);
-        let up = clamp(max(1.0 + (height - 1.0) * settled_granulation, 0.0) * settled_density / (staining * soak) * DESORPTION_RATE * sim.dt * (1.0 - film), 0.0, 1.0);
+        let bonded = max(1.0 + (height - 1.0) * settled_granulation, 0.0) * settled_density * DESORPTION_RATE;
+        let loose = REWETTING * dampness(index);
+        let up = clamp((bonded + loose) / (staining * soak) * sim.dt * (1.0 - film), 0.0, 1.0);
         let landing = scaled(floating, down);
         let rising = scaled(settled, up);
         floating = added(added(floating, scaled(landing, -1.0)), rising);

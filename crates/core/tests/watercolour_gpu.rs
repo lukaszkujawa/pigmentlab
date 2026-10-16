@@ -374,3 +374,36 @@ fn standing_water_levels_out_instead_of_sloshing_into_streaks() {
         assert!(variation < 0.35, "{settle} s after the stroke water depth still varies by {variation}");
     }
 }
+
+#[test]
+fn water_dropped_into_a_damp_wash_dries_into_a_backrun_with_a_dark_rim() {
+    let mut engine = paper(Surface::ColdPressed);
+    let blank = engine.dry_layer();
+    engine.set_param("load", 1.0);
+    engine.dip(by_name("quinacridone_rose").unwrap());
+    let mut t = 0.0;
+    for y in [100.0, 140.0, 180.0, 220.0] {
+        t = stroke(&mut engine, (120.0, y), (520.0, y), 0.7, t, 0.6);
+    }
+    engine.advance_exact(t + 42.0);
+    engine.select_brush("Round medium");
+    engine.dip_water();
+    let centre = (307usize, 155usize);
+    let end = stroke(&mut engine, (300.0, 150.0), (315.0, 160.0), 0.6, t + 42.0, 0.3);
+    engine.advance_exact(end + 60.0);
+    engine.dry();
+    let dark = darkness(&engine, &blank);
+    let ring = |radius: f32| {
+        let samples: Vec<f32> = (0..72)
+            .map(|step| step as f32 * std::f32::consts::TAU / 72.0)
+            .map(|angle| (centre.0 as f32 + radius * angle.cos(), centre.1 as f32 + radius * angle.sin()))
+            .map(|(x, y)| dark[y as usize * WIDTH + x as usize])
+            .collect();
+        mean(&samples)
+    };
+    let inside = ring(15.0);
+    let rim = (40..=70).map(|radius| ring(radius as f32)).fold(0.0f32, f32::max);
+    let surrounding = ring(95.0);
+    assert!(inside < surrounding * 0.8, "the bloom should be paler than the wash: {inside} vs {surrounding}");
+    assert!(rim > surrounding * 1.2, "the bloom should dry with a dark rim: {rim} vs {surrounding}");
+}

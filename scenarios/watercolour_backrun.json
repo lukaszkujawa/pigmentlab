@@ -1,0 +1,158 @@
+{
+ "seed": 1,
+ "canvas": {
+  "width": 680,
+  "height": 360
+ },
+ "levelling": true,
+ "steps": [
+  {
+   "t": 0,
+   "action": "surface",
+   "surface": "cold_pressed"
+  },
+  {
+   "t": 0,
+   "action": "tool",
+   "name": "Round large"
+  },
+  {
+   "t": 0,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 0,
+   "action": "dip",
+   "pigment": "quinacridone_rose"
+  },
+  {
+   "t": 0.0,
+   "action": "press",
+   "x": 120,
+   "y": 100,
+   "pressure": 0.7
+  },
+  {
+   "t": 0.6,
+   "action": "move",
+   "x": 560,
+   "y": 100,
+   "pressure": 0.7
+  },
+  {
+   "t": 0.6,
+   "action": "release"
+  },
+  {
+   "t": 0.8,
+   "action": "press",
+   "x": 120,
+   "y": 140,
+   "pressure": 0.7
+  },
+  {
+   "t": 1.4,
+   "action": "move",
+   "x": 560,
+   "y": 140,
+   "pressure": 0.7
+  },
+  {
+   "t": 1.4,
+   "action": "release"
+  },
+  {
+   "t": 1.6,
+   "action": "press",
+   "x": 120,
+   "y": 180,
+   "pressure": 0.7
+  },
+  {
+   "t": 2.2,
+   "action": "move",
+   "x": 560,
+   "y": 180,
+   "pressure": 0.7
+  },
+  {
+   "t": 2.2,
+   "action": "release"
+  },
+  {
+   "t": 2.4,
+   "action": "press",
+   "x": 120,
+   "y": 220,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.0,
+   "action": "move",
+   "x": 560,
+   "y": 220,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.0,
+   "action": "release"
+  },
+  {
+   "t": 3.2,
+   "action": "press",
+   "x": 120,
+   "y": 260,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.8,
+   "action": "move",
+   "x": 560,
+   "y": 260,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.8,
+   "action": "release"
+  },
+  {
+   "t": 46.0,
+   "action": "tool",
+   "name": "Round medium"
+  },
+  {
+   "t": 46.0,
+   "action": "dip_water"
+  },
+  {
+   "t": 46.0,
+   "action": "press",
+   "x": 330,
+   "y": 175,
+   "pressure": 0.6
+  },
+  {
+   "t": 46.3,
+   "action": "move",
+   "x": 345,
+   "y": 185,
+   "pressure": 0.6
+  },
+  {
+   "t": 46.3,
+   "action": "release"
+  },
+  {
+   "t": 49.0,
+   "action": "checkpoint",
+   "name": "spreading"
+  },
+  {
+   "t": 166.0,
+   "action": "checkpoint",
+   "name": "dried"
+  }
+ ]
+}
