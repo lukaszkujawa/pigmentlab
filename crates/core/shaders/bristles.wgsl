@@ -181,7 +181,10 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     } else {
         let clear_of_canvas = f.previous_tip.z > LIFT_CLEARANCE;
         let recovered = mix(f.previous_tip, f.rest_tip, brush.recovery);
-        let tip = vec3<f32>(select(f.previous_tip.xy, recovered.xy, clear_of_canvas), max(recovered.z, 0.0));
+        var hovering = f.previous_tip.xy - f.root.xy;
+        let hover_reach = length(hovering);
+        if (hover_reach > f.max_reach) { hovering *= f.max_reach / max(hover_reach, 1e-6); }
+        let tip = vec3<f32>(select(f.root.xy + hovering, recovered.xy, clear_of_canvas), max(recovered.z, 0.0));
         proposals[bristle] = vec4<f32>(tip - f.rest_tip, 0.0);
     }
 }

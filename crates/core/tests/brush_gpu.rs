@@ -190,3 +190,14 @@ fn jittery_hand_does_not_catapult_tips() {
     let jump = tips_of(&last, &before).iter().zip(tips_of(&next, &after)).map(|(a, b)| a.distance(b)).fold(0.0f32, f32::max);
     assert!(jump < 6.0, "a tip jumped {jump:.1} px in one substep of a 1.5 px hand movement");
 }
+
+#[test]
+fn hovering_tips_follow_the_handle() {
+    let preset = BrushPreset::round(120, cm(0.06), cm(1.0));
+    let path = |i: usize| BrushPose::upright(Vec3::new(100.0 + i as f32 * 1.5, 256.0, preset.length));
+    let (_, _, positions) = run(preset, (0..240).map(path));
+    let last = path(239);
+    for tip in tips_of(&last, &positions) {
+        assert!(tip.distance(last.position.truncate()) <= preset.length, "tip left behind at {tip} while the handle is at {}", last.position.truncate());
+    }
+}
