@@ -41,11 +41,52 @@ fn mean_colour(engine: &mut Engine, x0: u32, y0: u32, size: u32) -> [f32; 3] {
     total.map(|t| t / (size * size) as f32)
 }
 
+fn wet_mass_of(paint: impl Fn(&mut Engine)) -> f32 {
+    let mut twin = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
+    paint(&mut twin);
+    twin.paint_mass()
+}
+
+fn brush_strokes(engine: &mut Engine) {
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 300.0, 0.8, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 700.0, 300.0, 0.8, 0.6));
+    engine.pointer(sample(PointerPhase::Up, 700.0, 300.0, 0.0, 0.6));
+    engine.pointer(sample(PointerPhase::Down, 700.0, 400.0, 0.8, 0.7));
+    engine.pointer(sample(PointerPhase::Move, 300.0, 400.0, 0.8, 1.3));
+    engine.pointer(sample(PointerPhase::Up, 300.0, 400.0, 0.0, 1.3));
+    engine.advance_exact(1.4);
+}
+
+#[test]
+fn drying_straight_after_brush_strokes_keeps_all_the_paint() {
+    let wet = wet_mass_of(brush_strokes);
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
+    brush_strokes(&mut engine);
+    engine.dry();
+    let dried: f32 = engine.dry_heights().iter().sum();
+    assert!((dried / wet - DRY_SHRINK).abs() < 0.01, "paint under the active window was lost on drying: {:.2} of the wet volume survived", dried / wet);
+    assert!(engine.paint_mass() < 1.0);
+    assert!(engine.undo());
+    assert!((engine.paint_mass() - wet).abs() < wet * 0.001, "undo after drying should restore the whole stroke ({wet} -> {})", engine.paint_mass());
+}
+
+#[test]
+fn clearing_straight_after_strokes_can_be_undone() {
+    let wet = wet_mass_of(brush_strokes);
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
+    brush_strokes(&mut engine);
+    engine.clear();
+    assert_eq!(engine.paint_mass(), 0.0);
+    assert!(engine.undo());
+    assert!((engine.paint_mass() - wet).abs() < wet * 0.001, "undo after clear should restore the whole stroke ({wet} -> {})", engine.paint_mass());
+}
+
 #[test]
 fn drying_moves_paint_into_a_shrunken_dry_layer() {
+    let wet = wet_mass_of(thick_red_bar);
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
     thick_red_bar(&mut engine);
-    let wet = engine.paint_mass();
     engine.dry();
     let dried: f32 = engine.dry_heights().iter().sum();
     assert!(engine.paint_mass() < 1.0, "drying should empty the wet store, left {}", engine.paint_mass());
@@ -69,9 +110,9 @@ fn a_stroke_over_dry_paint_shows_on_top_and_leaves_the_dry_paint_in_place() {
 
 #[test]
 fn undo_after_drying_restores_the_wet_paint() {
+    let wet = wet_mass_of(thick_red_bar);
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
     thick_red_bar(&mut engine);
-    let wet = engine.paint_mass();
     engine.dry();
     assert!(engine.undo());
     assert!((engine.paint_mass() - wet).abs() < wet * 0.001, "undo should bring the wet paint back ({wet} -> {})", engine.paint_mass());

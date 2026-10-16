@@ -229,7 +229,7 @@ impl Engine {
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.snapshot(&mut encoder);
         self.canvas.encode_clear(&mut encoder);
-        self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
+        self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.wet_bounds = None;
     }
@@ -239,7 +239,7 @@ impl Engine {
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.snapshot(&mut encoder);
         self.canvas.encode_dry(&mut encoder);
-        self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
+        self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.wet_bounds = None;
     }
@@ -250,7 +250,7 @@ impl Engine {
         if restored {
             self.dry_history.pop(&mut encoder, &self.canvas.dry);
             self.canvas.encode_refresh_ground_after_undo(&mut encoder);
-            self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
+            self.window.encode_unbake(&mut encoder);
             self.wet_bounds = Some(self.whole_canvas());
         }
         self.gpu.queue.submit(Some(encoder.finish()));

@@ -70,6 +70,12 @@ fn unbake_column(local: vec2<u32>, pixel: vec2<i32>) {
 }
 
 @compute @workgroup_size(16, 16)
+fn unbake_all(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= window.width || id.y >= window.height) { return; }
+    unbake_column(id.xy, vec2<i32>(id.xy) + window.origin);
+}
+
+@compute @workgroup_size(16, 16)
 fn relocate(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
     let pixel = vec2<i32>(id.xy) + window.origin;

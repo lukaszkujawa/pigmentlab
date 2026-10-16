@@ -28,6 +28,7 @@ pub struct ActiveWindow {
     bind_group: wgpu::BindGroup,
     bake: wgpu::ComputePipeline,
     relocate: wgpu::ComputePipeline,
+    unbake_all: wgpu::ComputePipeline,
 }
 
 impl ActiveWindow {
@@ -87,6 +88,7 @@ impl ActiveWindow {
             bind_group,
             bake: pipeline("bake"),
             relocate: pipeline("relocate"),
+            unbake_all: pipeline("unbake_all"),
         };
         window.write_uniform(gpu, canvas);
         window
@@ -142,13 +144,11 @@ impl ActiveWindow {
         self.dispatch(encoder, &self.bake);
     }
 
-    pub fn encode_unbake(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, canvas: &Canvas) {
+    pub fn encode_unbake(&self, encoder: &mut wgpu::CommandEncoder) {
         if self.origin == IVec2::MAX {
             return;
         }
-        self.previous_origin = IVec2::MAX;
-        self.write_uniform(gpu, canvas);
-        self.dispatch(encoder, &self.relocate);
+        self.dispatch(encoder, &self.unbake_all);
     }
 
     fn snapshot_volume(&self, encoder: &mut wgpu::CommandEncoder) {
