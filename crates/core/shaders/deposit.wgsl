@@ -71,23 +71,31 @@ fn film_kernel(distance_to_centre: f32, radius: f32) -> f32 {
     return falloff * falloff;
 }
 
-fn splat_film(centre: vec2<f32>, radius: f32, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
+fn surface_within_reach(pixel: vec2<i32>, reach_floor: f32) -> bool {
+    if (!window_contains(pixel)) { return false; }
+    let state = column_state[column_index(vec2<u32>(pixel - window.origin))];
+    return state.x + state.w >= reach_floor;
+}
+
+fn splat_film(centre: vec2<f32>, radius: f32, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>, reach_floor: f32) {
     let reach = i32(ceil(radius));
     let base_pixel = vec2<i32>(floor(centre));
     let fraction = centre - floor(centre) - 0.5;
     var covered = 0.0;
     for (var dy = -reach; dy <= reach; dy++) {
         for (var dx = -reach; dx <= reach; dx++) {
+            if (!surface_within_reach(base_pixel + vec2<i32>(dx, dy), reach_floor)) { continue; }
             covered += film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius);
         }
     }
+    if (covered <= 0.0) { return; }
     for (var dy = -reach; dy <= reach; dy++) {
         for (var dx = -reach; dx <= reach; dx++) {
+            let pixel = base_pixel + vec2<i32>(dx, dy);
+            if (!surface_within_reach(pixel, reach_floor)) { continue; }
             let weight = film_kernel(length(vec2<f32>(f32(dx), f32(dy)) - fraction), radius);
             if (weight <= 0.0) { continue; }
-            let share = amount * weight / max(covered, 1e-6);
-            let pixel = base_pixel + vec2<i32>(dx, dy);
-            if (!window_contains(pixel)) { continue; }
+            let share = amount * weight / covered;
             let local = vec2<u32>(pixel - window.origin);
             let slot = (local.y * window.width + local.x) * CHANNELS;
             atomicAdd(&film[slot], fixed(share));
@@ -244,7 +252,7 @@ fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, 
     atomicMax(&coarse_marks[coarse_index(local)], 1u);
 }
 
-fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, height: f32, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>, request: ptr<function, vec2<f32>>) {
+fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, height: f32, reach_floor: f32, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>, request: ptr<function, vec2<f32>>) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
     let local = vec2<u32>(pixel - window.origin);
     let wet = !snapshot_is_dry(local);
@@ -257,7 +265,7 @@ fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, height: f32, deposit_share: f
     let given = min(deposit_share * fill, *load);
     if (given <= 0.0) { return; }
     *load -= given;
-    splat_film(point_xy, film_radius(fill), given, *absorption, *scattering);
+    splat_film(point_xy, film_radius(fill), given, *absorption, *scattering, reach_floor);
 }
 
 @compute @workgroup_size(128)
@@ -304,7 +312,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let buried = clamp(min(paint_here, base_height(pixel)) - (point.z - relief_here), 0.0, deposit.contact_height);
         let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) * share * min(motion, brush_motion) * carries_film;
         let deposit_share = select(select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE * landing) * f32(stride), depositing), 0.0, submerged);
-        exchange(pixel, point.xy, paint_here, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
+        exchange(pixel, point.xy, paint_here, point.z - film, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
     }
 
     sample_load[sample] = load;
@@ -429,7 +437,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     let moved = take_from_top(id.xy, excess * placeable, &absorption, &scattering);
     for (var t = 0u; t < targets; t++) {
         if (shares[t] <= 0.0) { continue; }
-        splat_film(centre + offsets[t], PUSH_RADIUS, moved * shares[t] / placeable, absorption, scattering);
+        splat_film(centre + offsets[t], PUSH_RADIUS, moved * shares[t] / placeable, absorption, scattering, -1e9);
     }
 }
 

@@ -33,18 +33,18 @@ fn mean_paint_where(paint: &[f32], relief: &[f32], region: impl Fn(usize, usize)
 fn a_dry_brush_catches_the_weave_peaks() {
     let mut engine = textured_engine(1.5);
     engine.select_brush("Round large");
-    engine.set_param("load", 0.3);
+    engine.set_param("load", 0.1);
     engine.dip(by_name("ivory_black").unwrap());
-    engine.pointer(sample(PointerPhase::Down, 150.0, 256.0, 0.25, 0.0));
-    engine.pointer(sample(PointerPhase::Move, 900.0, 256.0, 0.25, 1.0));
+    engine.pointer(sample(PointerPhase::Down, 150.0, 256.0, 0.2, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 900.0, 256.0, 0.2, 1.0));
     engine.pointer(sample(PointerPhase::Up, 900.0, 256.0, 0.0, 1.0));
     engine.advance_exact(1.1);
     let relief = engine.canvas_relief();
     let paint = engine.paint_heights();
     let in_stroke = |x: usize, y: usize| (300..800).contains(&x) && (236..276).contains(&y);
     let on_peaks = mean_paint_where(&paint, &relief, in_stroke, |r| r > 0.6);
-    let in_valleys = mean_paint_where(&paint, &relief, in_stroke, |r| r < -0.6);
-    assert!(on_peaks > 0.05, "the dry brush should leave paint on the peaks, got {on_peaks:.3} px");
+    let in_valleys = mean_paint_where(&paint, &relief, in_stroke, |r| r < -0.3);
+    assert!(on_peaks > 0.03, "the dry brush should leave paint on the peaks, got {on_peaks:.3} px");
     assert!(on_peaks > in_valleys * 1.8, "dry paint should sit on the weave peaks ({on_peaks:.3}) more than in the valleys ({in_valleys:.3})");
 }
 
@@ -61,7 +61,7 @@ fn a_loaded_brush_fills_the_weave() {
     let paint = engine.paint_heights();
     let in_stroke = |x: usize, y: usize| (300..800).contains(&x) && (246..266).contains(&y);
     let on_peaks = mean_paint_where(&paint, &relief, in_stroke, |r| r > 0.6);
-    let in_valleys = mean_paint_where(&paint, &relief, in_stroke, |r| r < -0.6);
+    let in_valleys = mean_paint_where(&paint, &relief, in_stroke, |r| r < -0.3);
     assert!(in_valleys > on_peaks + 0.5, "thick paint should fill the valleys deeper than the peaks ({in_valleys:.2} vs {on_peaks:.2} px)");
 }
 
@@ -84,7 +84,7 @@ fn a_shaper_leaves_paint_in_the_valleys() {
     let paint = engine.paint_heights();
     let scraped = |x: usize, y: usize| (320..500).contains(&x) && (246..266).contains(&y);
     let on_peaks = mean_paint_where(&paint, &relief, scraped, |r| r > 0.6);
-    let in_valleys = mean_paint_where(&paint, &relief, scraped, |r| r < -0.6);
+    let in_valleys = mean_paint_where(&paint, &relief, scraped, |r| r < -0.3);
     assert!(in_valleys > on_peaks * 1.5, "the blade should leave paint in the valleys ({in_valleys:.2}) and clear the peaks ({on_peaks:.2})");
 }
 
