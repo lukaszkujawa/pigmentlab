@@ -226,8 +226,10 @@ fn cohere(@builtin(global_invocation_id) id: vec3<u32>) {
         let point = above_canvas(hermite(f.root, m0, tip, m1, f32(k - 1u) / f32(VERTICES - 2u))) + f.lift;
         positions[base + k] = vec4<f32>(to_brush(point), 0.0);
     }
+    let settled = f.contact && tips[bristle].w != 0.0;
+    let contact_age = select(0.0, curves[bristle * 4u].w + 1.0, settled);
     tips[bristle] = vec4<f32>(tip + f.lift, proposal.w);
-    curves[bristle * 4u] = vec4<f32>(f.root + f.lift, 0.0);
+    curves[bristle * 4u] = vec4<f32>(f.root + f.lift, contact_age);
     curves[bristle * 4u + 1u] = vec4<f32>(m0, 0.0);
     curves[bristle * 4u + 2u] = vec4<f32>(tip + f.lift, 0.0);
     curves[bristle * 4u + 3u] = vec4<f32>(m1, 0.0);

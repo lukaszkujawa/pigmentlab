@@ -17,6 +17,7 @@ const DRAG_RADIUS: i32 = 2;
 const DRAG_RATE_PER_SECOND: f32 = 24.0;
 const WIPE_RATE_PER_SECOND: f32 = 1.2;
 const CONTACT_RATE: f32 = 0.3;
+const LANDING_SUBSTEPS: f32 = 24.0;
 const DISPLACEMENT_SLOTS: u32 = 5u;
 const COARSE_CELL: u32 = 16u;
 
@@ -257,6 +258,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let bristle = sample / deposit.samples_per_bristle;
     let t = f32(sample % deposit.samples_per_bristle) / f32(deposit.samples_per_bristle - 1u);
     let end = curve_point(false, bristle, t);
+    let landing = clamp(1.0 - curves[bristle * 4u].w / LANDING_SUBSTEPS, 0.0, 1.0);
     var start = curve_point(true, bristle, t);
     if (distance(start.xy, end.xy) > JUMP_DISTANCE) { start = end; }
 
@@ -289,7 +291,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         if (height > point.z + film) { continue; }
         let buried = clamp(min(height, base_height(pixel)) - point.z, 0.0, film);
         let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) * share * min(motion, brush_motion) * carries_film;
-        let deposit_share = select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE) * f32(stride), depositing);
+        let deposit_share = select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE * landing) * f32(stride), depositing);
         exchange(pixel, point.xy, height, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
     }
 

@@ -205,3 +205,18 @@ fn dragging_through_a_slab_smears_it_outward() {
     assert!(beyond > total * 0.15, "only {:.1}% of the paint was carried past the slab edge", beyond / total * 100.0);
     assert!(steepest < steepest_before * 0.5, "the slab edge is still a cliff: {steepest_before:.2} -> {steepest:.2} px per px");
 }
+
+#[test]
+fn a_held_brush_stamps_once_and_then_stops_adding_paint() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: 512, height: 384 }, 3);
+    engine.set_levelling_enabled(false);
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 250.0, 200.0, 0.8, 0.0));
+    engine.pointer(sample(PointerPhase::Up, 250.0, 200.0, 0.0, 1.5));
+    engine.advance_exact(0.25);
+    let stamped = engine.paint_mass();
+    engine.advance_exact(1.4);
+    let held = engine.paint_mass();
+    assert!(stamped > 20.0, "landing should leave a dab, got {stamped:.1}");
+    assert!(held < stamped * 1.1, "holding the brush still kept adding paint ({stamped:.0} -> {held:.0})");
+}
