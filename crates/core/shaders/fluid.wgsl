@@ -179,7 +179,7 @@ fn grow_region(@builtin(global_invocation_id) id: vec3<u32>, @builtin(num_workgr
     let base = bristle_index * 4u;
     let point = hermite(curves[base].xyz, curves[base + 1u].xyz, curves[base + 2u].xyz, curves[base + 3u].xyz, t);
     let local = vec3<i32>(floor(vec3<f32>(point.xy - vec2<f32>(window.origin), point.z)));
-    if (!inside(vec3<i32>(local.xy, 0))) { return; }
+    if (!inside(local)) { return; }
     atomicMin(&region[0], local.x);
     atomicMin(&region[1], local.y);
     atomicMax(&region[3], local.x);
