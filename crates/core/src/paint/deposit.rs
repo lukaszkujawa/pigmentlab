@@ -119,7 +119,7 @@ impl Deposit {
                 buffer_binding(14, &displacement),
                 buffer_binding(15, &column_state),
                 buffer_binding(16, &coarse_marks),
-                buffer_binding(17, &canvas.relief),
+                buffer_binding(17, &canvas.ground),
             ],
         });
         let shader = gpu.shader(

@@ -9,7 +9,7 @@ const SPREAD_MIN_HEIGHT: f32 = 0.08 * PIXELS_PER_CM;
 @group(0) @binding(3) var<storage, read> heights: array<f32>;
 @group(0) @binding(4) var<storage, read_write> columns: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read_write> column_pigment: array<vec4<f32>>;
-@group(0) @binding(6) var<storage, read> relief: array<f32>;
+@group(0) @binding(6) var<storage, read> ground: array<f32>;
 @group(0) @binding(7) var<uniform> wet: WetBounds;
 
 struct WetBounds {
@@ -31,12 +31,8 @@ fn height_of(pixel: vec2<i32>) -> f32 {
     return heights[pixel_index(pixel)];
 }
 
-fn relief_of(pixel: vec2<i32>) -> f32 {
-    return relief[pixel_index(pixel)];
-}
-
-fn store_is_dry(pixel: vec2<i32>) -> bool {
-    return store[store_cell(vec2<u32>(pixel)) + 7u] >= i32(PAINT_SCALE);
+fn ground_of(pixel: vec2<i32>) -> f32 {
+    return ground[pixel_index(pixel)];
 }
 
 fn flow_between(surface: f32, other_surface: f32, wet: f32) -> f32 {
@@ -57,20 +53,13 @@ fn column_slot(local: vec2<u32>) -> u32 {
     return local.y * window.width + local.x;
 }
 
-fn neighbour_dry(local: vec2<i32>) -> bool {
-    if (local.x >= 0 && local.y >= 0 && local.x < i32(window.width) && local.y < i32(window.height)) {
-        return columns[column_slot(vec2<u32>(local))].y > 0.0;
-    }
-    return store_is_dry(local + window.origin);
-}
-
 fn neighbour_pigment(local: vec2<i32>) -> array<f32, 6> {
     var pigment: array<f32, 6>;
     if (local.x >= 0 && local.y >= 0 && local.x < i32(window.width) && local.y < i32(window.height)) {
         let slot = column_slot(vec2<u32>(local));
         let p = column_pigment[slot];
         let c = columns[slot];
-        pigment = array<f32, 6>(p.x, p.y, p.z, c.z, p.w, c.w);
+        pigment = array<f32, 6>(p.x, p.y, p.z, c.y, c.z, c.w);
         return pigment;
     }
     let cell = store_cell(vec2<u32>(local + window.origin));
@@ -84,8 +73,8 @@ fn neighbour_pigment(local: vec2<i32>) -> array<f32, 6> {
 fn column_flow(paint: f32, surface: f32, local: vec2<i32>) -> f32 {
     let pixel = local + window.origin;
     let other = height_of(pixel);
-    if (other < 0.0 || neighbour_dry(local)) { return 0.0; }
-    return pair_flow(paint, surface, other, other + relief_of(pixel));
+    if (other < 0.0) { return 0.0; }
+    return pair_flow(paint, surface, other, other + ground_of(pixel));
 }
 
 fn take_from_top(local: vec2<u32>, amount: f32) {
@@ -126,7 +115,6 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     var height = 0.0;
     var top_absorption = vec3<f32>(0.0);
     var top_scattering = vec3<f32>(0.0);
-    var dry = false;
     for (var z = 0u; z < window.depth; z++) {
         let base = window_cell(vec3<u32>(id.xy, z));
         let density = f32(volume[base]) / PAINT_SCALE;
@@ -134,22 +122,20 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
         height += density;
         top_absorption = vec3<f32>(f32(volume[base + 1u]), f32(volume[base + 2u]), f32(volume[base + 3u])) / PAINT_SCALE / density;
         top_scattering = vec3<f32>(f32(volume[base + 4u]), f32(volume[base + 5u]), f32(volume[base + 6u])) / PAINT_SCALE / density;
-        dry = dry || volume[base + 7u] >= i32(PAINT_SCALE);
     }
     let slot = column_slot(id.xy);
-    columns[slot] = vec4<f32>(height, select(0.0, 1.0, dry), top_scattering.x, top_scattering.z);
-    column_pigment[slot] = vec4<f32>(top_absorption, top_scattering.y);
+    columns[slot] = vec4<f32>(height, top_scattering);
+    column_pigment[slot] = vec4<f32>(top_absorption, 0.0);
 }
 
 @compute @workgroup_size(16, 16)
 fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
     let local = vec2<i32>(id.xy);
-    let own = columns[column_slot(id.xy)];
     let pixel = local + window.origin;
     let paint = height_of(pixel);
-    if (own.y > 0.0 || paint < 0.0) { return; }
-    let surface = paint + relief_of(pixel);
+    if (paint < 0.0) { return; }
+    let surface = paint + ground_of(pixel);
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;
     var incoming = 0.0;
@@ -171,16 +157,15 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 fn store_flow(paint: f32, surface: f32, neighbour: vec2<i32>) -> f32 {
-    if (!on_canvas(neighbour) || store_is_dry(neighbour)) { return 0.0; }
+    if (!on_canvas(neighbour)) { return 0.0; }
     let other = heights[pixel_index(neighbour)];
-    return pair_flow(paint, surface, other, other + relief_of(neighbour));
+    return pair_flow(paint, surface, other, other + ground_of(neighbour));
 }
 
 fn level_store_pixel(pixel: vec2<i32>) {
     if (!on_canvas(pixel) || window_contains(pixel)) { return; }
     let height = heights[pixel_index(pixel)];
-    if (store_is_dry(pixel)) { return; }
-    let surface = height + relief_of(pixel);
+    let surface = height + ground_of(pixel);
     let cell = store_cell(vec2<u32>(pixel));
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;
@@ -223,21 +208,4 @@ fn level_store_even(@builtin(global_invocation_id) id: vec3<u32>) {
 @compute @workgroup_size(16, 16)
 fn level_store_odd(@builtin(global_invocation_id) id: vec3<u32>) {
     level_store_pixel(wet_pixel(id.xy, 1u));
-}
-
-@compute @workgroup_size(16, 16)
-fn dry_store(@builtin(global_invocation_id) id: vec3<u32>) {
-    let pixel = vec2<i32>(id.xy);
-    if (!on_canvas(pixel)) { return; }
-    let cell = store_cell(vec2<u32>(pixel));
-    if (store[cell] <= 0) { return; }
-    store[cell + 7u] = i32(PAINT_SCALE);
-}
-
-@compute @workgroup_size(64)
-fn dry_volume(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width * window.height * window.depth) { return; }
-    let base = id.x * CHANNELS;
-    if (volume[base] <= 0) { return; }
-    volume[base + 7u] = i32(PAINT_SCALE);
 }

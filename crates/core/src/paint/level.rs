@@ -38,10 +38,7 @@ pub struct Levelling {
     window: ComputePass,
     store_even: ComputePass,
     store_odd: ComputePass,
-    dry_volume: ComputePass,
-    dry_store: ComputePass,
     wet_uniform: wgpu::Buffer,
-    canvas_groups: [u32; 3],
     canvas_size: (u32, u32),
 }
 
@@ -66,7 +63,7 @@ impl Levelling {
             (3, Binding::ReadOnly(&height_map.heights)),
             (4, Binding::ReadWrite(&column_heights)),
             (5, Binding::ReadWrite(&column_pigment)),
-            (6, Binding::ReadOnly(&canvas.relief)),
+            (6, Binding::ReadOnly(&canvas.ground)),
             (7, Binding::Uniform(&wet_uniform)),
         ];
         let pass = |label, entry| ComputePass::new(gpu, label, &shader, entry, &bindings);
@@ -75,10 +72,7 @@ impl Levelling {
             window: pass("level window", "level_window"),
             store_even: pass("level store even", "level_store_even"),
             store_odd: pass("level store odd", "level_store_odd"),
-            dry_volume: pass("dry volume", "dry_volume"),
-            dry_store: pass("dry store", "dry_store"),
             wet_uniform,
-            canvas_groups: [canvas.size.width.div_ceil(16), canvas.size.height.div_ceil(16), 1],
             canvas_size: (canvas.size.width, canvas.size.height),
         }
     }
@@ -95,10 +89,5 @@ impl Levelling {
         let store_groups = [(size.x as u32).div_ceil(32), (size.y as u32).div_ceil(16), 1];
         self.store_even.dispatch(encoder, store_groups);
         self.store_odd.dispatch(encoder, store_groups);
-    }
-
-    pub fn encode_dry(&self, encoder: &mut wgpu::CommandEncoder) {
-        self.dry_volume.dispatch_linear(encoder, WINDOW_SIZE.x * WINDOW_SIZE.y * WINDOW_SIZE.z, 64);
-        self.dry_store.dispatch(encoder, self.canvas_groups);
     }
 }

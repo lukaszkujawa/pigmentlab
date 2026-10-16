@@ -1,7 +1,3 @@
-const PAINT_SCALE: f32 = 65536.0;
-const CHANNELS: u32 = 8u;
-const FULL_CELL: f32 = 0.999;
-
 struct WindowUniform {
     origin: vec2<i32>,
     previous_origin: vec2<i32>,

@@ -53,7 +53,7 @@ struct DepositUniform {
 @group(0) @binding(14) var<storage, read_write> displacement: array<atomic<i32>>;
 @group(0) @binding(15) var<storage, read_write> column_state: array<vec4<f32>>;
 @group(0) @binding(16) var<storage, read_write> coarse_marks: array<atomic<u32>>;
-@group(0) @binding(17) var<storage, read> relief: array<f32>;
+@group(0) @binding(17) var<storage, read> ground: array<f32>;
 
 const NO_COLUMN: f32 = -1.0;
 
@@ -161,25 +161,19 @@ fn snapshot_height(local: vec2<u32>) -> f32 {
     return column_state[column_index(local)].x;
 }
 
-fn snapshot_is_dry(local: vec2<u32>) -> bool {
-    return column_state[column_index(local)].z > 0.5;
-}
-
 @compute @workgroup_size(16, 16)
 fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
     var height = 0;
     var top = -1.0;
-    var dry = false;
     for (var z = 0u; z < window.depth; z++) {
         let cell = window_cell(vec3<u32>(id.xy, z));
         let density = atomicLoad(&paint[cell]);
         if (density <= 0) { continue; }
         height += density;
         top = f32(z);
-        dry = atomicLoad(&paint[cell + 7u]) >= i32(PAINT_SCALE);
     }
-    column_state[column_index(id.xy)] = vec4<f32>(f32(height) / PAINT_SCALE, top, select(0.0, 1.0, dry), relief_at(vec2<i32>(id.xy) + window.origin));
+    column_state[column_index(id.xy)] = vec4<f32>(f32(height) / PAINT_SCALE, top, 0.0, ground_at(vec2<i32>(id.xy) + window.origin));
 }
 
 fn topmost_filled_cell(local: vec2<u32>) -> i32 {
@@ -190,18 +184,12 @@ fn topmost_filled_cell(local: vec2<u32>) -> i32 {
     return -1;
 }
 
-fn surface_is_dry(local: vec2<u32>) -> bool {
-    let top = topmost_filled_cell(local);
-    if (top < 0) { return false; }
-    return atomicLoad(&paint[window_cell(vec3<u32>(local, u32(top))) + 7u]) >= i32(PAINT_SCALE);
-}
-
 fn on_canvas(pixel: vec2<i32>) -> bool {
     return pixel.x >= 0 && pixel.y >= 0 && pixel.x < i32(window.canvas_width) && pixel.y < i32(window.canvas_height);
 }
 
-fn relief_at(pixel: vec2<i32>) -> f32 {
-    return relief[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
+fn ground_at(pixel: vec2<i32>) -> f32 {
+    return ground[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
 }
 
 fn base_height(pixel: vec2<i32>) -> f32 {
@@ -209,7 +197,7 @@ fn base_height(pixel: vec2<i32>) -> f32 {
 }
 
 fn base_surface(pixel: vec2<i32>) -> f32 {
-    return base_height(pixel) + relief_at(pixel);
+    return base_height(pixel) + ground_at(pixel);
 }
 
 fn groove_amount(height: f32, hair_level: f32, limit: f32, base: f32, drag: f32) -> f32 {
@@ -241,7 +229,6 @@ fn near_marks(local: vec2<u32>) -> bool {
 }
 
 fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, direction: vec2<f32>, drag: f32) {
-    if (snapshot_is_dry(local)) { return; }
     let weight = max(height - hair_level, 0.0);
     let slot = column_index(local) * DISPLACEMENT_SLOTS;
     atomicMax(&displacement[slot], LIMIT_ENCODING - fixed(hair_level + film));
@@ -255,8 +242,7 @@ fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, 
 fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, height: f32, reach_floor: f32, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>, request: ptr<function, vec2<f32>>) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
     let local = vec2<u32>(pixel - window.origin);
-    let wet = !snapshot_is_dry(local);
-    if (wet && height > 0.0 && *load < deposit.sample_capacity) {
+    if (height > 0.0 && *load < deposit.sample_capacity) {
         let wanted = min(pickup_share * (1.0 - fill), deposit.sample_capacity - *load);
         if (wanted > 0.0) {
             *request = vec2<f32>(f32(column_index(local)), (*request).y + wanted);
@@ -302,14 +288,14 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let film = mix(FILM_MIN_RADIUS, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0) * carries_film);
         let state = column_state[column_index(local)];
         let paint_here = state.x;
-        let relief_here = state.w;
-        let height = paint_here + relief_here;
+        let ground_here = state.w;
+        let height = paint_here + ground_here;
         if (point.z > height + film) { continue; }
         if (brush_moving && travelled > 1e-3 && height > point.z) {
             mark_displacement(local, height, point.z, film, direction, DRAG_RATE_PER_SECOND * deposit.dt * motion);
         }
         let submerged = height > point.z + film;
-        let buried = clamp(min(paint_here, base_height(pixel)) - (point.z - relief_here), 0.0, deposit.contact_height);
+        let buried = clamp(min(paint_here, base_height(pixel)) - (point.z - ground_here), 0.0, deposit.contact_height);
         let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) * share * min(motion, brush_motion) * carries_film;
         let deposit_share = select(select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE * landing) * f32(stride), depositing), 0.0, submerged);
         exchange(pixel, point.xy, paint_here, point.z - film, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
@@ -395,10 +381,10 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
             push += vec2<f32>(f32(atomicLoad(&displacement[slot + 3u])), f32(atomicLoad(&displacement[slot + 4u])));
         }
     }
-    if (limit_code == 0 || surface_is_dry(id.xy)) { return; }
+    if (limit_code == 0) { return; }
     let pixel = vec2<i32>(id.xy) + window.origin;
     let paint_here = column_height(id.xy);
-    let height = paint_here + relief_at(pixel);
+    let height = paint_here + ground_at(pixel);
     let hair_level = f32(LIMIT_ENCODING - level_code) / PAINT_SCALE;
     let drag = f32(drag_code) / PAINT_SCALE;
     var excess = ridge_amount(height, f32(LIMIT_ENCODING - limit_code) / PAINT_SCALE, drag);

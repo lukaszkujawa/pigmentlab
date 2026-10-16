@@ -93,15 +93,18 @@ fn dried_paint_is_not_pushed() {
     engine.pointer(sample(PointerPhase::Down, 200.0, 200.0, 1.0, 0.0));
     engine.pointer(sample(PointerPhase::Up, 200.0, 200.0, 1.0, 0.5));
     engine.advance_exact(0.6);
+    let wet = engine.paint_mass();
     engine.dry();
-    let before = centroid_x(&mut engine, width);
+    let before = engine.dry_heights();
     engine.clean();
     engine.pointer(sample(PointerPhase::Down, 140.0, 200.0, 0.5, 1.1));
     engine.pointer(sample(PointerPhase::Move, 400.0, 200.0, 0.5, 1.5));
     engine.pointer(sample(PointerPhase::Up, 400.0, 200.0, 0.5, 1.5));
     engine.advance_exact(1.7);
-    let after = centroid_x(&mut engine, width);
-    assert!((after - before).abs() < 2.0, "dry paint should stay put ({before} -> {after})");
+    let after = engine.dry_heights();
+    assert!(before.iter().sum::<f32>() > wet * 0.7, "drying should have kept the blob ({wet} wet -> {} dry)", before.iter().sum::<f32>());
+    assert_eq!(before, after, "dry paint must not move under a brush");
+    assert!(engine.paint_mass() < 1.0, "a clean brush over dry paint should leave almost no wet paint, got {}", engine.paint_mass());
 }
 
 fn stroke_region(heights: &[f32], width: usize) -> impl Iterator<Item = usize> + '_ {

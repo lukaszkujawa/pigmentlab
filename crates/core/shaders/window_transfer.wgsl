@@ -20,19 +20,17 @@ fn bake(@builtin(global_invocation_id) id: vec3<u32>) {
     if (!on_canvas(pixel) || (relocating && window_contains(pixel))) { return; }
     var total: array<i32, 7>;
     for (var channel = 0u; channel < 7u; channel++) { total[channel] = 0; }
-    var dryness_mass = 0.0;
     for (var z = 0u; z < window.depth; z++) {
         let cell = window_cell(vec3<u32>(id.x, id.y, z));
         for (var channel = 0u; channel < 7u; channel++) {
             total[channel] += previous[cell + channel];
         }
-        dryness_mass += f32(previous[cell]) * f32(previous[cell + 7u]) / PAINT_SCALE;
     }
     let destination = store_cell(vec2<u32>(pixel));
     for (var channel = 0u; channel < 7u; channel++) {
         store[destination + channel] = total[channel];
     }
-    store[destination + 7u] = i32(round(dryness_mass / max(f32(total[0]), 1.0) * PAINT_SCALE));
+    store[destination + 7u] = 0;
 }
 
 fn carry_column(local: vec2<u32>, previous_local: vec2<u32>) {
@@ -49,11 +47,9 @@ fn unbake_column(local: vec2<u32>, pixel: vec2<i32>) {
     var height = 0.0;
     var absorption = vec3<f32>(0.0);
     var scattering = vec3<f32>(0.0);
-    var dryness = 0;
     if (on_canvas(pixel)) {
         let source = store_cell(vec2<u32>(pixel));
         height = f32(store[source]) / PAINT_SCALE;
-        dryness = store[source + 7u];
         if (height > 0.0) {
             absorption = vec3<f32>(f32(store[source + 1u]), f32(store[source + 2u]), f32(store[source + 3u])) / PAINT_SCALE / height;
             scattering = vec3<f32>(f32(store[source + 4u]), f32(store[source + 5u]), f32(store[source + 6u])) / PAINT_SCALE / height;
@@ -69,7 +65,7 @@ fn unbake_column(local: vec2<u32>, pixel: vec2<i32>) {
         volume[cell + 4u] = i32(round(fill * scattering.x * PAINT_SCALE));
         volume[cell + 5u] = i32(round(fill * scattering.y * PAINT_SCALE));
         volume[cell + 6u] = i32(round(fill * scattering.z * PAINT_SCALE));
-        volume[cell + 7u] = select(0, dryness, fill > 0.0);
+        volume[cell + 7u] = 0;
     }
 }
 

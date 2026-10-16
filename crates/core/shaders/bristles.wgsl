@@ -35,6 +35,8 @@ struct BrushUniform {
 @group(0) @binding(5) var<uniform> window: WindowUniform;
 @group(0) @binding(6) var<storage, read> stroke_base: array<f32>;
 @group(0) @binding(7) var<storage, read_write> proposals: array<vec4<f32>>;
+@group(0) @binding(8) var<storage, read> ground: array<f32>;
+@group(0) @binding(9) var<storage, read> relief: array<f32>;
 
 struct Frame {
     root: vec3<f32>,
@@ -49,10 +51,20 @@ struct Frame {
     contact: bool,
 }
 
-fn base_height_under(xy: vec2<f32>) -> f32 {
+fn canvas_index(xy: vec2<f32>) -> i32 {
     let pixel = vec2<i32>(floor(xy));
-    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { return 0.0; }
-    return stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
+    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { return -1; }
+    return pixel.y * i32(window.canvas_width) + pixel.x;
+}
+
+fn floor_under(xy: vec2<f32>) -> f32 {
+    let index = canvas_index(xy);
+    if (index < 0) { return 0.0; }
+    let dried = ground[u32(index)] - relief[u32(index)];
+    let light_touch = 1.0 - brush.pressure;
+    let weave_top = brush.tooth * light_touch * light_touch;
+    let wet_base = brush.sink * (1.0 - PRESSURE_SINK * brush.pressure) * stroke_base[u32(index)];
+    return dried + weave_top + wet_base;
 }
 
 fn canvas_to_brush() -> mat3x3<f32> {
@@ -127,8 +139,7 @@ fn horizontal_direction(preferred: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> 
 
 fn frame_of(bristle: u32) -> Frame {
     let base = bristle * VERTICES;
-    let light_touch = 1.0 - brush.pressure;
-    let floor_height = brush.sink * (1.0 - PRESSURE_SINK * brush.pressure) * base_height_under(tips[bristle].xy) + brush.tooth * light_touch * light_touch;
+    let floor_height = floor_under(tips[bristle].xy);
     let lift = vec3<f32>(0.0, 0.0, floor_height);
     let root = to_canvas(rest[base + 1u].xyz) - lift;
     let root_tangent = direction_to_canvas(normalize(rest[base + 2u].xyz - rest[base + 1u].xyz));

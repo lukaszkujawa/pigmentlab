@@ -2,7 +2,7 @@
 @group(0) @binding(1) var<storage, read> store: array<i32>;
 @group(0) @binding(2) var<storage, read> volume: array<i32>;
 @group(0) @binding(3) var<storage, read_write> heights: array<f32>;
-@group(0) @binding(4) var<storage, read> relief: array<f32>;
+@group(0) @binding(4) var<storage, read> ground: array<f32>;
 @group(0) @binding(5) var<storage, read_write> surface: array<f32>;
 @group(0) @binding(6) var<storage, read_write> smooth_surface: array<f32>;
 @group(0) @binding(7) var<storage, read_write> smooth_paint: array<f32>;
@@ -24,7 +24,7 @@ fn build(@builtin(global_invocation_id) id: vec3<u32>) {
     let index = id.y * window.canvas_width + id.x;
     let paint = f32(total) / PAINT_SCALE;
     heights[index] = paint;
-    surface[index] = paint + relief[index];
+    surface[index] = paint + ground[index];
 }
 
 fn clamped_index(texel: vec2<i32>) -> u32 {

@@ -13,7 +13,7 @@ fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Bru
     let canvas = Canvas::new(&gpu, CanvasSize { width: 512, height: 512 }, 1);
     let window = ActiveWindow::new(&gpu, &canvas);
     let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
-    let brush = Brush::new(&gpu, preset, 7, &window, &flat_canvas);
+    let brush = Brush::new(&gpu, preset, 7, &window, &canvas, &flat_canvas);
     let mut teleported = false;
     for pose in poses {
         if !teleported {

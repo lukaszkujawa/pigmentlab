@@ -21,6 +21,7 @@ const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 *
 @group(0) @binding(5) var<storage, read> heights: array<f32>;
 @group(0) @binding(6) var<storage, read> smooth_surface: array<f32>;
 @group(0) @binding(7) var<storage, read> smooth_paint: array<f32>;
+@group(0) @binding(8) var<storage, read> dry: array<i32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -135,19 +136,29 @@ fn shade(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32) -> vec3<f32> {
     return albedo * (ambient + (1.0 - composite.ambient) * diffuse * lit) + vec3<f32>(specular * lit);
 }
 
+fn dried_surface(texel: vec2<i32>, paper: vec3<f32>) -> vec3<f32> {
+    let cell = store_cell(vec2<u32>(texel));
+    let height = f32(dry[cell]) / PAINT_SCALE;
+    if (height <= 1e-4) { return paper; }
+    let k = vec3<f32>(f32(dry[cell + 1u]), f32(dry[cell + 2u]), f32(dry[cell + 3u])) / PAINT_SCALE / height;
+    let s = vec3<f32>(f32(dry[cell + 4u]), f32(dry[cell + 5u]), f32(dry[cell + 6u])) / PAINT_SCALE / height;
+    return layer_reflectance(max(k, vec3<f32>(0.0)), max(s, vec3<f32>(0.0)), height * composite.optical_thickness_per_pixel, paper);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let texel = vec2<i32>(in.position.xy);
     let paper = textureLoad(substrate, texel, 0).rgb;
+    let base = dried_surface(texel, paper);
     let column = column_sum(texel);
     let height = f32(column[0]) / PAINT_SCALE;
     if (height <= 1e-4) {
-        return vec4<f32>(shade(paper, texel, 0.0), 1.0);
+        return vec4<f32>(shade(base, texel, 0.0), 1.0);
     }
     let k = vec3<f32>(f32(column[1]), f32(column[2]), f32(column[3])) / PAINT_SCALE / height;
     let s = vec3<f32>(f32(column[4]), f32(column[5]), f32(column[6])) / PAINT_SCALE / height;
     let thickness = max(mix(height, smooth_paint[clamped_index(texel)], 0.3), 1e-4);
-    let albedo = layer_reflectance(max(k, vec3<f32>(0.0)), max(s, vec3<f32>(0.0)), thickness * composite.optical_thickness_per_pixel, paper);
+    let albedo = layer_reflectance(max(k, vec3<f32>(0.0)), max(s, vec3<f32>(0.0)), thickness * composite.optical_thickness_per_pixel, base);
     let color = shade(albedo, texel, height);
     return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }

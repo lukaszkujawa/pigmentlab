@@ -1,0 +1,29 @@
+{
+  "seed": 1,
+  "canvas": { "width": 1024, "height": 768 },
+  "steps": [
+    { "t": 0.0, "action": "tool", "name": "Paint tube" },
+    { "t": 0.0, "action": "dip", "pigment": "cadmium_red" },
+    { "t": 0.0, "action": "press", "x": 500, "y": 150, "pressure": 1.0 },
+    { "t": 1.0, "action": "move", "x": 500, "y": 620, "pressure": 1.0 },
+    { "t": 1.0, "action": "release" },
+    { "t": 1.1, "action": "checkpoint", "name": "wet_bar" },
+    { "t": 1.1, "action": "dry" },
+    { "t": 1.2, "action": "checkpoint", "name": "dried_bar" },
+    { "t": 1.2, "action": "tool", "name": "Round large" },
+    { "t": 1.2, "action": "dip", "pigment": "cadmium_yellow" },
+    { "t": 1.2, "action": "press", "x": 200, "y": 250, "pressure": 0.8 },
+    { "t": 2.0, "action": "move", "x": 800, "y": 250, "pressure": 0.8 },
+    { "t": 2.0, "action": "release" },
+    { "t": 2.1, "action": "dip", "pigment": "cadmium_yellow" },
+    { "t": 2.1, "action": "press", "x": 800, "y": 520, "pressure": 0.8 },
+    { "t": 2.9, "action": "move", "x": 200, "y": 520, "pressure": 0.8 },
+    { "t": 2.9, "action": "release" },
+    { "t": 3.0, "action": "tool", "name": "Colour shaper" },
+    { "t": 3.0, "action": "param", "name": "angle", "value": 90 },
+    { "t": 3.0, "action": "press", "x": 350, "y": 400, "pressure": 0.9 },
+    { "t": 3.6, "action": "move", "x": 700, "y": 400, "pressure": 0.9 },
+    { "t": 3.6, "action": "release" },
+    { "t": 4.5, "action": "checkpoint", "name": "painted_over" }
+  ]
+}

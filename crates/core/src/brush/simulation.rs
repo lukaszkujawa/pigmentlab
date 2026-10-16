@@ -2,6 +2,7 @@ use super::frame::BrushPose;
 use super::geometry::{VERTICES_PER_BRISTLE, rest_positions};
 use super::preset::BrushPreset;
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
+use crate::canvas::Canvas;
 use crate::paint::ActiveWindow;
 use crate::pigment::Pigment;
 use crate::rng::SplitMix64;
@@ -70,7 +71,7 @@ pub struct Brush {
 }
 
 impl Brush {
-    pub fn new(gpu: &Gpu, preset: BrushPreset, seed: u64, window: &ActiveWindow, stroke_base: &wgpu::Buffer) -> Self {
+    pub fn new(gpu: &Gpu, preset: BrushPreset, seed: u64, window: &ActiveWindow, canvas: &Canvas, stroke_base: &wgpu::Buffer) -> Self {
         let rest = rest_positions(&preset, &mut SplitMix64::new(seed));
         let vertex_bytes = std::mem::size_of_val(rest.as_slice()) as u64;
         let bristles = u64::from(preset.bristle_count);
@@ -109,6 +110,8 @@ impl Brush {
                 buffer_layout_entry(5, compute, wgpu::BufferBindingType::Uniform),
                 buffer_layout_entry(6, compute, read_only),
                 buffer_layout_entry(7, compute, read_write),
+                buffer_layout_entry(8, compute, read_only),
+                buffer_layout_entry(9, compute, read_only),
             ],
         });
         let proposals = gpu.storage_buffer("bristle proposals", tips.size());
@@ -124,6 +127,8 @@ impl Brush {
                 buffer_binding(5, &window.uniform),
                 buffer_binding(6, stroke_base),
                 buffer_binding(7, &proposals),
+                buffer_binding(8, &canvas.ground),
+                buffer_binding(9, &canvas.relief),
             ],
         });
         let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

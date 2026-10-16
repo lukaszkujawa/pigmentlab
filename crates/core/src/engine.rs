@@ -60,6 +60,7 @@ pub struct Engine {
     levelling_enabled: bool,
     wet_bounds: Option<WetBounds>,
     history: History,
+    dry_history: History,
     seed: u64,
     base_preset: BrushPreset,
     adjustments: BrushAdjustments,
@@ -84,7 +85,7 @@ impl Engine {
         let canvas = Canvas::new(&gpu, size, seed);
         let window = ActiveWindow::new(&gpu, &canvas);
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
-        let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &stroke_base);
+        let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &canvas, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
         let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base, DEPOSIT_DT);
         let tube = Tube::new(&gpu, &window);
@@ -104,6 +105,7 @@ impl Engine {
             view_formats: &[],
         });
         let history = History::new(&gpu, canvas.paint.size(), UNDO_DEPTH);
+        let dry_history = History::new(&gpu, canvas.dry.size(), UNDO_DEPTH);
         let lifted = Vec3::new(size.width as f32 * 0.5, size.height as f32 * 0.5, brush.preset().length * LIFTED_HEIGHT);
         Self {
             gpu,
@@ -133,6 +135,7 @@ impl Engine {
             levelling_enabled: true,
             wet_bounds: None,
             history,
+            dry_history,
             seed,
             base_preset: BrushPreset::default_round(),
             adjustments: BrushAdjustments::default(),
@@ -147,6 +150,16 @@ impl Engine {
 
     pub fn canvas_relief(&self) -> Vec<f32> {
         self.canvas.relief_heights()
+    }
+
+    pub fn dry_heights(&self) -> Vec<f32> {
+        let dry = read_buffer::<i32>(&self.gpu, &self.canvas.dry);
+        dry.chunks(PAINT_CHANNELS as usize).map(|pixel| pixel[0] as f32 / PAINT_SCALE).collect()
+    }
+
+    fn snapshot(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        self.history.push(encoder, &self.canvas.paint);
+        self.dry_history.push(encoder, &self.canvas.dry);
     }
 
     pub fn brush(&self) -> &Brush {
@@ -205,7 +218,7 @@ impl Engine {
     }
 
     pub fn set_brush(&mut self, preset: BrushPreset) {
-        self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.stroke_base);
+        self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.canvas, &self.stroke_base);
         self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.canvas, &self.stroke_base, DEPOSIT_DT);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
@@ -214,8 +227,8 @@ impl Engine {
     pub fn clear(&mut self) {
         let mut encoder = self.encoder("clear");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
-        self.history.push(&mut encoder, &self.canvas.paint);
-        encoder.clear_buffer(&self.canvas.paint, 0, None);
+        self.snapshot(&mut encoder);
+        self.canvas.encode_clear(&mut encoder);
         self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.wet_bounds = None;
@@ -224,8 +237,9 @@ impl Engine {
     pub fn dry(&mut self) {
         let mut encoder = self.encoder("dry");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
-        self.history.push(&mut encoder, &self.canvas.paint);
-        self.levelling.encode_dry(&mut encoder);
+        self.snapshot(&mut encoder);
+        self.canvas.encode_dry(&mut encoder);
+        self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.wet_bounds = None;
     }
@@ -234,6 +248,8 @@ impl Engine {
         let mut encoder = self.encoder("undo");
         let restored = self.history.pop(&mut encoder, &self.canvas.paint);
         if restored {
+            self.dry_history.pop(&mut encoder, &self.canvas.dry);
+            self.canvas.encode_refresh_ground_after_undo(&mut encoder);
             self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
             self.wet_bounds = Some(self.whole_canvas());
         }
@@ -332,7 +348,7 @@ impl Engine {
                     self.brush.teleport(&self.gpu, &self.pose);
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
-                    self.history.push(&mut encoder, &self.canvas.paint);
+                    self.snapshot(&mut encoder);
                     self.height_map.encode(&mut encoder);
                     encoder.copy_buffer_to_buffer(&self.height_map.heights, 0, &self.stroke_base, 0, self.stroke_base.size());
                     self.gpu.queue.submit(Some(encoder.finish()));
