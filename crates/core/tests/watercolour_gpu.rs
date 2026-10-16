@@ -279,3 +279,33 @@ fn a_wet_wash_renders_a_smooth_edge_not_a_cell_staircase() {
     let shade: Vec<f32> = frame.pixels().zip(blank.pixels()).map(|(p, b)| (b.0[1] as f32 - p.0[1] as f32).max(0.0)).collect();
     assert_smooth_outline(&shade, 180..460, "a wet stroke");
 }
+
+fn settled_contents(engine: &mut Engine) -> simpaint_core::paint::BrushContents {
+    for _ in 0..3 {
+        engine.brush_contents();
+        engine.brush_load();
+    }
+    engine.brush_contents()
+}
+
+#[test]
+fn the_brush_gauge_drains_while_painting_watercolour() {
+    let mut engine = paper(Surface::ColdPressed);
+    engine.dip(by_name("french_ultramarine").unwrap());
+    let dipped = engine.brush_contents();
+    let end = stroke(&mut engine, (60.0, 160.0), (580.0, 170.0), 0.7, 0.0, 1.0);
+    engine.advance_exact(end + 0.2);
+    let painted = settled_contents(&mut engine);
+    assert!(painted.fill < dipped.fill - 0.05, "painting should drain the gauge: {} -> {}", dipped.fill, painted.fill);
+    let blue = painted.display_srgb();
+    assert!(blue[2] > blue[0] + 40, "the gauge should show the blue still on the brush, got {blue:?}");
+}
+
+#[test]
+fn a_brush_of_clear_water_shows_as_water_not_black() {
+    let mut engine = paper(Surface::ColdPressed);
+    engine.dip_water();
+    let water = engine.brush_contents();
+    assert!(water.fill > 0.5, "dipping in water should fill the brush");
+    assert!(water.display_srgb().iter().all(|c| *c > 200), "clear water should look clear, got {:?}", water.display_srgb());
+}

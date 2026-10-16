@@ -82,6 +82,7 @@ impl Engine {
                     self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.touch.pressure, self.canvas.tooth(), canvas);
                     if let Some(water_brush) = self.water_brush.as_ref().filter(|_| self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT)) {
                         water_brush.encode(&mut encoder, &self.brush);
+                        self.contents_version += 1;
                     } else if self.water_brush.is_none() && self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
                         let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
                         let stroke = StrokeState { travel, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
@@ -115,13 +116,13 @@ impl Engine {
             }
             self.request_gauge_reading(&mut encoder);
             self.gpu.queue.submit(Some(encoder.finish()));
-            self.deposit.after_submit();
+            self.gauge().after_submit();
             self.collect_brush_contents();
         }
     }
 
     pub(super) fn request_gauge_reading(&mut self, encoder: &mut wgpu::CommandEncoder) {
-        if self.gauge_version != self.contents_version && self.deposit.encode_gauge_reading(encoder) {
+        if self.gauge_version != self.contents_version && self.gauge().encode_copy(encoder) {
             self.gauge_version = self.contents_version;
         }
     }

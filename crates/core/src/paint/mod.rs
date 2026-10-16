@@ -4,7 +4,7 @@ mod level;
 mod tube;
 mod window;
 
-pub use gauge::BrushContents;
+pub use gauge::{BrushContents, GAUGE_CHANNELS, Gauge};
 pub use deposit::{Deposit, MEDIUM_THINNING, StrokeState};
 pub use level::{Levelling, WetBounds};
 pub use tube::{NOZZLE_RADIUS, Tube};

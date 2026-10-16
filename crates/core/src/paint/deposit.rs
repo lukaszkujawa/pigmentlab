@@ -1,14 +1,13 @@
 use super::window::{ActiveWindow, WINDOW_SIZE};
 use crate::canvas::{Canvas, PAINT_CHANNELS};
 use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
-use super::gauge::{BrushContents, Gauge};
+use super::gauge::{GAUGE_CHANNELS, Gauge};
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 
 const WORKGROUP_SIZE: u32 = 128;
 const CONTACT_HEIGHT: f32 = crate::units::cm(0.08);
 const FLOW_PER_MEDIUM: f32 = 1.0;
 pub const MEDIUM_THINNING: f32 = 0.6;
-const BRUSH_CONTENTS_CHANNELS: u64 = 7;
 const BRUSH_CONTENTS_SCALE: f32 = 16.0;
 
 #[repr(C)]
@@ -77,7 +76,7 @@ impl Deposit {
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
         let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
-        let pickup_demand = gpu.storage_buffer("pickup demand", (2 * columns + 1 + BRUSH_CONTENTS_CHANNELS) * 4);
+        let pickup_demand = gpu.storage_buffer("pickup demand", (2 * columns + 1 + GAUGE_CHANNELS as u64) * 4);
         let pickup_grant = gpu.storage_buffer("pickup grant", columns * 32);
         let stir_depth = gpu.storage_buffer("stir depth", columns * 4);
         let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
@@ -215,19 +214,7 @@ impl Deposit {
         encoder.copy_buffer_to_buffer(&brush.chain, 0, &self.previous_chain, 0, brush.chain.size());
     }
 
-    pub fn encode_gauge_reading(&self, encoder: &mut wgpu::CommandEncoder) -> bool {
-        self.gauge.encode_copy(encoder)
-    }
-
-    pub fn after_submit(&self) {
-        self.gauge.after_submit();
-    }
-
-    pub fn discard_brush_reading(&self) {
-        self.gauge.invalidate();
-    }
-
-    pub fn brush_contents(&self) -> Option<BrushContents> {
-        self.gauge.take()
+    pub fn gauge(&self) -> &Gauge {
+        &self.gauge
     }
 }

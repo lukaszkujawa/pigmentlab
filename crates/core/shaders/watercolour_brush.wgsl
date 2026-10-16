@@ -8,6 +8,8 @@ const WATER_PER_LOAD: f32 = 0.25;
 const MAX_LIFT_FRACTION: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const BLEED_RATE: f32 = 1.5;
+const CONTENTS_SCALE: f32 = 16.0;
+const CONTENTS_CHANNELS: u32 = 8u;
 const HAIR_REACH: f32 = 2.5;
 const BLEED_ONSET: f32 = 4.0;
 const ACCUMULATOR_SCALE: f32 = 65536.0;
@@ -254,6 +256,14 @@ fn apply_lift(@builtin(global_invocation_id) id: vec3<u32>) {
     sample_behaviour[sample] = vec4<f32>(behaviour / mass, 0.0);
 }
 
+fn report_contents(liquid: f32, absorption: vec3<f32>, scattering: vec3<f32>, pigment: f32) {
+    let slot = exchange_uniform.cells.x * exchange_uniform.cells.y;
+    let values = array<f32, 8>(liquid, absorption.x, absorption.y, absorption.z, scattering.x, scattering.y, scattering.z, pigment);
+    for (var channel = 0u; channel < CONTENTS_CHANNELS; channel++) {
+        atomicAdd(&lift_demand[slot + channel], i32(round(values[channel] * CONTENTS_SCALE)));
+    }
+}
+
 @compute @workgroup_size(64)
 fn wick(@builtin(global_invocation_id) id: vec3<u32>) {
     let bristle = id.x;
@@ -273,6 +283,7 @@ fn wick(@builtin(global_invocation_id) id: vec3<u32>) {
         scattering += sample_scattering[base + i].xyz * mass;
         behaviour += sample_behaviour[base + i].xyz * mass;
     }
+    report_contents(liquid, absorption, scattering, pigment);
     let mean_load = liquid / f32(exchange_uniform.samples_per_bristle);
     let mean_concentration = pigment / max(liquid, 1e-9);
     let rate = min(WICKING_PER_SECOND * exchange_uniform.dt, 1.0);

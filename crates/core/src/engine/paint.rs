@@ -1,7 +1,7 @@
 use super::Engine;
 use crate::canvas::{PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::read_buffer;
-use crate::paint::BrushContents;
+use crate::paint::{BrushContents, Gauge};
 use crate::pigment::{Coefficients, Paint};
 use glam::{Vec3, Vec4};
 
@@ -18,8 +18,8 @@ impl Engine {
         if self.watercolour.is_some() {
             let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * medium) / load.max(WATERCOLOUR_DRIEST_LOAD);
             self.brush.dip_watercolour(&self.gpu, paint, load, concentration);
-            self.deposit.discard_brush_reading();
-            self.brush_contents = BrushContents { fill: load, paint: paint.coefficients };
+            self.gauge().invalidate();
+            self.brush_contents = BrushContents { fill: load, paint: paint.coefficients, concentration };
             return;
         }
         let paint = paint.coefficients;
@@ -27,8 +27,8 @@ impl Engine {
         let thinned = Coefficients { absorption: paint.absorption * dilution, scattering: paint.scattering * dilution };
         self.paint_on_tool = thinned;
         self.brush.dip(&self.gpu, thinned, load, medium);
-        self.deposit.discard_brush_reading();
-        self.brush_contents = BrushContents { fill: load, paint: thinned };
+        self.gauge().invalidate();
+        self.brush_contents = BrushContents { fill: load, paint: thinned, concentration: 1.0 };
     }
 
     pub fn dip_water(&mut self) {
@@ -39,8 +39,12 @@ impl Engine {
         } else {
             self.brush.clean(&self.gpu);
         }
-        self.deposit.discard_brush_reading();
-        self.brush_contents = BrushContents { fill: if self.watercolour.is_some() { load } else { 0.0 }, paint: clear.coefficients };
+        self.gauge().invalidate();
+        self.brush_contents = BrushContents { fill: if self.watercolour.is_some() { load } else { 0.0 }, paint: clear.coefficients, concentration: 0.0 };
+    }
+
+    pub(super) fn gauge(&self) -> &Gauge {
+        self.water_brush.as_ref().map_or(self.deposit.gauge(), |water| water.gauge())
     }
 
     pub fn brush_contents(&mut self) -> BrushContents {
@@ -50,20 +54,20 @@ impl Engine {
 
     pub(super) fn collect_brush_contents(&mut self) {
         let _ = self.gpu.device.poll(wgpu::PollType::Poll);
-        if let Some(contents) = self.deposit.brush_contents() {
+        if let Some(contents) = self.gauge().take() {
             self.brush_contents = contents;
         }
         if self.gauge_version != self.contents_version {
             let mut encoder = self.encoder("brush gauge");
             self.request_gauge_reading(&mut encoder);
             self.gpu.queue.submit(Some(encoder.finish()));
-            self.deposit.after_submit();
+            self.gauge().after_submit();
         }
     }
 
     pub fn clean(&mut self) {
         self.brush.clean(&self.gpu);
-        self.deposit.discard_brush_reading();
+        self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: 0.0, ..self.brush_contents };
     }
 

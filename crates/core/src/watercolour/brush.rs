@@ -2,6 +2,9 @@ use super::{ACCUMULATORS, Watercolour};
 use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
+use crate::paint::{GAUGE_CHANNELS, Gauge};
+
+const CONTENTS_SCALE: f32 = 16.0;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -15,6 +18,9 @@ struct BrushWaterUniform {
 }
 
 pub struct WaterBrush {
+    gauge: Gauge,
+    contents: wgpu::Buffer,
+    contents_offset: u64,
     previous_chain: wgpu::Buffer,
     exchange: ComputePass,
     grant_lift: ComputePass,
@@ -44,7 +50,7 @@ impl WaterBrush {
             }),
         );
         let previous_chain = gpu.storage_buffer("water brush previous chain", brush.chain.size());
-        let lift_demand = gpu.storage_buffer("water brush lift demand", cells * 4);
+        let lift_demand = gpu.storage_buffer("water brush lift demand and contents", (cells + GAUGE_CHANNELS as u64) * 4);
         let lift = gpu.storage_buffer("water brush lift", cells * 48);
         let sample_request = gpu.storage_buffer("water brush sample request", u64::from(sample_count) * 8);
         let start_concentration = gpu.storage_buffer("water brush start concentration", u64::from(sample_count) * 4);
@@ -85,6 +91,9 @@ impl WaterBrush {
             pass("water brush wick", "wick"),
         ];
         Self {
+            gauge: Gauge::new(gpu, &lift_demand, cells * 4, CONTENTS_SCALE, preset.sample_capacity * sample_count as f32),
+            contents: lift_demand.clone(),
+            contents_offset: cells * 4,
             previous_chain,
             exchange,
             grant_lift,
@@ -96,7 +105,12 @@ impl WaterBrush {
         }
     }
 
+    pub fn gauge(&self) -> &Gauge {
+        &self.gauge
+    }
+
     pub fn encode(&self, encoder: &mut wgpu::CommandEncoder, brush: &Brush) {
+        encoder.clear_buffer(&self.contents, self.contents_offset, Some(GAUGE_CHANNELS as u64 * 4));
         self.exchange.dispatch_linear(encoder, self.sample_count, 128);
         self.grant_lift.dispatch(encoder, [self.cells[0].div_ceil(16), self.cells[1].div_ceil(16), 1]);
         self.apply_lift.dispatch_linear(encoder, self.sample_count, 128);

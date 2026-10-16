@@ -387,7 +387,7 @@ fn show_brush_contents(engine: &mut Engine, app: &AppWindow) {
     let contents = engine.brush_contents();
     app.set_brush_fill(contents.fill);
     if contents.fill > 0.0 {
-        let [r, g, b] = contents.paint.srgb();
+        let [r, g, b] = contents.display_srgb();
         app.set_brush_paint(slint::Color::from_rgb_u8(r, g, b));
     }
 }

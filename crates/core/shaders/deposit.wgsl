@@ -235,7 +235,7 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var channel = 0u; channel < CHANNELS; channel++) { atomicStore(&film[column * CHANNELS + channel], 0); }
     for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
     atomicStore(&coarse_marks[coarse_index(id.xy)], 0u);
-    if (id.x < 7u && id.y == 0u) { atomicStore(&pickup_demand[brush_contents_slot() + id.x], 0); }
+    if (id.x < 8u && id.y == 0u) { atomicStore(&pickup_demand[brush_contents_slot() + id.x], 0); }
 }
 
 fn max_surface_slot() -> u32 {
@@ -583,8 +583,8 @@ fn brush_contents_slot() -> u32 {
 
 fn report_brush_contents(load: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
     let slot = brush_contents_slot();
-    let values = array<f32, 7>(load, absorption.x, absorption.y, absorption.z, scattering.x, scattering.y, scattering.z);
-    for (var channel = 0u; channel < 7u; channel++) {
+    let values = array<f32, 8>(load, absorption.x, absorption.y, absorption.z, scattering.x, scattering.y, scattering.z, load);
+    for (var channel = 0u; channel < 8u; channel++) {
         atomicAdd(&pickup_demand[slot + channel], i32(round(values[channel] * BRUSH_CONTENTS_SCALE)));
     }
 }
