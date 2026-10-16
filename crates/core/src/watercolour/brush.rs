@@ -47,6 +47,7 @@ impl WaterBrush {
         let lift_demand = gpu.storage_buffer("water brush lift demand", cells * 4);
         let lift = gpu.storage_buffer("water brush lift", cells * 48);
         let sample_request = gpu.storage_buffer("water brush sample request", u64::from(sample_count) * 8);
+        let start_concentration = gpu.storage_buffer("water brush start concentration", u64::from(sample_count) * 4);
         let shader = gpu.shader(
             "watercolour brush",
             &[
@@ -70,6 +71,8 @@ impl WaterBrush {
             (11, Binding::ReadWrite(&lift)),
             (12, Binding::ReadWrite(&sample_request)),
             (13, Binding::ReadOnly(&canvas.ground)),
+            (14, Binding::ReadWrite(&start_concentration)),
+            (15, Binding::ReadOnly(&water.deposited)),
         ];
         debug_assert_eq!(ACCUMULATORS, 13);
         let pass = |label, entry| ComputePass::new(gpu, label, &shader, entry, &bindings);

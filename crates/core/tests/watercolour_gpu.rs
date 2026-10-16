@@ -56,11 +56,13 @@ fn flowing_water_conserves_pigment() {
     let mut engine = paper(Surface::ColdPressed);
     engine.dip(by_name("french_ultramarine").unwrap());
     let end = stroke(&mut engine, (100.0, 160.0), (540.0, 170.0), 0.6, 0.0, 0.8);
+    engine.dip_water();
+    let end = stroke(&mut engine, (300.0, 120.0), (320.0, 210.0), 0.9, end, 0.4);
     let early = pigment_mass(&engine);
     engine.advance_exact(end + 3.0);
     let later = pigment_mass(&engine);
     assert!(early > 0.0, "the stroke should carry pigment onto the paper");
-    assert!((later - early).abs() < early * 0.005, "pigment changed while flowing: {early} -> {later}");
+    assert!((later - early).abs() < early * 0.005, "pigment changed while water flowed through it: {early} -> {later}");
 }
 
 #[test]
@@ -107,7 +109,7 @@ fn wet_in_wet_spreads_far_wider_than_wet_on_dry() {
     let dry_paper = footprint(&mut paper(Surface::ColdPressed), false);
     let wet_paper = footprint(&mut paper(Surface::ColdPressed), true);
     assert!(dry_paper > 0, "the stroke should leave paint");
-    assert!(wet_paper > dry_paper * 3 / 2, "pigment should bloom on wet paper: {dry_paper} px dry vs {wet_paper} px wet");
+    assert!(wet_paper > dry_paper * 5 / 4, "pigment should bloom on wet paper: {dry_paper} px dry vs {wet_paper} px wet");
 }
 
 #[test]

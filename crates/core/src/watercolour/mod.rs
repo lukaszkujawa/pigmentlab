@@ -38,6 +38,7 @@ pub struct Watercolour {
     pub suspended: wgpu::Buffer,
     pub deposited: wgpu::Buffer,
     pub accumulators: wgpu::Buffer,
+    pub coverage: wgpu::Buffer,
     velocity_u: wgpu::Buffer,
     velocity_v: wgpu::Buffer,
     next_u: wgpu::Buffer,
@@ -52,6 +53,7 @@ pub struct Watercolour {
     transfer: ComputePass,
     capillary: ComputePass,
     dry_cells: ComputePass,
+    bake_pixels: ComputePass,
     history: [History; 3],
 }
 
@@ -71,6 +73,8 @@ impl Watercolour {
         let deposited = gpu.storage_buffer("watercolour deposited pigment", count * PIGMENT_BYTES);
         let impulse = gpu.storage_buffer("watercolour impulse", count * 16);
         let accumulators = gpu.storage_buffer("watercolour brush accumulators", count * ACCUMULATORS * 4);
+        let coverage = gpu.storage_buffer("watercolour wash coverage", count * 8);
+        let drying = gpu.storage_buffer("watercolour drying cells", count * PIGMENT_BYTES);
         let uniform = gpu.uniform_buffer("watercolour uniform", std::mem::size_of::<WaterUniform>() as u64);
         let shader = gpu.shader(
             "watercolour",
@@ -92,6 +96,8 @@ impl Watercolour {
             (12, Binding::ReadWrite(&accumulators)),
             (13, Binding::ReadWrite(&canvas.dry)),
             (14, Binding::ReadOnly(&canvas.relief)),
+            (15, Binding::ReadWrite(&coverage)),
+            (16, Binding::ReadWrite(&drying)),
         ];
         let pass = |label, entry| ComputePass::new(gpu, label, &shader, entry, &bindings);
         let passes = [
@@ -103,8 +109,9 @@ impl Watercolour {
             pass("watercolour transfer", "transfer"),
             pass("watercolour capillary", "capillary"),
             pass("watercolour dry cells", "dry_cells"),
+            pass("watercolour bake pixels", "bake_pixels"),
         ];
-        let [apply_brush, update_u, update_v, limit_outflow, advect, transfer, capillary, dry_cells] = passes;
+        let [apply_brush, update_u, update_v, limit_outflow, advect, transfer, capillary, dry_cells, bake_pixels] = passes;
         let history = [&water, &suspended, &deposited].map(|buffer| History::new(gpu, buffer.size(), UNDO_DEPTH));
         let base = WaterUniform {
             cells: cells.to_array(),
@@ -127,6 +134,7 @@ impl Watercolour {
             suspended,
             deposited,
             accumulators,
+            coverage,
             velocity_u,
             velocity_v,
             next_u,
@@ -141,6 +149,7 @@ impl Watercolour {
             transfer,
             capillary,
             dry_cells,
+            bake_pixels,
             history,
         };
         watercolour.set_paper(gpu, canvas);
@@ -163,7 +172,7 @@ impl Watercolour {
 
     pub fn clear(&mut self, gpu: &Gpu) {
         let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("clear watercolour") });
-        for buffer in [&self.water, &self.suspended, &self.deposited, &self.velocity_u, &self.velocity_v, &self.next_u, &self.next_v, &self.accumulators] {
+        for buffer in [&self.water, &self.suspended, &self.deposited, &self.velocity_u, &self.velocity_v, &self.next_u, &self.next_v, &self.accumulators, &self.coverage] {
             encoder.clear_buffer(buffer, 0, None);
         }
         gpu.queue.submit(Some(encoder.finish()));
@@ -207,10 +216,12 @@ impl Watercolour {
         self.transfer.dispatch(encoder, cells);
         self.capillary.dispatch(encoder, cells);
         self.dry_cells.dispatch(encoder, cells);
+        self.bake_pixels.dispatch(encoder, [(extent.x as u32 * 2).div_ceil(16), (extent.y as u32 * 2).div_ceil(16), 1]);
     }
 
-    pub fn settle(&mut self) {
+    pub fn settle(&mut self, encoder: &mut wgpu::CommandEncoder) {
         self.region = None;
+        encoder.clear_buffer(&self.coverage, 0, None);
     }
 
     pub fn snapshot(&mut self, encoder: &mut wgpu::CommandEncoder) {

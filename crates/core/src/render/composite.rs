@@ -116,6 +116,7 @@ impl Composite {
                 (12, read_only),
                 (13, read_only),
                 (14, read_only),
+                (15, read_only),
             ];
             let entries: Vec<_> = kinds.iter().map(|(binding, kind)| buffer_layout_entry(*binding, fragment, *kind)).collect();
             let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("watercolour composite"), entries: &entries });
@@ -129,6 +130,7 @@ impl Composite {
                 (12, &water.deposited),
                 (13, &water.paper),
                 (14, &canvas.relief),
+                (15, &water.coverage),
             ];
             let bindings: Vec<_> = buffers.iter().map(|(binding, buffer)| buffer_binding(*binding, buffer)).collect();
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("watercolour composite"), layout: &layout, entries: &bindings });

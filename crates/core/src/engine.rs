@@ -331,7 +331,7 @@ impl Engine {
         self.snapshot(&mut encoder);
         if let Some(watercolour) = &mut self.watercolour {
             watercolour.encode_step(&self.gpu, &mut encoder, true);
-            watercolour.settle();
+            watercolour.settle(&mut encoder);
         }
         self.canvas.encode_dry(&mut encoder);
         self.window.encode_unbake(&mut encoder);
@@ -565,7 +565,7 @@ impl Engine {
                 let settled = self.time > self.water_settles_at;
                 watercolour.encode_step(&self.gpu, &mut encoder, settled);
                 if settled {
-                    watercolour.settle();
+                    watercolour.settle(&mut encoder);
                 }
                 self.needs_render = true;
             }

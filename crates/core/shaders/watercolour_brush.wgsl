@@ -7,6 +7,8 @@ const TAKE_RATE: f32 = 2.0;
 const WATER_PER_LOAD: f32 = 0.25;
 const MAX_LIFT_FRACTION: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
+const BLEED_RATE: f32 = 1.5;
+const BLEED_ONSET: f32 = 4.0;
 const ACCUMULATOR_SCALE: f32 = 65536.0;
 const ACCUMULATORS: u32 = 13u;
 
@@ -39,12 +41,15 @@ struct Pigment {
 @group(0) @binding(11) var<storage, read_write> lift: array<Pigment>;
 @group(0) @binding(12) var<storage, read_write> sample_request: array<vec2<f32>>;
 @group(0) @binding(13) var<storage, read> ground: array<f32>;
+@group(0) @binding(14) var<storage, read_write> sample_concentration_at_start: array<f32>;
+@group(0) @binding(15) var<storage, read> deposited: array<Pigment>;
 
 struct Touch {
     cell: u32,
     point: vec3<f32>,
     give: f32,
     take: f32,
+    bleed: f32,
 }
 
 fn fixed(value: f32) -> i32 {
@@ -75,9 +80,9 @@ fn segment_steps(sample: u32) -> u32 {
     return clamp(u32(ceil(select(travelled, 0.0, travelled > JUMP_DISTANCE))), 1u, MAX_SEGMENT_STEPS);
 }
 
-fn touch_at(point: vec3<f32>, load: f32, share: f32) -> Touch {
+fn touch_at(point: vec3<f32>, load: f32, share: f32, sample_concentration: f32) -> Touch {
     let pixel = vec2<i32>(floor(point.xy));
-    var touch = Touch(0u, point, 0.0, 0.0);
+    var touch = Touch(0u, point, 0.0, 0.0, 0.0);
     if (pixel.x < 0 || pixel.y < 0 || u32(pixel.x) >= exchange_uniform.canvas.x || u32(pixel.y) >= exchange_uniform.canvas.y) { return touch; }
     if (point.z > ground[u32(pixel.y) * exchange_uniform.canvas.x + u32(pixel.x)] + CONTACT_BAND) { return touch; }
     let cell = vec2<u32>(pixel) / 2u;
@@ -86,6 +91,14 @@ fn touch_at(point: vec3<f32>, load: f32, share: f32) -> Touch {
     let rate = exchange_uniform.sample_capacity * exchange_uniform.dt * share;
     touch.give = min(max(difference, 0.0) * GIVE_RATE * rate, load);
     touch.take = max(-difference, 0.0) * TAKE_RATE * rate;
+    let state = water[touch.cell];
+    let wetter_paper = clamp(-difference * BLEED_ONSET, 0.0, 1.0);
+    if (state.x > 0.0 && wetter_paper > 0.0) {
+        let cell_pigment = suspended[touch.cell].absorption.w + deposited[touch.cell].absorption.w;
+        let cell_concentration = cell_pigment / (state.x / WATER_PER_LOAD);
+        touch.bleed = min(wetter_paper * BLEED_RATE * exchange_uniform.dt * share, 1.0) * load;
+        touch.bleed *= max(1.0 - cell_concentration / max(sample_concentration, 1e-9), 0.0);
+    }
     return touch;
 }
 
@@ -103,12 +116,27 @@ fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
     let share = 1.0 / f32(steps);
     var previous = segment_point(sample, 0u, steps);
     var requested = 0.0;
+    var bled = 0.0;
     for (var step = 1u; step <= steps; step++) {
         let point = segment_point(sample, step, steps);
         let motion = point.xy - previous.xy;
         previous = point;
-        let touch = touch_at(point, load, share);
-        if (touch.give <= 0.0 && touch.take <= 0.0) { continue; }
+        let touch = touch_at(point, load, share, concentration);
+        if (touch.give <= 0.0 && touch.take <= 0.0 && touch.bleed <= 0.0) { continue; }
+        if (touch.bleed > 0.0) {
+            let pigment = touch.bleed * concentration;
+            accumulate(touch.cell, 1u, absorption.x * pigment);
+            accumulate(touch.cell, 2u, absorption.y * pigment);
+            accumulate(touch.cell, 3u, absorption.z * pigment);
+            accumulate(touch.cell, 4u, pigment);
+            accumulate(touch.cell, 5u, scattering.x * pigment);
+            accumulate(touch.cell, 6u, scattering.y * pigment);
+            accumulate(touch.cell, 7u, scattering.z * pigment);
+            accumulate(touch.cell, 8u, behaviour.z * pigment);
+            accumulate(touch.cell, 9u, behaviour.x * pigment);
+            accumulate(touch.cell, 10u, behaviour.y * pigment);
+            bled += pigment;
+        }
         if (touch.give > 0.0) {
             let position = point.xy / 2.0 - 0.5;
             let corner = vec2<i32>(floor(position));
@@ -141,7 +169,9 @@ fn exchange(@builtin(global_invocation_id) id: vec3<u32>) {
         accumulate(touch.cell, 12u, motion.y * share);
     }
     sample_load[sample] = load;
+    sample_scattering[sample].w = max(concentration * initial_load - concentration * (initial_load - load) - bled, 0.0) / max(load, 1e-9);
     sample_request[sample] = vec2<f32>(initial_load, requested);
+    sample_concentration_at_start[sample] = concentration;
 }
 
 @compute @workgroup_size(16, 16)
@@ -186,8 +216,9 @@ fn apply_lift(@builtin(global_invocation_id) id: vec3<u32>) {
     var scattering = sample_scattering[sample].xyz * pigment_mass;
     var behaviour = sample_behaviour[sample].xyz * pigment_mass;
     var replay = request.x;
+    let request_concentration = sample_concentration_at_start[sample];
     for (var step = 1u; step <= steps; step++) {
-        let touch = touch_at(segment_point(sample, step, steps), replay, share);
+        let touch = touch_at(segment_point(sample, step, steps), replay, share, request_concentration);
         replay -= touch.give;
         if (touch.take <= 0.0) { continue; }
         let granted = lift[touch.cell];

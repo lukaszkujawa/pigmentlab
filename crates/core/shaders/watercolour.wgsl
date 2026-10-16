@@ -1,4 +1,5 @@
-const GRAVITY: f32 = 0.18;
+const GRAVITY: f32 = 0.25;
+const WAVE_LIMIT: f32 = 0.35;
 const PAPER_SLOPE: f32 = 0.03;
 const VISCOSITY: f32 = 0.1;
 const DRAG: f32 = 0.03;
@@ -23,10 +24,13 @@ const SIZED_ABSORBENCY: f32 = 0.3;
 const UNSIZED_STAINING: f32 = 40.0;
 const UNSIZED_WICKING: f32 = 3.0;
 const MAX_SCRUB: f32 = 0.2;
+const PIGMENT_DIFFUSION: f32 = 12.0;
 const ACCUMULATOR_SCALE: f32 = 65536.0;
 const ACCUMULATORS: u32 = 13u;
 const MASK_RADIUS: i32 = 3;
 const GRANULATION_CONTRAST: f32 = 2.5;
+const GRANULATION_FLOOR: f32 = 0.3;
+const EDGE_SHARPNESS: f32 = 6.0;
 
 struct WaterUniform {
     cells: vec2<u32>,
@@ -64,6 +68,8 @@ struct Pigment {
 @group(0) @binding(12) var<storage, read_write> accumulators: array<atomic<i32>>;
 @group(0) @binding(13) var<storage, read_write> dry: array<vec4<f32>>;
 @group(0) @binding(14) var<storage, read> relief: array<f32>;
+@group(0) @binding(15) var<storage, read_write> coverage: array<vec2<f32>>;
+@group(0) @binding(16) var<storage, read_write> drying: array<Pigment>;
 
 fn no_pigment() -> Pigment {
     return Pigment(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
@@ -125,9 +131,11 @@ fn v_at(face: vec2<i32>) -> f32 {
     return velocity_v[v_index(face)];
 }
 
-fn pressure(cell: vec2<i32>) -> f32 {
-    let index = cell_index(cell);
-    return water[index].x * GRAVITY + paper[index].x * PAPER_SLOPE;
+fn pressure_push(from_cell: vec2<i32>, to_cell: vec2<i32>, depth: f32) -> f32 {
+    let a = cell_index(from_cell);
+    let b = cell_index(to_cell);
+    let gravity = min(GRAVITY, WAVE_LIMIT * WAVE_LIMIT / max(depth, 1e-3));
+    return (water[a].x - water[b].x) * gravity + (paper[a].x - paper[b].x) * PAPER_SLOPE;
 }
 
 fn accumulator(cell: vec2<i32>, channel: u32) -> f32 {
@@ -195,7 +203,7 @@ fn update_u(@builtin(global_invocation_id) id: vec3<u32>) {
     let diffusion = u_at(face + vec2<i32>(1, 0)) + u_at(face - vec2<i32>(1, 0)) + u_at(face + vec2<i32>(0, 1)) + u_at(face - vec2<i32>(0, 1)) - 4.0 * u;
     let depth = 0.5 * (water[cell_index(left)].x + water[cell_index(face)].x);
     let push = 0.5 * (impulse[cell_index(left)].x + impulse[cell_index(face)].x);
-    let accelerated = u + (advection + VISCOSITY * diffusion + pressure(left) - pressure(face) - face_drag(depth) * u) + push;
+    let accelerated = u + (advection + VISCOSITY * diffusion + pressure_push(left, face, depth) - face_drag(depth) * u) + push;
     next_u[u_index(face)] = limited(accelerated);
 }
 
@@ -218,7 +226,7 @@ fn update_v(@builtin(global_invocation_id) id: vec3<u32>) {
     let diffusion = v_at(face + vec2<i32>(1, 0)) + v_at(face - vec2<i32>(1, 0)) + v_at(face + vec2<i32>(0, 1)) + v_at(face - vec2<i32>(0, 1)) - 4.0 * v;
     let depth = 0.5 * (water[cell_index(up)].x + water[cell_index(face)].x);
     let push = 0.5 * (impulse[cell_index(up)].y + impulse[cell_index(face)].y);
-    let accelerated = v + (advection + VISCOSITY * diffusion + pressure(up) - pressure(face) - face_drag(depth) * v) + push;
+    let accelerated = v + (advection + VISCOSITY * diffusion + pressure_push(up, face, depth) - face_drag(depth) * v) + push;
     next_v[v_index(face)] = limited(accelerated);
 }
 
@@ -263,6 +271,18 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
         let other_index = cell_index(other);
         depth += water[other_index].x * share;
         pigment = added(pigment, scaled(suspended[other_index], share));
+    }
+    let mixing = min(PIGMENT_DIFFUSION * sim.dt, 0.2);
+    let own_staying = scaled(suspended[index], own_share);
+    for (var n = 0u; n < 4u; n++) {
+        let other = cell + neighbours[n];
+        if (!wet(other) || state.z < 0.5) { continue; }
+        let other_index = cell_index(other);
+        let other_depth = water[other_index].x;
+        let total_depth = state.x + other_depth;
+        if (total_depth <= 1e-6) { continue; }
+        let other_staying = scaled(suspended[other_index], 1.0 - outflow(other) * impulse[other_index].w);
+        pigment = added(pigment, added(scaled(other_staying, mixing * state.x / total_depth), scaled(own_staying, -mixing * other_depth / total_depth)));
     }
     let fibres = unsized_share();
     if (fibres > 0.0) {
@@ -356,10 +376,39 @@ fn capillary(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     let taps = f32((2 * MASK_RADIUS + 1) * (2 * MASK_RADIUS + 1));
     water[index] = vec4<f32>(depth, saturation, mask, covered / taps);
+    var blurred = 0.0;
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let other = cell + vec2<i32>(dx, dy);
+            if (on_grid(other)) { blurred += coverage[cell_index(other)].x; }
+        }
+    }
+    coverage[index].y = blurred / 9.0;
+}
+
+fn blurred_coverage(cell: vec2<i32>) -> f32 {
+    return coverage[cell_index(clamp(cell, vec2<i32>(0), vec2<i32>(sim.cells) - 1))].y;
+}
+
+fn wash_contour(pixel: vec2<u32>) -> f32 {
+    let position = (vec2<f32>(pixel) + 0.5) / 2.0 - 0.5;
+    let base = vec2<i32>(floor(position));
+    let f = position - floor(position);
+    let top = mix(blurred_coverage(base), blurred_coverage(base + vec2<i32>(1, 0)), f.x);
+    let bottom = mix(blurred_coverage(base + vec2<i32>(0, 1)), blurred_coverage(base + vec2<i32>(1, 1)), f.x);
+    return mix(top, bottom, f.y);
 }
 
 fn paper_height(pixel: vec2<u32>) -> f32 {
     return relief[pixel.y * sim.canvas.x + pixel.x] / max(sim.tooth, 1e-6) * 0.5 + 0.5;
+}
+
+fn footprint_weight(pixel: vec2<i32>, cell: vec2<i32>, granulation: f32, mean_height: f32) -> f32 {
+    if (pixel.x < 0 || pixel.y < 0 || u32(pixel.x) >= sim.canvas.x || u32(pixel.y) >= sim.canvas.y) { return 0.0; }
+    let offset = abs(vec2<f32>(pixel) + 0.5 - (vec2<f32>(cell) * 2.0 + 1.0));
+    let tent = max(1.0 - offset.x / 2.0, 0.0) * max(1.0 - offset.y / 2.0, 0.0);
+    let granular = max(1.0 + granulation * (mean_height - paper_height(vec2<u32>(pixel))) * GRANULATION_CONTRAST, GRANULATION_FLOOR);
+    return tent * granular * pow(wash_contour(vec2<u32>(pixel)), EDGE_SHARPNESS);
 }
 
 @compute @workgroup_size(16, 16)
@@ -367,35 +416,62 @@ fn dry_cells(@builtin(global_invocation_id) id: vec3<u32>) {
     let cell = region_cell(id.xy);
     if (!on_grid(cell)) { return; }
     let index = cell_index(cell);
+    drying[index] = no_pigment();
     let state = water[index];
     if (state.z < 0.5) { return; }
-    let drying = state.x <= 0.0 && state.y < DRY_PAPER * paper[index].y;
-    if (!drying && sim.force_dry == 0u) { return; }
+    coverage[index].x = 1.0;
+    let neighbours = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
+    var refilling = false;
+    for (var n = 0u; n < 4u; n++) {
+        let other = cell + neighbours[n];
+        refilling = refilling || (on_grid(other) && water[cell_index(other)].x > 0.0);
+    }
+    let dried = state.x <= 0.0 && state.y < DRY_PAPER * paper[index].y && !refilling;
+    if (!dried && sim.force_dry == 0u) { return; }
     let pigment = added(suspended[index], deposited[index]);
     let total = mass(pigment);
     if (total > 1e-7) {
-        let absorption = pigment.absorption.xyz / total;
-        let scattering = pigment.scattering.xyz / total;
         let granulation = pigment.scattering.w / total * sim.granulation;
-        let mean_height = paper[index].x;
-        var weights = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-        var weight_total = 0.0;
-        for (var k = 0u; k < 4u; k++) {
-            let pixel = vec2<u32>(cell) * 2u + vec2<u32>(k & 1u, k >> 1u);
-            if (pixel.x >= sim.canvas.x || pixel.y >= sim.canvas.y) { continue; }
-            weights[k] = max(1.0 + granulation * (mean_height - paper_height(pixel)) * GRANULATION_CONTRAST, 0.0);
-            weight_total += weights[k];
+        var norm = 0.0;
+        for (var dy = -1; dy <= 2; dy++) {
+            for (var dx = -1; dx <= 2; dx++) {
+                norm += footprint_weight(cell * 2 + vec2<i32>(dx, dy), cell, granulation, paper[index].x);
+            }
         }
-        for (var k = 0u; k < 4u; k++) {
-            if (weights[k] <= 0.0) { continue; }
-            let pixel = vec2<u32>(cell) * 2u + vec2<u32>(k & 1u, k >> 1u);
-            let slot = pixel.y * sim.canvas.x + pixel.x;
-            let thickness = total * weights[k] / weight_total;
-            let below = dry[slot];
-            dry[slot] = vec4<f32>(below.x, layer_reflectance(absorption, scattering, thickness * OPTICAL_THICKNESS_PER_PIXEL, below.yzw));
-        }
+        let share = select(total / norm, 0.0, norm <= 1e-9);
+        drying[index] = Pigment(vec4<f32>(pigment.absorption.xyz / total, share), vec4<f32>(pigment.scattering.xyz / total, granulation), vec4<f32>(paper[index].x, select(0.0, total, norm <= 1e-9), 0.0, 0.0));
     }
     suspended[index] = no_pigment();
     deposited[index] = no_pigment();
     water[index] = vec4<f32>(0.0, select(state.y, 0.0, sim.force_dry != 0u), 0.0, state.w);
+}
+
+@compute @workgroup_size(16, 16)
+fn bake_pixels(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= sim.region_size.x * 2u || id.y >= sim.region_size.y * 2u) { return; }
+    let pixel = sim.region_origin * 2 + vec2<i32>(id.xy);
+    if (pixel.x < 0 || pixel.y < 0 || u32(pixel.x) >= sim.canvas.x || u32(pixel.y) >= sim.canvas.y) { return; }
+    let nearest = vec2<i32>(floor((vec2<f32>(pixel) + 0.5) / 2.0 - 0.5));
+    var mass_here = 0.0;
+    var absorption = vec3<f32>(0.0);
+    var scattering = vec3<f32>(0.0);
+    for (var k = 0; k < 4; k++) {
+        let cell = nearest + vec2<i32>(k & 1, k >> 1);
+        if (!on_grid(cell) || !in_region(cell)) { continue; }
+        let source = drying[cell_index(cell)];
+        var share = 0.0;
+        if (source.absorption.w > 0.0) {
+            share = source.absorption.w * footprint_weight(pixel, cell, source.scattering.w, source.behaviour.x);
+        } else if (source.behaviour.y > 0.0 && all(pixel / 2 == cell)) {
+            share = source.behaviour.y / 4.0;
+        }
+        if (share <= 0.0) { continue; }
+        mass_here += share;
+        absorption += source.absorption.xyz * share;
+        scattering += source.scattering.xyz * share;
+    }
+    if (mass_here <= 0.0) { return; }
+    let slot = u32(pixel.y) * sim.canvas.x + u32(pixel.x);
+    let below = dry[slot];
+    dry[slot] = vec4<f32>(below.x, layer_reflectance(absorption / mass_here, scattering / mass_here, mass_here * OPTICAL_THICKNESS_PER_PIXEL, below.yzw));
 }
