@@ -69,7 +69,11 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     });
     let shared = requests.clone();
-    app.on_dip(move |index| shared.borrow_mut().dip = Some(index as usize));
+    let app_weak = app.as_weak();
+    app.on_dip(move |index| {
+        app_weak.unwrap().set_active_swatch(index);
+        shared.borrow_mut().dip = Some(index as usize);
+    });
     let shared = requests.clone();
     let app_weak = app.as_weak();
     app.on_brush_changed(move || {
@@ -127,10 +131,11 @@ fn main() -> Result<(), slint::PlatformError> {
                         ..Lighting::default()
                     });
                     let pen = tablet.state();
+                    app.set_pen_present(pen.present);
                     app.set_pen_status(if pen.present {
-                        format!("Pen {:.0}% tilt {:+.2} {:+.2}", pen.pressure * 100.0, pen.tilt[0], pen.tilt[1]).into()
+                        format!("Pen {:.0}%  tilt {:+.2} {:+.2}", pen.pressure * 100.0, pen.tilt[0], pen.tilt[1]).into()
                     } else {
-                        "Pen: none (slider pressure)".into()
+                        "Mouse".into()
                     });
                     engine.advance_realtime(started.elapsed().as_secs_f64());
                     let texture = engine.render().clone();

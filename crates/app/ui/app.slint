@@ -1,20 +1,176 @@
-import { Slider, HorizontalBox, VerticalBox, CheckBox, Button, GroupBox, ComboBox, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export global Theme {
+    out property <color> window: #16181c;
+    out property <color> viewport: #23262b;
+    out property <color> panel: #1c1f24;
+    out property <color> card: #24282e;
+    out property <color> line: #30353c;
+    out property <color> track: #353a42;
+    out property <color> accent: #4f8cff;
+    out property <color> accent-soft: #4f8cff33;
+    out property <color> text: #e8eaed;
+    out property <color> muted: #8d939c;
+    out property <color> danger: #e5484d;
+    out property <length> radius: 8px;
+}
+
+component SectionTitle inherits Text {
+    color: Theme.muted;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+component Card inherits Rectangle {
+    in property <string> title;
+    background: Theme.card;
+    border-radius: Theme.radius;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 12px;
+        SectionTitle { text: root.title; }
+        @children
+    }
+}
+
+component ParamSlider {
+    in property <string> label;
+    in property <string> value-text;
+    in property <float> minimum: 0;
+    in property <float> maximum: 1;
+    in-out property <float> value;
+    callback released();
+
+    function set-from(x: length) {
+        root.value = clamp(root.minimum + (x - knob.width / 2) / (track.width - knob.width) * (root.maximum - root.minimum), root.minimum, root.maximum);
+    }
+
+    VerticalLayout {
+        spacing: 4px;
+        HorizontalLayout {
+            Text { text: root.label; color: Theme.text; font-size: 13px; horizontal-stretch: 1; }
+            Text { text: root.value-text; color: Theme.muted; font-size: 13px; horizontal-alignment: right; }
+        }
+        track := Rectangle {
+            height: 18px;
+            Rectangle { x: 0; y: 7px; height: 4px; width: 100%; border-radius: 2px; background: Theme.track; }
+            Rectangle { x: 0; y: 7px; height: 4px; width: knob.x + knob.width / 2; border-radius: 2px; background: Theme.accent; }
+            knob := Rectangle {
+                y: 2px;
+                width: 14px;
+                height: 14px;
+                border-radius: 7px;
+                background: area.pressed ? Theme.accent : Theme.text;
+                x: (root.value - root.minimum) / (root.maximum - root.minimum) * (track.width - self.width);
+                drop-shadow-blur: 4px;
+                drop-shadow-color: #00000080;
+            }
+            area := TouchArea {
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down) { root.set-from(self.mouse-x); }
+                    if (event.kind == PointerEventKind.up) { root.released(); }
+                }
+                moved => { if (self.pressed) { root.set-from(self.mouse-x); } }
+            }
+        }
+    }
+}
+
+component Toggle {
+    in property <string> label;
+    in-out property <bool> checked;
+    height: 26px;
+    HorizontalLayout {
+        spacing: 10px;
+        Text { text: root.label; color: Theme.text; font-size: 13px; vertical-alignment: center; horizontal-stretch: 1; }
+        Rectangle {
+            width: 36px;
+            height: 20px;
+            border-radius: 10px;
+            background: root.checked ? Theme.accent : Theme.track;
+            animate background { duration: 120ms; }
+            Rectangle {
+                y: 2px;
+                x: root.checked ? 18px : 2px;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: white;
+                animate x { duration: 120ms; }
+            }
+        }
+    }
+    TouchArea { clicked => { root.checked = !root.checked; } }
+}
+
+component ToolButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> danger;
+    callback clicked;
+    height: 30px;
+    width: label.preferred-width + 24px;
+    border-radius: 6px;
+    background: area.has-hover ? Theme.track : Theme.card;
+    border-width: 1px;
+    border-color: Theme.line;
+    label := Text {
+        text: root.label;
+        color: root.danger ? Theme.danger : Theme.text;
+        font-size: 13px;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+}
+
+component PresetRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked;
+    height: 30px;
+    border-radius: 6px;
+    background: root.selected ? Theme.accent-soft : (area.has-hover ? Theme.track : transparent);
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        Text {
+            text: root.label;
+            color: root.selected ? Theme.text : Theme.muted;
+            font-size: 13px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Rectangle {
+            width: 6px;
+            height: 6px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 3px;
+            background: root.selected ? Theme.accent : transparent;
+        }
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+}
 
 export component AppWindow inherits Window {
     title: "SimPaint";
-    preferred-width: 1400px;
-    preferred-height: 860px;
+    preferred-width: 1440px;
+    preferred-height: 900px;
+    background: Theme.window;
 
     in property <image> canvas-texture <=> canvas-image.source;
     in property <length> canvas-width: 1024px;
     in property <length> canvas-height: 768px;
     in property <float> canvas-scale: 1.0;
     in property <[color]> swatches: [];
+    in property <int> active-swatch: 2;
     in property <string> status: "";
     in property <float> frame-ms: 0;
-    out property <float> pressure <=> pressure-slider.value;
+    in property <bool> pen-present: false;
+    in property <string> pen-status: "";
     in property <[string]> brush-names: [];
-    out property <int> brush-index <=> brush-choice.current-index;
+    out property <float> pressure <=> pressure-slider.value;
+    out property <int> brush-index: 1;
     out property <float> brush-scale <=> size-slider.value;
     out property <float> brush-bristles <=> bristles-slider.value;
     out property <float> brush-stiffness <=> stiffness-slider.value;
@@ -27,7 +183,6 @@ export component AppWindow inherits Window {
     out property <float> light-azimuth <=> azimuth-slider.value;
     out property <float> light-elevation <=> elevation-slider.value;
     out property <float> gloss <=> gloss-slider.value;
-    in property <string> pen-status: "";
 
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
@@ -53,154 +208,170 @@ export component AppWindow inherits Window {
             return reject;
         }
 
-        HorizontalLayout {
-            viewport := Rectangle {
-                background: #3a3a3a;
-                clip: true;
-                horizontal-stretch: 1;
+        VerticalLayout {
+            toolbar := Rectangle {
+                height: 48px;
+                background: Theme.panel;
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 8px;
+                    Text { text: "SimPaint"; color: Theme.text; font-size: 15px; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "oil"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                    Rectangle { horizontal-stretch: 1; }
+                    ToolButton { label: "Undo"; clicked => { root.undo(); } }
+                    ToolButton { label: "Dry"; clicked => { root.dry(); } }
+                    ToolButton { label: "Save PNG"; clicked => { root.save(); } }
+                    ToolButton { label: "Clear"; danger: true; clicked => { root.clear(); } }
+                }
+                Rectangle { y: parent.height - 1px; height: 1px; width: 100%; background: Theme.line; }
+            }
 
-                canvas-image := Image {
-                    x: (viewport.width - self.width) / 2 + root.pan-x;
-                    y: (viewport.height - self.height) / 2 + root.pan-y;
-                    width: root.canvas-width * root.zoom;
-                    height: root.canvas-height * root.zoom;
+            HorizontalLayout {
+                viewport := Rectangle {
+                    background: Theme.viewport;
+                    clip: true;
+                    horizontal-stretch: 1;
+
+                    Rectangle {
+                        x: canvas-image.x;
+                        y: canvas-image.y;
+                        width: canvas-image.width;
+                        height: canvas-image.height;
+                        background: white;
+                        drop-shadow-blur: 24px;
+                        drop-shadow-color: #00000099;
+                    }
+                    canvas-image := Image {
+                        x: (viewport.width - self.width) / 2 + root.pan-x;
+                        y: (viewport.height - self.height) / 2 + root.pan-y;
+                        width: root.canvas-width * root.zoom;
+                        height: root.canvas-height * root.zoom;
+                    }
+
+                    TouchArea {
+                        pointer-event(event) => {
+                            if (event.button != PointerEventButton.left) { return; }
+                            if (event.kind == PointerEventKind.down) {
+                                root.pointer(0, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
+                            } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                                root.pointer(2, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
+                            }
+                        }
+                        moved => {
+                            if (self.pressed) {
+                                root.pointer(1, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
+                            }
+                        }
+                        scroll-event(event) => {
+                            if (event.modifiers.control || event.modifiers.meta) {
+                                root.zoom = clamp(root.zoom * (1 + event.delta-y / 500px), 0.1, 16.0);
+                            } else {
+                                root.pan-x += event.delta-x;
+                                root.pan-y += event.delta-y;
+                            }
+                            return accept;
+                        }
+                    }
+
+                    Rectangle {
+                        x: 12px;
+                        y: parent.height - self.height - 12px;
+                        width: zoom-label.preferred-width + 16px;
+                        height: 24px;
+                        border-radius: 6px;
+                        background: #00000088;
+                        zoom-label := Text {
+                            text: round(root.zoom * 100) + "%";
+                            color: Theme.text;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                    }
                 }
 
-                TouchArea {
-                    pointer-event(event) => {
-                        if (event.button != PointerEventButton.left) { return; }
-                        if (event.kind == PointerEventKind.down) {
-                            root.pointer(0, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
-                        } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                            root.pointer(2, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
+                panel := Rectangle {
+                    width: 312px;
+                    background: Theme.panel;
+                    Rectangle { x: 0; width: 1px; height: 100%; background: Theme.line; }
+
+                    ScrollView {
+                        content-width: self.visible-width;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            Card {
+                                title: "PALETTE";
+                                HorizontalLayout {
+                                    spacing: 5px;
+                                    for swatch[index] in root.swatches: Rectangle {
+                                        width: 20px;
+                                        height: 20px;
+                                        border-radius: 10px;
+                                        background: swatch;
+                                        border-width: index == root.active-swatch ? 2px : 1px;
+                                        border-color: index == root.active-swatch ? Theme.text : #ffffff22;
+                                        TouchArea { clicked => { root.dip(index); } }
+                                    }
+                                }
+                            }
+
+                            Card {
+                                title: "BRUSH";
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    for name[index] in root.brush-names: PresetRow {
+                                        label: name;
+                                        selected: index == root.brush-index;
+                                        clicked => { root.brush-index = index; root.brush-changed(); }
+                                    }
+                                }
+                                Rectangle { height: 1px; background: Theme.line; }
+                                size-slider := ParamSlider { label: "Size"; minimum: 0.4; maximum: 2.5; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-changed(); } }
+                                bristles-slider := ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value: 200; value-text: round(self.value); released => { root.brush-changed(); } }
+                                stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-changed(); } }
+                                angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 180; value: 0; value-text: round(self.value) + "°"; }
+                                pressure-slider := ParamSlider { label: root.pen-present ? "Pressure (pen)" : "Pressure"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
+                            }
+
+                            Card {
+                                title: "PAINT";
+                                load-slider := ParamSlider { label: "Load"; minimum: 0.05; maximum: 1; value: 1; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                                medium-slider := ParamSlider { label: "Medium"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                            }
+
+                            Card {
+                                title: "LIGHT";
+                                azimuth-slider := ParamSlider { label: "Direction"; minimum: 0; maximum: 360; value: 225; value-text: round(self.value) + "°"; }
+                                elevation-slider := ParamSlider { label: "Elevation"; minimum: 10; maximum: 80; value: 40; value-text: round(self.value) + "°"; }
+                                gloss-slider := ParamSlider { label: "Gloss"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
+                            }
+
+                            Card {
+                                title: "SIMULATION";
+                                fluid-toggle := Toggle { label: "Fluid paint"; checked: true; }
+                                bristles-toggle := Toggle { label: "Show bristles"; }
+                                record-toggle := Toggle { label: "Record scenario"; }
+                            }
                         }
-                    }
-                    moved => {
-                        if (self.pressed) {
-                            root.pointer(1, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
-                        }
-                    }
-                    scroll-event(event) => {
-                        if (event.modifiers.control || event.modifiers.meta) {
-                            root.zoom = clamp(root.zoom * (1 + event.delta-y / 500px), 0.1, 16.0);
-                        } else {
-                            root.pan-x += event.delta-x;
-                            root.pan-y += event.delta-y;
-                        }
-                        return accept;
                     }
                 }
             }
 
-            panel := Rectangle {
-                width: 280px;
-                background: #262626;
-
-                ScrollView {
-                    VerticalBox {
-                    alignment: start;
-                    spacing: 6px;
-
-                    GroupBox {
-                        title: "Palette";
-                        HorizontalLayout {
-                            spacing: 6px;
-                            for swatch[index] in root.swatches: Rectangle {
-                                width: 20px;
-                                height: 20px;
-                                background: swatch;
-                                border-radius: 4px;
-                                border-width: 1px;
-                                border-color: #ffffff30;
-                                TouchArea { clicked => { root.dip(index); } }
-                            }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Brush";
-                        VerticalLayout {
-                            spacing: 2px;
-                            brush-choice := ComboBox {
-                                model: root.brush-names;
-                                current-index: 1;
-                                selected => { root.brush-changed(); }
-                            }
-                            Text { text: "Size ×" + round(size-slider.value * 100) / 100; }
-                            size-slider := Slider { minimum: 0.4; maximum: 2.5; value: 1.0; released => { root.brush-changed(); } }
-                            Text { text: "Bristles " + round(bristles-slider.value); }
-                            bristles-slider := Slider { minimum: 20; maximum: 600; value: 200; released => { root.brush-changed(); } }
-                            Text { text: "Stiffness " + round(stiffness-slider.value * 100) + "%"; }
-                            stiffness-slider := Slider { minimum: 0; maximum: 1; value: 0.5; released => { root.brush-changed(); } }
-                            Text { text: "Angle " + round(angle-slider.value) + "°"; }
-                            angle-slider := Slider { minimum: 0; maximum: 180; value: 0; }
-                            Text { text: "Pressure " + round(pressure-slider.value * 100) + "% (mouse)"; }
-                            pressure-slider := Slider { minimum: 0.0; maximum: 1.0; value: 0.5; }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Paint";
-                        VerticalLayout {
-                            spacing: 2px;
-                            Text { text: "Load " + round(load-slider.value * 100) + "%"; }
-                            load-slider := Slider { minimum: 0.05; maximum: 1; value: 1; released => { root.paint-changed(); } }
-                            Text { text: "Medium " + round(medium-slider.value * 100) + "%"; }
-                            medium-slider := Slider { minimum: 0; maximum: 1; value: 0; released => { root.paint-changed(); } }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Light";
-                        VerticalLayout {
-                            spacing: 2px;
-                            Text { text: "Direction " + round(azimuth-slider.value) + "°"; }
-                            azimuth-slider := Slider { minimum: 0; maximum: 360; value: 225; }
-                            Text { text: "Elevation " + round(elevation-slider.value) + "°"; }
-                            elevation-slider := Slider { minimum: 10; maximum: 80; value: 40; }
-                            Text { text: "Gloss " + round(gloss-slider.value * 100) + "%"; }
-                            gloss-slider := Slider { minimum: 0; maximum: 1; value: 0.5; }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Simulation";
-                        VerticalLayout {
-                            spacing: 2px;
-                            fluid-toggle := CheckBox { text: "Fluid"; checked: true; }
-                            bristles-toggle := CheckBox { text: "Show bristles"; }
-                            record-toggle := CheckBox { text: "Record scenario"; }
-                        }
-                    }
-
-                    GroupBox {
-                        title: "Canvas";
-                        VerticalLayout {
-                            spacing: 2px;
-                            Button { text: "Undo (Cmd+Z)"; clicked => { root.undo(); } }
-                            Button { text: "Dry"; clicked => { root.dry(); } }
-                            Button { text: "Clear"; clicked => { root.clear(); } }
-                            Button { text: "Save PNG"; clicked => { root.save(); } }
-                        }
-                    }
-
-                    Text {
-                        text: "Frame " + round(root.frame-ms * 10) / 10 + " ms";
-                        width: 240px;
-                        color: #aaaaaa;
-                    }
-                    Text {
-                        text: root.pen-status;
-                        width: 240px;
-                        color: #aaaaaa;
-                    }
-                    Text {
-                        text: root.status;
-                        width: 240px;
-                        wrap: word-wrap;
-                        color: #aaaaaa;
-                    }
-                    }
+            statusbar := Rectangle {
+                height: 28px;
+                background: Theme.panel;
+                Rectangle { y: 0; height: 1px; width: 100%; background: Theme.line; }
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 24px;
+                    Text { text: root.pen-status; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                    Text { text: root.status; color: Theme.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    Text { text: round(root.frame-ms * 10) / 10 + " ms"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
                 }
             }
         }
