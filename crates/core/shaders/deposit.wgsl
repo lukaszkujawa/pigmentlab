@@ -139,11 +139,18 @@ fn give(cell: u32, deposit_share: f32, load: ptr<function, f32>, absorption: vec
     *load -= given;
 }
 
+fn topmost_filled_cell(local: vec2<u32>) -> i32 {
+    for (var step = 0u; step < window.depth; step++) {
+        let z = window.depth - 1u - step;
+        if (atomicLoad(&paint[window_cell(vec3<u32>(local, z))]) > 0) { return i32(z); }
+    }
+    return -1;
+}
+
 fn surface_is_dry(local: vec2<u32>) -> bool {
-    let height = column_height(local);
-    if (height <= 0.0) { return false; }
-    let top = min(u32(ceil(height)) - 1u, window.depth - 1u);
-    return atomicLoad(&paint[window_cell(vec3<u32>(local, top)) + 7u]) >= i32(PAINT_SCALE);
+    let top = topmost_filled_cell(local);
+    if (top < 0) { return false; }
+    return atomicLoad(&paint[window_cell(vec3<u32>(local, u32(top))) + 7u]) >= i32(PAINT_SCALE);
 }
 
 fn on_canvas(pixel: vec2<i32>) -> bool {
@@ -261,10 +268,9 @@ fn grant_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     pickup_grant[column] = vec4<f32>(0.0);
     pickup_grant_scattering[column] = vec4<f32>(0.0);
     if (demand <= 0.0) { return; }
-    let height = column_height(id.xy);
-    if (height <= 0.0) { return; }
-    let top = min(u32(ceil(height)) - 1u, window.depth - 1u);
-    let cell = window_cell(vec3<u32>(id.xy, top));
+    let top = topmost_filled_cell(id.xy);
+    if (top < 0) { return; }
+    let cell = window_cell(vec3<u32>(id.xy, u32(top)));
     let available = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
     if (available <= 0.0) { return; }
     let granted = min(demand, available);

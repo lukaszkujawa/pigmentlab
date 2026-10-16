@@ -6,6 +6,8 @@ const RECOVER_RATE: f32 = 0.04;
 const MAX_REACH_FRACTION: f32 = 0.98;
 const LIFT_CLEARANCE: f32 = 0.1 * PIXELS_PER_CM;
 const PRESSURE_SINK: f32 = 0.75;
+const SPREAD_PER_COMPRESSION: f32 = 2.5;
+const BEND_SPEED: f32 = 0.5;
 
 struct BrushUniform {
     rotation_x: vec4<f32>,
@@ -19,11 +21,10 @@ struct BrushUniform {
     canvas_width: f32,
     canvas_height: f32,
     sink: f32,
-    ferrule_extent: f32,
     cohesion: f32,
     cohesion_radius: f32,
     pressure: f32,
-    padding: f32,
+    motion: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> brush: BrushUniform;
@@ -42,7 +43,7 @@ struct Frame {
     previous_tip: vec3<f32>,
     lift: vec3<f32>,
     length: f32,
-    natural_reach: f32,
+    equilibrium: vec2<f32>,
     max_reach: f32,
     contact: bool,
 }
@@ -125,9 +126,6 @@ fn horizontal_direction(preferred: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> 
 
 fn frame_of(bristle: u32) -> Frame {
     let base = bristle * VERTICES;
-    let ferrule_radius = max(length(rest[base + 1u].xy), 1e-3);
-    let radial = clamp(ferrule_radius / brush.ferrule_extent, 0.0, 1.0);
-    let splay = brush.splay * mix(0.25, 1.0, radial);
     let floor_height = brush.sink * (1.0 - PRESSURE_SINK * brush.pressure) * base_height_under(tips[bristle].xy);
     let lift = vec3<f32>(0.0, 0.0, floor_height);
     let root = to_canvas(rest[base + 1u].xyz) - lift;
@@ -135,17 +133,20 @@ fn frame_of(bristle: u32) -> Frame {
     let bristle_length = distance(rest[base + VERTICES - 1u].xyz, rest[base + 1u].xyz);
     let rest_tip = root + root_tangent * bristle_length;
     let contact = rest_tip.z < 0.0 && root.z > 0.0;
-    var natural_reach = 0.0;
+    var equilibrium = root.xy;
     if (contact) {
         let angle_below_horizontal = atan2(-root_tangent.z, length(root_tangent.xy));
-        natural_reach = rod_reach(angle_below_horizontal, root.z, bristle_length) * splay;
+        let reach = rod_reach(angle_below_horizontal, root.z, bristle_length);
+        let radial_offset = root.xy - brush.translation.xy;
+        let compression = clamp(1.0 - root.z / bristle_length, 0.0, 1.0);
+        let speed = length(brush.motion);
+        let moving = clamp(speed / BEND_SPEED, 0.0, 1.0);
+        let bend = -brush.motion / max(speed, 1e-6) * reach * brush.splay * moving;
+        let spread = radial_offset * brush.splay * compression * SPREAD_PER_COMPRESSION;
+        equilibrium = root.xy + spread + bend;
     }
     let max_reach = sqrt(max(bristle_length * bristle_length - root.z * root.z, 0.0)) * MAX_REACH_FRACTION;
-    return Frame(root, root_tangent, rest_tip, tips[bristle].xyz - lift, lift, bristle_length, natural_reach, max_reach, contact);
-}
-
-fn lean_of(f: Frame) -> vec2<f32> {
-    return horizontal_direction(f.root_tangent.xy, f.previous_tip.xy - f.root.xy);
+    return Frame(root, root_tangent, rest_tip, tips[bristle].xyz - lift, lift, bristle_length, equilibrium, max_reach, contact);
 }
 
 @compute @workgroup_size(64)
@@ -155,14 +156,14 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let f = frame_of(bristle);
 
     if (f.contact) {
-        let equilibrium = f.root.xy + lean_of(f) * f.natural_reach;
+        let equilibrium = f.equilibrium;
         let landing = tips[bristle].w == 0.0;
         let stuck = select(f.previous_tip.xy, equilibrium, landing);
         let pull = equilibrium - stuck;
         let pull_length = max(length(pull), 1e-6);
         let slip_limit = brush.friction * -f.rest_tip.z;
         let excess = max(pull_length - slip_limit, 0.0);
-        let compressed = length(stuck - f.root.xy) < f.natural_reach;
+        let compressed = length(stuck - f.root.xy) < length(equilibrium - f.root.xy);
         let rate = select(RECOVER_RATE, SPLAY_RATE, compressed);
         let slide = min(excess * rate, pull_length);
         proposals[bristle] = vec4<f32>(stuck + pull / pull_length * slide - equilibrium, 0.0, 1.0);
@@ -202,13 +203,14 @@ fn cohere(@builtin(global_invocation_id) id: vec3<u32>) {
     var tip: vec3<f32>;
     var tip_tangent: vec3<f32>;
     if (f.contact) {
-        let lean = lean_of(f);
-        var planar = lean * f.natural_reach + slip.xy;
+        let natural = f.equilibrium - f.root.xy;
+        let natural_reach = length(natural);
+        var planar = natural + slip.xy;
         let reach = length(planar);
         if (reach > f.max_reach) { planar *= f.max_reach / reach; }
         tip = vec3<f32>(f.root.xy + planar, 0.0);
-        let azimuth = horizontal_direction(planar, lean);
-        let flatness = clamp(1.0 - (length(planar) - f.natural_reach) / max(f.max_reach - f.natural_reach, 1e-4), 0.0, 1.0);
+        let azimuth = horizontal_direction(planar, natural);
+        let flatness = clamp(1.0 - (length(planar) - natural_reach) / max(f.max_reach - natural_reach, 1e-4), 0.0, 1.0);
         tip_tangent = normalize(mix(vec3<f32>(0.0, 0.0, -1.0), vec3<f32>(azimuth, 0.0), flatness));
     } else {
         tip = f.rest_tip + vec3<f32>(slip.xy, proposal.z);

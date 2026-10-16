@@ -1,4 +1,4 @@
-use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, preset_by_name};
+use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, preset_by_name};
 use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::{Gpu, read_buffer, read_rgba8};
 use crate::history::History;
@@ -12,7 +12,6 @@ pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
 const SUBSTEPS_PER_LEVELLING: u64 = 8;
 const UNDO_DEPTH: usize = 6;
-const MAX_COMPRESSION: f32 = 0.4;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
@@ -283,6 +282,7 @@ impl Engine {
                 self.pressure = if state.pressed { state.pressure.clamp(0.0, 1.0) } else { 0.0 };
                 if state.fresh_press {
                     self.tuft_centre = self.handle_position();
+                    self.previous_position = self.pose.position;
                     self.brush.teleport(&self.gpu, &self.pose);
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
@@ -297,14 +297,14 @@ impl Engine {
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("substep") });
             let preset = *self.brush.preset();
-            let reach = ((preset.length - preset.spread()) * 0.5).max(0.0);
-            let focus = self.tow_tuft_centre(reach);
-            let footprint_radius = (preset.length + preset.spread()) * 0.5 + FOOTPRINT_SLACK;
+            let focus = self.tow_tuft_centre(preset.bend_reach());
+            let footprint_radius = preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK;
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
-            self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, canvas);
-            self.deposit.encode(&self.gpu, &mut encoder, self.pose.position.truncate().distance(self.previous_position.truncate()));
+            let motion = self.pose.position.truncate() - self.previous_position.truncate();
+            self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, motion, canvas);
+            self.deposit.encode(&self.gpu, &mut encoder, motion.length());
             self.previous_position = self.pose.position;
             self.substeps += 1;
             if self.levelling_enabled && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING) {

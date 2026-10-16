@@ -1,4 +1,4 @@
-use glam::{Vec3, Vec4};
+use glam::{Vec2, Vec3, Vec4};
 use simpaint_core::brush::{Brush, BrushPose, BrushPreset, VERTICES_PER_BRISTLE};
 use simpaint_core::canvas::Canvas;
 use simpaint_core::gpu::{Gpu, read_buffer};
@@ -14,14 +14,15 @@ fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Bru
     let window = ActiveWindow::new(&gpu, &canvas);
     let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
     let brush = Brush::new(&gpu, preset, 7, &window, &flat_canvas);
-    let mut teleported = false;
+    let mut previous: Option<BrushPose> = None;
     for pose in poses {
-        if !teleported {
+        if previous.is_none() {
             brush.teleport(&gpu, &pose);
-            teleported = true;
         }
+        let motion = previous.map_or(Vec2::ZERO, |p| (pose.position - p.position).truncate());
+        previous = Some(pose);
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, CANVAS);
+        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, motion, CANVAS);
         gpu.queue.submit(Some(encoder.finish()));
     }
     let positions = read_buffer::<Vec4>(&gpu, &brush.positions);
@@ -106,9 +107,43 @@ fn static_press_settles_without_jitter() {
     let pressed = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * 0.7));
     let (gpu, brush, settled) = run(preset, std::iter::repeat_n(pressed, 120));
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    brush.encode_step(&gpu, &mut encoder, &pressed, 1.0, CANVAS);
+    brush.encode_step(&gpu, &mut encoder, &pressed, 1.0, Vec2::ZERO, CANVAS);
     gpu.queue.submit(Some(encoder.finish()));
     let after = read_buffer::<Vec4>(&gpu, &brush.positions);
     let max_motion = settled.iter().zip(&after).map(|(a, b)| a.distance(*b)).fold(0.0f32, f32::max);
     assert!(max_motion < 0.05, "settled bristles moved {max_motion}px in one step");
+}
+
+fn dragged_tips(preset: BrushPreset) -> (BrushPose, Vec<Vec2>) {
+    let height = preset.length * 0.7;
+    let settle = std::iter::repeat_n(BrushPose::upright(Vec3::new(150.0, 256.0, height)), 60);
+    let drag = (0..100).map(|i| BrushPose::upright(Vec3::new(150.0 + i as f32 * 2.0, 256.0, height)));
+    let last = BrushPose::upright(Vec3::new(150.0 + 99.0 * 2.0, 256.0, height));
+    let (_, _, positions) = run(preset, settle.chain(drag));
+    let tips = canvas_positions(&last, &positions)
+        .chunks(VERTICES_PER_BRISTLE as usize)
+        .map(|b| b.last().unwrap().truncate())
+        .collect();
+    (last, tips)
+}
+
+#[test]
+fn dragged_tuft_fills_its_footprint() {
+    let (_, tips) = dragged_tips(BrushPreset::round(200, cm(0.35), cm(2.2)));
+    let centroid = tips.iter().sum::<Vec2>() / tips.len() as f32;
+    let radii: Vec<f32> = tips.iter().map(|t| t.distance(centroid)).collect();
+    let outer = radii.iter().cloned().fold(0.0f32, f32::max);
+    let nearest = radii.iter().cloned().fold(f32::MAX, f32::min);
+    let inner = radii.iter().filter(|&&r| r < outer * 0.5).count() as f32 / tips.len() as f32;
+    assert!(nearest < outer * 0.1, "no tip within {:.0}% of the outer radius from the centre, the footprint is a ring", nearest / outer * 100.0);
+    assert!(inner > 0.15, "only {:.0}% of tips lie in the inner half of the footprint", inner * 100.0);
+}
+
+#[test]
+fn dragged_tuft_keeps_the_ferrule_width() {
+    let preset = BrushPreset::round(200, cm(0.35), cm(2.2));
+    let (_, tips) = dragged_tips(preset);
+    let (low, high) = tips.iter().fold((f32::MAX, f32::MIN), |(lo, hi), t| (lo.min(t.y), hi.max(t.y)));
+    let width = high - low;
+    assert!(width > preset.width * 0.9 && width < preset.splayed_radius() * 2.2, "dragged footprint width {width} vs ferrule {}", preset.width);
 }

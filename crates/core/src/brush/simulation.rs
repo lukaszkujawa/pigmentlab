@@ -5,7 +5,7 @@ use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use crate::paint::ActiveWindow;
 use crate::pigment::Pigment;
 use crate::rng::SplitMix64;
-use glam::{Mat3, Vec3, Vec4};
+use glam::{Mat3, Vec2, Vec3, Vec4};
 
 const WORKGROUP_SIZE: u32 = 64;
 pub const SAMPLES_PER_BRISTLE: u32 = 256;
@@ -22,17 +22,16 @@ pub struct BrushUniform {
     canvas_width: f32,
     canvas_height: f32,
     sink: f32,
-    ferrule_extent: f32,
     cohesion: f32,
     cohesion_radius: f32,
     pressure: f32,
-    _padding: f32,
+    motion: [f32; 2],
 }
 
 const COHESION_RADIUS_FRACTION: f32 = 0.5;
 
 impl BrushUniform {
-    fn new(preset: &BrushPreset, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) -> Self {
+    fn new(preset: &BrushPreset, pose: &BrushPose, pressure: f32, motion: Vec2, canvas: [f32; 2]) -> Self {
         let rotation = Mat3::from_quat(pose.canvas_to_brush());
         let column = |v: Vec3| v.extend(0.0).to_array();
         Self {
@@ -45,11 +44,10 @@ impl BrushUniform {
             canvas_width: canvas[0],
             canvas_height: canvas[1],
             sink: preset.sink,
-            ferrule_extent: preset.width.max(preset.thickness) * 0.5,
             cohesion: preset.cohesion,
             cohesion_radius: preset.width.max(preset.thickness) * 0.5 * COHESION_RADIUS_FRACTION,
             pressure,
-            _padding: 0.0,
+            motion: motion.to_array(),
         }
     }
 }
@@ -195,8 +193,8 @@ impl Brush {
         gpu.queue.write_buffer(&self.tips, 0, bytemuck::cast_slice(&tips));
     }
 
-    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) {
-        let uniform = BrushUniform::new(&self.preset, pose, pressure, canvas);
+    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, motion: Vec2, canvas: [f32; 2]) {
+        let uniform = BrushUniform::new(&self.preset, pose, pressure, motion, canvas);
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         encoder.copy_buffer_to_buffer(&self.curves, 0, &self.previous_curves, 0, self.curves.size());
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {

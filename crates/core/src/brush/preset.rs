@@ -1,6 +1,8 @@
 use crate::units::cm;
 
-const SPLAYED_WIDTH_FACTOR: f32 = 1.5;
+pub const MAX_COMPRESSION: f32 = 0.4;
+const SPREAD_PER_COMPRESSION: f32 = 2.5;
+const BEND_REACH_FRACTION: f32 = 0.66;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BrushShape {
@@ -66,8 +68,12 @@ impl BrushPreset {
         }
     }
 
-    pub fn spread(&self) -> f32 {
-        self.width * 0.5 * SPLAYED_WIDTH_FACTOR
+    pub fn splayed_radius(&self) -> f32 {
+        self.width.max(self.thickness) * 0.5 * (1.0 + self.splay * MAX_COMPRESSION * SPREAD_PER_COMPRESSION)
+    }
+
+    pub fn bend_reach(&self) -> f32 {
+        self.length * BEND_REACH_FRACTION * self.splay
     }
 
     pub const fn flat(bristle_count: u32, width: f32, thickness: f32, length: f32) -> Self {
