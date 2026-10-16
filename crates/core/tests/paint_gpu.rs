@@ -141,7 +141,8 @@ fn brushing_over_wet_paint_leaves_grooves_along_the_stroke() {
     engine.dip(by_name("cadmium_red").unwrap());
     engine.pointer(sample(PointerPhase::Down, 700.0, 404.0, 0.8, released + 0.1));
     let second = scrub_passes(&mut engine, 700.0, 400.0, 2, released + 0.1);
-    engine.advance_exact(second - 0.25);
+    engine.pointer(sample(PointerPhase::Up, 400.0, 400.0, 0.0, second));
+    engine.advance_exact(second + 0.1);
     let heights = engine.paint_heights();
     let (along, across) = gradient_energies(&heights, width as usize);
     let ratio = across / along.max(1e-6);
@@ -170,4 +171,37 @@ fn resting_brush_leaves_wet_paint_alone() {
     let mass_after: f32 = after.iter().sum();
     assert!(largest_change < 0.05, "a resting brush changed a column by {largest_change:.3} px");
     assert!((mass_after - mass_before).abs() < mass_before * 0.001);
+}
+
+fn centreline_profile(heights: &[f32], width: usize) -> Vec<f32> {
+    (0..width).map(|x| (380..400).map(|y| heights[y * width + x]).sum::<f32>() / 20.0).collect()
+}
+
+#[test]
+fn dragging_through_a_slab_smears_it_outward() {
+    let width = 1024;
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width, height: 768 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_yellow").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 420.0, 380.0, 0.8, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 620.0, 380.0, 0.8, 0.5));
+    engine.pointer(sample(PointerPhase::Move, 420.0, 390.0, 0.8, 1.0));
+    engine.pointer(sample(PointerPhase::Move, 620.0, 400.0, 0.8, 1.5));
+    engine.pointer(sample(PointerPhase::Up, 620.0, 400.0, 0.0, 1.5));
+    engine.advance_exact(1.6);
+    let slab = centreline_profile(&engine.paint_heights(), width as usize);
+    engine.clean();
+    engine.pointer(sample(PointerPhase::Down, 250.0, 390.0, 0.8, 1.6));
+    engine.pointer(sample(PointerPhase::Move, 950.0, 390.0, 0.8, 2.6));
+    engine.pointer(sample(PointerPhase::Up, 950.0, 390.0, 0.0, 2.6));
+    engine.advance_exact(2.7);
+    let smeared = centreline_profile(&engine.paint_heights(), width as usize);
+    let slab_end = (0..width as usize).rev().find(|&x| slab[x] > 0.5).unwrap();
+    let total: f32 = smeared.iter().sum();
+    let beyond: f32 = smeared[slab_end + 1..].iter().sum();
+    let steepest = smeared.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    let steepest_before = slab.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+    assert!(beyond > total * 0.15, "only {:.1}% of the paint was carried past the slab edge", beyond / total * 100.0);
+    assert!(steepest < 0.5 && steepest < steepest_before * 0.5, "the slab edge is still a cliff: {steepest_before:.2} -> {steepest:.2} px per px");
 }

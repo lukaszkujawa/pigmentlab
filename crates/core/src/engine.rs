@@ -66,7 +66,7 @@ impl Engine {
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
-        let deposit = Deposit::new(&gpu, &brush, &window);
+        let deposit = Deposit::new(&gpu, &brush, &window, &stroke_base);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
@@ -169,7 +169,7 @@ impl Engine {
 
     pub fn set_brush(&mut self, preset: BrushPreset) {
         self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.stroke_base);
-        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window);
+        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.stroke_base);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
     }
@@ -304,7 +304,7 @@ impl Engine {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
             self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, canvas);
-            self.deposit.encode(&self.gpu, &mut encoder, self.pose.position.distance(self.previous_position));
+            self.deposit.encode(&self.gpu, &mut encoder, self.pose.position.truncate().distance(self.previous_position.truncate()));
             self.previous_position = self.pose.position;
             self.substeps += 1;
             if self.levelling_enabled && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING) {

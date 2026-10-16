@@ -1,0 +1,24 @@
+{
+  "seed": 1,
+  "canvas": { "width": 1024, "height": 768 },
+  "steps": [
+    { "t": 0.0, "action": "tool", "name": "Round medium" },
+    { "t": 0.0, "action": "dip", "pigment": "cadmium_yellow" },
+    { "t": 0.0, "action": "press", "x": 420, "y": 380, "pressure": 0.8 },
+    { "t": 0.5, "action": "move", "x": 620, "y": 380, "pressure": 0.8 },
+    { "t": 1.0, "action": "move", "x": 420, "y": 390, "pressure": 0.8 },
+    { "t": 1.5, "action": "move", "x": 620, "y": 400, "pressure": 0.8 },
+    { "t": 1.5, "action": "release" },
+    { "t": 1.6, "action": "checkpoint", "name": "slab" },
+    { "t": 1.6, "action": "clean" },
+    { "t": 1.6, "action": "press", "x": 250, "y": 390, "pressure": 0.8 },
+    { "t": 2.6, "action": "move", "x": 950, "y": 390, "pressure": 0.8 },
+    { "t": 2.6, "action": "release" },
+    { "t": 2.7, "action": "checkpoint", "name": "wiped_across" },
+    { "t": 2.7, "action": "dip", "pigment": "cadmium_yellow" },
+    { "t": 2.7, "action": "press", "x": 520, "y": 150, "pressure": 0.8 },
+    { "t": 3.7, "action": "move", "x": 520, "y": 650, "pressure": 0.8 },
+    { "t": 3.7, "action": "release" },
+    { "t": 4.2, "action": "checkpoint", "name": "spread_down" }
+  ]
+}

@@ -6,10 +6,17 @@ const WICKING: f32 = 0.3;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 1;
 const PUSH_DISTANCE: f32 = 2.5;
-const FORWARD_SHARE: f32 = 0.5;
+const PUSH_PACE: f32 = 1.25;
+const MAX_PUSH_REACH: f32 = 4.0 * PUSH_DISTANCE;
+const FORWARD_SHARE: f32 = 0.8;
 const PUSH_RADIUS: f32 = 3.0;
 const LIMIT_ENCODING: i32 = 0x7fffffff;
 const MIN_DISPLACING_TRAVEL: f32 = 0.2;
+const DRAG_RADIUS: i32 = 2;
+const DRAG_RATE: f32 = 0.1;
+const WIPE_RATE: f32 = 0.005;
+const CONTACT_RATE: f32 = 0.3;
+const DISPLACEMENT_SLOTS: u32 = 6u;
 
 struct DepositUniform {
     sample_count: u32,
@@ -30,6 +37,7 @@ struct DepositUniform {
 @group(0) @binding(4) var<storage, read_write> sample_scattering: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read_write> paint: array<atomic<i32>>;
 @group(0) @binding(7) var<uniform> window: WindowUniform;
+@group(0) @binding(8) var<storage, read> stroke_base: array<f32>;
 @group(0) @binding(9) var<storage, read_write> film: array<atomic<i32>>;
 @group(0) @binding(10) var<storage, read_write> pickup_demand: array<atomic<i32>>;
 @group(0) @binding(11) var<storage, read_write> pickup_grant: array<vec4<f32>>;
@@ -142,19 +150,38 @@ fn on_canvas(pixel: vec2<i32>) -> bool {
     return pixel.x >= 0 && pixel.y >= 0 && pixel.x < i32(window.canvas_width) && pixel.y < i32(window.canvas_height);
 }
 
-fn request_displacement(pixel: vec2<i32>, limit: f32, direction: vec2<f32>) {
-    for (var dy = -GROOVE_RADIUS; dy <= GROOVE_RADIUS; dy++) {
-        for (var dx = -GROOVE_RADIUS; dx <= GROOVE_RADIUS; dx++) {
+fn base_height(pixel: vec2<i32>) -> f32 {
+    return stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
+}
+
+fn groove_amount(height: f32, hair_level: f32, limit: f32, base: f32, drag: f32) -> f32 {
+    let above_film = max(height - limit, 0.0);
+    let dragged = max(min(min(height, limit), base) - hair_level, 0.0);
+    return above_film + dragged * drag;
+}
+
+fn ridge_amount(height: f32, limit: f32, drag: f32) -> f32 {
+    return max(height - limit, 0.0) * drag;
+}
+
+fn request_displacement(pixel: vec2<i32>, hair_level: f32, film: f32, direction: vec2<f32>, drag: f32) {
+    let limit = hair_level + film;
+    for (var dy = -DRAG_RADIUS; dy <= DRAG_RADIUS; dy++) {
+        for (var dx = -DRAG_RADIUS; dx <= DRAG_RADIUS; dx++) {
             let neighbour = pixel + vec2<i32>(dx, dy);
             if (!window_contains(neighbour) || !on_canvas(neighbour)) { continue; }
             let local = vec2<u32>(neighbour - window.origin);
-            let excess = column_height(local) - limit;
-            if (excess <= 0.0 || surface_is_dry(local)) { continue; }
-            let slot = column_index(local) * 4u;
-            atomicAdd(&displacement[slot], fixed(excess));
+            let height = column_height(local);
+            let in_groove = abs(dx) <= GROOVE_RADIUS && abs(dy) <= GROOVE_RADIUS;
+            let amount = select(ridge_amount(height, limit, drag), groove_amount(height, hair_level, limit, base_height(neighbour), drag), in_groove);
+            if (amount <= 0.0 || surface_is_dry(local)) { continue; }
+            let slot = column_index(local) * DISPLACEMENT_SLOTS;
+            if (in_groove) { atomicMax(&displacement[slot], LIMIT_ENCODING - fixed(limit)); }
             atomicMax(&displacement[slot + 1u], LIMIT_ENCODING - fixed(limit));
-            atomicAdd(&displacement[slot + 2u], fixed(direction.x * excess));
-            atomicAdd(&displacement[slot + 3u], fixed(direction.y * excess));
+            atomicMax(&displacement[slot + 2u], LIMIT_ENCODING - fixed(hair_level));
+            atomicMax(&displacement[slot + 3u], fixed(drag));
+            atomicAdd(&displacement[slot + 4u], fixed(direction.x * amount));
+            atomicAdd(&displacement[slot + 5u], fixed(direction.y * amount));
         }
     }
 }
@@ -207,13 +234,14 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let film = mix(0.015 * PIXELS_PER_CM, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
         let height = column_height(local);
         if (point.z > height + film) { continue; }
-        let surface_limit = point.z + film;
-        if (height > surface_limit) {
-            if (brush_moving && travelled > 1e-3) { request_displacement(pixel, surface_limit, direction); }
-            continue;
+        if (brush_moving && travelled > 1e-3 && height > point.z) {
+            request_displacement(pixel, point.z, film, direction, DRAG_RATE * motion);
         }
-        let deposit_share = select(0.0, deposit.deposit_rate * share * motion * f32(stride), depositing);
-        exchange(pixel, point.xy, height, deposit_share, deposit.pickup_rate * share * min(motion, brush_motion), &load, &absorption, &scattering, &request);
+        if (height > point.z + film) { continue; }
+        let buried = clamp(min(height, base_height(pixel)) - point.z, 0.0, film);
+        let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE) * share * min(motion, brush_motion);
+        let deposit_share = select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE) * f32(stride), depositing);
+        exchange(pixel, point.xy, height, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
     }
 
     sample_load[sample] = load;
@@ -278,19 +306,27 @@ fn take_from_top(local: vec2<u32>, amount: f32, absorption: ptr<function, vec3<f
 @compute @workgroup_size(16, 16)
 fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
-    let slot = column_index(id.xy) * 4u;
-    let demand = f32(atomicLoad(&displacement[slot])) / PAINT_SCALE;
-    if (demand <= 0.0) { return; }
-    let limit = f32(LIMIT_ENCODING - atomicLoad(&displacement[slot + 1u])) / PAINT_SCALE;
-    let excess = min(column_height(id.xy) - limit, demand);
-    if (excess <= 0.0) { return; }
-    let push = vec2<f32>(f32(atomicLoad(&displacement[slot + 2u])), f32(atomicLoad(&displacement[slot + 3u])));
+    let slot = column_index(id.xy) * DISPLACEMENT_SLOTS;
+    let ridge_code = atomicLoad(&displacement[slot + 1u]);
+    if (ridge_code == 0) { return; }
+    let height = column_height(id.xy);
+    let groove_code = atomicLoad(&displacement[slot]);
+    let hair_level = f32(LIMIT_ENCODING - atomicLoad(&displacement[slot + 2u])) / PAINT_SCALE;
+    let drag = f32(atomicLoad(&displacement[slot + 3u])) / PAINT_SCALE;
+    let pixel = vec2<i32>(id.xy) + window.origin;
+    var excess = ridge_amount(height, f32(LIMIT_ENCODING - ridge_code) / PAINT_SCALE, drag);
+    if (groove_code != 0) {
+        excess = groove_amount(height, hair_level, f32(LIMIT_ENCODING - groove_code) / PAINT_SCALE, base_height(pixel), drag);
+    }
+    if (excess <= 1e-4) { return; }
+    let push = vec2<f32>(f32(atomicLoad(&displacement[slot + 4u])), f32(atomicLoad(&displacement[slot + 5u])));
     if (length(push) <= 1e-3) { return; }
     let forward = normalize(push);
     let side = vec2<f32>(-forward.y, forward.x);
-    let offsets = array<vec2<f32>, 3>(forward, side, -side);
+    let reach = clamp(deposit.brush_travel * PUSH_PACE, PUSH_DISTANCE, MAX_PUSH_REACH) / PUSH_DISTANCE;
+    let offsets = array<vec2<f32>, 3>(forward * reach, side, -side);
     var shares = array<f32, 3>(FORWARD_SHARE, 0.5 * (1.0 - FORWARD_SHARE), 0.5 * (1.0 - FORWARD_SHARE));
-    let centre = vec2<f32>(vec2<i32>(id.xy) + window.origin) + 0.5;
+    let centre = vec2<f32>(pixel) + 0.5;
     var placeable = 0.0;
     for (var t = 0u; t < 3u; t++) {
         let landing = vec2<i32>(floor(centre + offsets[t] * PUSH_DISTANCE));

@@ -39,7 +39,7 @@ pub struct Deposit {
 }
 
 impl Deposit {
-    pub fn new(gpu: &Gpu, brush: &Brush, window: &ActiveWindow) -> Self {
+    pub fn new(gpu: &Gpu, brush: &Brush, window: &ActiveWindow, stroke_base: &wgpu::Buffer) -> Self {
         let preset = brush.preset();
         let sample_count = preset.bristle_count * SAMPLES_PER_BRISTLE;
         let uniform = gpu.uniform_buffer("deposit uniform", std::mem::size_of::<DepositUniform>() as u64);
@@ -60,7 +60,7 @@ impl Deposit {
         let pickup_grant = gpu.storage_buffer("pickup grant", columns * 16);
         let pickup_grant_scattering = gpu.storage_buffer("pickup grant scattering", columns * 16);
         let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
-        let displacement = gpu.storage_buffer("displacement demand", columns * 16);
+        let displacement = gpu.storage_buffer("displacement requests", columns * 24);
         let compute = wgpu::ShaderStages::COMPUTE;
         let read_only = wgpu::BufferBindingType::Storage { read_only: true };
         let read_write = wgpu::BufferBindingType::Storage { read_only: false };
@@ -75,6 +75,7 @@ impl Deposit {
                 buffer_layout_entry(5, compute, read_write),
                 buffer_layout_entry(6, compute, read_only),
                 buffer_layout_entry(7, compute, wgpu::BufferBindingType::Uniform),
+                buffer_layout_entry(8, compute, read_only),
                 buffer_layout_entry(9, compute, read_write),
                 buffer_layout_entry(10, compute, read_write),
                 buffer_layout_entry(11, compute, read_write),
@@ -95,6 +96,7 @@ impl Deposit {
                 buffer_binding(5, &window.volume),
                 buffer_binding(6, &brush.previous_curves),
                 buffer_binding(7, &window.uniform),
+                buffer_binding(8, stroke_base),
                 buffer_binding(9, &film),
                 buffer_binding(10, &pickup_demand),
                 buffer_binding(11, &pickup_grant),
