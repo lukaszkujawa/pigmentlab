@@ -1,7 +1,7 @@
 const MAX_SEGMENT_STEPS: u32 = 16u;
 const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
-const STATIC_DEPOSIT_FRACTION: f32 = 0.05;
 const FILM_MAX_RADIUS: f32 = 0.11 * PIXELS_PER_CM;
+const FILM_MIN_RADIUS: f32 = 0.015 * PIXELS_PER_CM;
 const WICKING: f32 = 0.3;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 
@@ -13,7 +13,7 @@ struct DepositUniform {
     sample_capacity: f32,
     contact_height: f32,
     dt: f32,
-    lift_burst: f32,
+    padding: f32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -38,7 +38,7 @@ fn column_index(local: vec2<u32>) -> u32 {
 }
 
 fn film_radius(fill: f32) -> f32 {
-    return 0.5 + (FILM_MAX_RADIUS - 0.5) * smoothstep(0.2, 1.0, fill);
+    return mix(FILM_MIN_RADIUS, FILM_MAX_RADIUS, smoothstep(0.2, 1.0, fill));
 }
 
 fn film_kernel(distance_to_centre: f32, radius: f32) -> f32 {
@@ -145,8 +145,7 @@ fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, surface_limit: f32, deposit_s
     if (wet && height > 0.0 && *load < deposit.sample_capacity) {
         let wanted = min(pickup_share * (1.0 - fill), deposit.sample_capacity - *load);
         if (wanted > 0.0) {
-            atomicAdd(&pickup_demand[column_index(local)], fixed(wanted));
-            *request = vec2<f32>(f32(column_index(local)), wanted);
+            *request = vec2<f32>(f32(column_index(local)), (*request).y + wanted);
         }
     }
     let given = min(deposit_share * fill, *load);
@@ -174,8 +173,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let depositing = (sample % deposit.samples_per_bristle) % stride == 0u;
     let travelled = distance(start.xy, end.xy);
     let speed_factor = travelled / (REFERENCE_SPEED * deposit.dt);
-    let lift = deposit.lift_burst * clamp(1.0 - speed_factor, 0.0, 1.0);
-    let motion = max(clamp(speed_factor, STATIC_DEPOSIT_FRACTION, 1.0), lift);
+    let motion = min(speed_factor, 1.0);
     let steps = clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS);
     let share = 1.0 / f32(steps);
     for (var i = 1u; i <= steps; i++) {
@@ -193,6 +191,9 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     sample_absorption[sample] = vec4<f32>(absorption, 0.0);
     sample_scattering[sample] = vec4<f32>(scattering, 0.0);
     sample_request[sample] = request;
+    if (request.x >= 0.0 && request.y > 0.0) {
+        atomicAdd(&pickup_demand[u32(request.x)], fixed(request.y));
+    }
 }
 
 @compute @workgroup_size(16, 16)

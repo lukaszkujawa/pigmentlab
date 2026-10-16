@@ -4,6 +4,7 @@ const TIP_TANGENT_WEIGHT: f32 = 0.5;
 const SPLAY_RATE: f32 = 0.3;
 const RECOVER_RATE: f32 = 0.04;
 const MAX_REACH_FRACTION: f32 = 0.98;
+const LIFT_CLEARANCE: f32 = 0.1 * PIXELS_PER_CM;
 
 struct BrushUniform {
     rotation_x: vec4<f32>,
@@ -152,8 +153,9 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         tip_tangent = normalize(mix(vec3<f32>(0.0, 0.0, -1.0), vec3<f32>(azimuth, 0.0), flatness));
         contact = 1.0;
     } else {
+        let clear_of_canvas = previous_tip.z > LIFT_CLEARANCE;
         tip = mix(previous_tip, rest_tip, brush.recovery);
-        tip.z = max(tip.z, 0.0);
+        tip = vec3<f32>(select(previous_tip.xy, tip.xy, clear_of_canvas), max(tip.z, 0.0));
         tip_tangent = normalize(mix(root_tangent, normalize(tip - root), 0.5));
     }
 

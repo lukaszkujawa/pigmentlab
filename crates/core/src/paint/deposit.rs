@@ -7,7 +7,6 @@ use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 const WORKGROUP_SIZE: u32 = 128;
 const CONTACT_HEIGHT: f32 = crate::units::cm(0.08);
 const FLOW_PER_MEDIUM: f32 = 1.0;
-const LIFT_BURST: f32 = 10.0;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -19,7 +18,7 @@ struct DepositUniform {
     sample_capacity: f32,
     contact_height: f32,
     dt: f32,
-    lift_burst: f32,
+    _padding: f32,
 }
 
 pub struct Deposit {
@@ -51,7 +50,7 @@ impl Deposit {
             sample_capacity: preset.sample_capacity,
             contact_height: CONTACT_HEIGHT,
             dt: crate::engine::SIMULATION_DT,
-            lift_burst: 0.0,
+            _padding: 0.0,
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
@@ -145,20 +144,12 @@ impl Deposit {
 
     pub fn set_medium(&mut self, gpu: &Gpu, medium: f32) {
         self.medium = medium.clamp(0.0, 1.0);
-        self.write_uniform(gpu, false);
+        self.write_uniform(gpu);
     }
 
-    pub fn set_lifting(&self, gpu: &Gpu, lifting: bool) {
-        self.write_uniform(gpu, lifting);
-    }
-
-    fn write_uniform(&self, gpu: &Gpu, lifting: bool) {
+    fn write_uniform(&self, gpu: &Gpu) {
         let flow = 1.0 + FLOW_PER_MEDIUM * self.medium;
-        let uniform = DepositUniform {
-            deposit_rate: self.base.deposit_rate * flow,
-            lift_burst: if lifting { LIFT_BURST } else { 0.0 },
-            ..self.base
-        };
+        let uniform = DepositUniform { deposit_rate: self.base.deposit_rate * flow, ..self.base };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
     }
 
