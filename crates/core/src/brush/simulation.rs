@@ -168,10 +168,10 @@ impl Brush {
         gpu.queue.write_buffer(&self.sample_load, 0, &vec![0u8; samples * 4]);
     }
 
-    pub fn dip(&self, gpu: &Gpu, pigment: Pigment, load_fraction: f32) {
+    pub fn dip(&self, gpu: &Gpu, pigment: Pigment, load_fraction: f32, medium: f32) {
         let samples = (self.preset.bristle_count * SAMPLES_PER_BRISTLE) as usize;
         let loads = vec![self.preset.sample_capacity * load_fraction; samples];
-        let absorption = vec![pigment.coefficients.absorption.extend(0.0); samples];
+        let absorption = vec![pigment.coefficients.absorption.extend(medium); samples];
         let scattering = vec![pigment.coefficients.scattering.extend(0.0); samples];
         gpu.queue.write_buffer(&self.sample_load, 0, bytemuck::cast_slice(&loads));
         gpu.queue.write_buffer(&self.sample_absorption, 0, bytemuck::cast_slice(&absorption));

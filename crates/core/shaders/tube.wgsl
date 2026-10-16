@@ -31,6 +31,7 @@ fn add_on_top(local: vec2<u32>, amount: f32) {
         volume[base + 4u] += i32(round(amount * tube.scattering.x * PAINT_SCALE));
         volume[base + 5u] += i32(round(amount * tube.scattering.y * PAINT_SCALE));
         volume[base + 6u] += i32(round(amount * tube.scattering.z * PAINT_SCALE));
+        volume[base + 7u] += i32(round(amount * tube.absorption.w * PAINT_SCALE));
         return;
     }
 }

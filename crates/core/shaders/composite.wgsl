@@ -34,9 +34,9 @@ fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
     return out;
 }
 
-fn column_sum(texel: vec2<i32>) -> array<i32, 7> {
-    var column: array<i32, 7>;
-    for (var channel = 0u; channel < 7u; channel++) { column[channel] = 0; }
+fn column_sum(texel: vec2<i32>) -> array<i32, 8> {
+    var column: array<i32, 8>;
+    for (var channel = 0u; channel < CHANNELS; channel++) { column[channel] = 0; }
     if (texel.x < 0 || texel.y < 0 || texel.x >= i32(composite.canvas_width) || texel.y >= i32(composite.canvas_height)) {
         return column;
     }
@@ -44,11 +44,11 @@ fn column_sum(texel: vec2<i32>) -> array<i32, 7> {
         let local = vec2<u32>(texel - window.origin);
         for (var z = 0u; z < window.depth; z++) {
             let cell = window_cell(vec3<u32>(local, z));
-            for (var channel = 0u; channel < 7u; channel++) { column[channel] += volume[cell + channel]; }
+            for (var channel = 0u; channel < CHANNELS; channel++) { column[channel] += volume[cell + channel]; }
         }
     } else {
         let cell = store_cell(vec2<u32>(texel));
-        for (var channel = 0u; channel < 7u; channel++) { column[channel] = paint[cell + channel]; }
+        for (var channel = 0u; channel < CHANNELS; channel++) { column[channel] = paint[cell + channel]; }
     }
     return column;
 }
@@ -97,9 +97,9 @@ fn shadow(texel: vec2<i32>, height: f32, light: vec3<f32>) -> f32 {
     return 1.0 - composite.shadow_strength * blocked;
 }
 
-fn shade(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32) -> vec3<f32> {
+fn shade(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32, medium: f32) -> vec3<f32> {
     let height = height_at(texel);
-    let glossy = smoothstep(0.0, 0.015 * PIXELS_PER_CM, paint_height);
+    let glossy = smoothstep(0.0, 0.015 * PIXELS_PER_CM, paint_height) * mix(0.7, 1.0, medium);
     let slope_x = (height_at(texel + vec2<i32>(1, 0)) - height_at(texel - vec2<i32>(1, 0))) * 0.5;
     let slope_y = (height_at(texel + vec2<i32>(0, 1)) - height_at(texel - vec2<i32>(0, 1))) * 0.5;
     let normal = normalize(vec3<f32>(-slope_x, -slope_y, 1.0));
@@ -120,12 +120,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let column = column_sum(texel);
     let height = f32(column[0]) / PAINT_SCALE;
     if (height <= 1e-4) {
-        return vec4<f32>(shade(base, texel, 0.0), 1.0);
+        return vec4<f32>(shade(base, texel, 0.0, 0.0), 1.0);
     }
     let k = vec3<f32>(f32(column[1]), f32(column[2]), f32(column[3])) / PAINT_SCALE / height;
     let s = vec3<f32>(f32(column[4]), f32(column[5]), f32(column[6])) / PAINT_SCALE / height;
     let thickness = max(mix(height, smooth_paint[clamped_index(texel)], 0.3), 1e-4);
     let albedo = layer_reflectance(max(k, vec3<f32>(0.0)), max(s, vec3<f32>(0.0)), thickness * composite.optical_thickness_per_pixel, base);
-    let color = shade(albedo, texel, height);
+    let medium = clamp(f32(column[7]) / PAINT_SCALE / height, 0.0, 1.0);
+    let color = shade(albedo, texel, height, medium);
     return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }

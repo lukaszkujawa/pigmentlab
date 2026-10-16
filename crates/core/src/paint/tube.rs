@@ -39,7 +39,8 @@ impl Tube {
         Self { squeeze: ComputePass::new(gpu, "squeeze tube", &shader, "squeeze", &bindings), uniform, dt }
     }
 
-    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, from: Vec2, to: Vec2, pressure: f32, paint: Coefficients) {
+    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, path: [Vec2; 2], pressure: f32, paint: Coefficients, medium: f32) {
+        let [from, to] = path;
         let low = (from.min(to) - NOZZLE_RADIUS).floor();
         let high = (from.max(to) + NOZZLE_RADIUS).ceil();
         let size = (high - low).as_uvec2().max(glam::UVec2::ONE);
@@ -49,7 +50,7 @@ impl Tube {
             radius: NOZZLE_RADIUS,
             height: FLOW_PER_SECOND * pressure * self.dt,
             corner: low.as_ivec2().to_array(),
-            absorption: paint.absorption.extend(0.0).to_array(),
+            absorption: paint.absorption.extend(medium).to_array(),
             scattering: paint.scattering.extend(0.0).to_array(),
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));

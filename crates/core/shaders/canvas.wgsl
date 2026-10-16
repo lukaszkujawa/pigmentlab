@@ -22,7 +22,7 @@ fn bake_dry(@builtin(global_invocation_id) id: vec3<u32>) {
     if (height <= 0.0) { return; }
     let k = max(vec3<f32>(f32(store[cell + 1u]), f32(store[cell + 2u]), f32(store[cell + 3u])) / PAINT_SCALE / height, vec3<f32>(0.0));
     let s = max(vec3<f32>(f32(store[cell + 4u]), f32(store[cell + 5u]), f32(store[cell + 6u])) / PAINT_SCALE / height, vec3<f32>(0.0));
-    for (var channel = 0u; channel < 7u; channel++) {
+    for (var channel = 0u; channel < CHANNELS; channel++) {
         store[cell + channel] = 0;
     }
     if (height < MIN_DRY_HEIGHT) { return; }

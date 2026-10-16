@@ -1,7 +1,11 @@
 const LEVEL_RATE: f32 = 0.3;
+const LEVEL_RATE_OILY: f32 = 1.0;
 const LEVEL_YIELD_SLOPE: f32 = 0.4;
-const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
+const LEVEL_YIELD_SLOPE_OILY: f32 = 0.05;
+const LEVEL_FULL_MOBILITY_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
+const LEVEL_FULL_MOBILITY_HEIGHT_OILY: f32 = 0.005 * PIXELS_PER_CM;
 const SPREAD_MIN_HEIGHT: f32 = 0.08 * PIXELS_PER_CM;
+const SPREAD_MIN_HEIGHT_OILY: f32 = 0.01 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
 @group(0) @binding(1) var<storage, read_write> volume: array<i32>;
@@ -31,17 +35,26 @@ fn ground_of(pixel: vec2<i32>) -> f32 {
     return ground[pixel_index(pixel)];
 }
 
-fn flow_between(surface: f32, other_surface: f32, wet: f32) -> f32 {
-    let flowing = max(wet - LEVEL_MIN_HEIGHT, 0.0);
-    let difference = surface - other_surface;
-    let beyond_yield = sign(difference) * max(abs(difference) - LEVEL_YIELD_SLOPE, 0.0);
-    return beyond_yield * LEVEL_RATE * 0.25 * min(flowing / LEVEL_MIN_HEIGHT, 1.0);
+fn geometric_mix(stiff: f32, oily: f32, medium: f32) -> f32 {
+    return exp(mix(log(stiff), log(oily), medium));
 }
 
-fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32) -> f32 {
+fn flow_between(surface: f32, other_surface: f32, wet: f32, medium: f32) -> f32 {
+    let mobility = min(wet / geometric_mix(LEVEL_FULL_MOBILITY_HEIGHT, LEVEL_FULL_MOBILITY_HEIGHT_OILY, medium), 1.0);
+    let difference = surface - other_surface;
+    let beyond_yield = sign(difference) * max(abs(difference) - geometric_mix(LEVEL_YIELD_SLOPE, LEVEL_YIELD_SLOPE_OILY, medium), 0.0);
+    return beyond_yield * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) * 0.25 * mobility;
+}
+
+fn shared_medium(paint: f32, medium: f32, other_paint: f32, other_medium: f32) -> f32 {
+    return (paint * medium + other_paint * other_medium) / max(paint + other_paint, 1e-6);
+}
+
+fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32, medium: f32) -> f32 {
+    let oiliness = clamp(medium, 0.0, 1.0);
     let both_wet = paint > 0.0 && other_paint > 0.0;
-    if (!both_wet && max(paint, other_paint) <= SPREAD_MIN_HEIGHT) { return 0.0; }
-    let flow = flow_between(surface, other_surface, max(paint, other_paint));
+    if (!both_wet && max(paint, other_paint) <= geometric_mix(SPREAD_MIN_HEIGHT, SPREAD_MIN_HEIGHT_OILY, oiliness)) { return 0.0; }
+    let flow = flow_between(surface, other_surface, max(paint, other_paint), oiliness);
     return clamp(flow, -other_paint * MAX_SHARE_PER_NEIGHBOUR, paint * MAX_SHARE_PER_NEIGHBOUR);
 }
 
@@ -49,28 +62,29 @@ fn column_slot(local: vec2<u32>) -> u32 {
     return local.y * window.width + local.x;
 }
 
-fn neighbour_pigment(local: vec2<i32>) -> array<f32, 6> {
-    var pigment: array<f32, 6>;
+fn neighbour_pigment(local: vec2<i32>) -> array<f32, 7> {
+    var pigment: array<f32, 7>;
     if (local.x >= 0 && local.y >= 0 && local.x < i32(window.width) && local.y < i32(window.height)) {
         let slot = column_slot(vec2<u32>(local));
         let p = column_pigment[slot];
         let c = columns[slot];
-        pigment = array<f32, 6>(p.x, p.y, p.z, c.y, c.z, c.w);
+        pigment = array<f32, 7>(p.x, p.y, p.z, c.y, c.z, c.w, p.w);
         return pigment;
     }
     let cell = store_cell(vec2<u32>(local + window.origin));
     let height = max(f32(store[cell]) / PAINT_SCALE, 1e-6);
-    for (var channel = 0u; channel < 6u; channel++) {
+    for (var channel = 0u; channel < 7u; channel++) {
         pigment[channel] = f32(store[cell + 1u + channel]) / PAINT_SCALE / height;
     }
     return pigment;
 }
 
-fn column_flow(paint: f32, surface: f32, local: vec2<i32>) -> f32 {
+fn column_flow(paint: f32, surface: f32, medium: f32, local: vec2<i32>) -> f32 {
     let pixel = local + window.origin;
     let other = height_of(pixel);
     if (other < 0.0) { return 0.0; }
-    return pair_flow(paint, surface, other, other + ground_of(pixel));
+    let other_medium = neighbour_pigment(local)[6];
+    return pair_flow(paint, surface, other, other + ground_of(pixel), shared_medium(paint, medium, other, other_medium));
 }
 
 fn take_from_top(local: vec2<u32>, amount: f32) {
@@ -81,7 +95,7 @@ fn take_from_top(local: vec2<u32>, amount: f32) {
         if (density <= 0.0) { continue; }
         let taken = min(density, remaining);
         let fraction = taken / density;
-        for (var channel = 0u; channel < 7u; channel++) {
+        for (var channel = 0u; channel < CHANNELS; channel++) {
             volume[base + channel] = i32(round(f32(volume[base + channel]) * (1.0 - fraction)));
         }
         remaining -= taken;
@@ -89,7 +103,7 @@ fn take_from_top(local: vec2<u32>, amount: f32) {
     }
 }
 
-fn add_on_top(local: vec2<u32>, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
+fn add_on_top(local: vec2<u32>, amount: f32, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     for (var z = 0u; z < window.depth; z++) {
         let base = window_cell(vec3<u32>(local, z));
         let density = f32(volume[base]) / PAINT_SCALE;
@@ -101,6 +115,7 @@ fn add_on_top(local: vec2<u32>, amount: f32, absorption: vec3<f32>, scattering: 
         volume[base + 4u] += i32(round(amount * scattering.x * PAINT_SCALE));
         volume[base + 5u] += i32(round(amount * scattering.y * PAINT_SCALE));
         volume[base + 6u] += i32(round(amount * scattering.z * PAINT_SCALE));
+        volume[base + 7u] += i32(round(amount * medium * PAINT_SCALE));
         return;
     }
 }
@@ -109,6 +124,7 @@ fn add_on_top(local: vec2<u32>, amount: f32, absorption: vec3<f32>, scattering: 
 fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
     var height = 0.0;
+    var medium_mass = 0.0;
     var top_absorption = vec3<f32>(0.0);
     var top_scattering = vec3<f32>(0.0);
     for (var z = 0u; z < window.depth; z++) {
@@ -116,12 +132,13 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
         let density = f32(volume[base]) / PAINT_SCALE;
         if (density <= 0.0) { continue; }
         height += density;
+        medium_mass += f32(volume[base + 7u]) / PAINT_SCALE;
         top_absorption = vec3<f32>(f32(volume[base + 1u]), f32(volume[base + 2u]), f32(volume[base + 3u])) / PAINT_SCALE / density;
         top_scattering = vec3<f32>(f32(volume[base + 4u]), f32(volume[base + 5u]), f32(volume[base + 6u])) / PAINT_SCALE / density;
     }
     let slot = column_slot(id.xy);
     columns[slot] = vec4<f32>(height, top_scattering);
-    column_pigment[slot] = vec4<f32>(top_absorption, 0.0);
+    column_pigment[slot] = vec4<f32>(top_absorption, medium_mass / max(height, 1e-6));
 }
 
 @compute @workgroup_size(16, 16)
@@ -132,13 +149,15 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
     let paint = height_of(pixel);
     if (paint < 0.0) { return; }
     let surface = paint + ground_of(pixel);
+    let medium = column_pigment[column_slot(id.xy)].w;
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;
     var incoming = 0.0;
     var incoming_absorption = vec3<f32>(0.0);
     var incoming_scattering = vec3<f32>(0.0);
+    var incoming_medium = 0.0;
     for (var n = 0u; n < 4u; n++) {
-        let flow = column_flow(paint, surface, local + offsets[n]);
+        let flow = column_flow(paint, surface, medium, local + offsets[n]);
         if (flow > 0.0) {
             outgoing += flow;
         } else if (flow < 0.0) {
@@ -146,16 +165,22 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
             incoming -= flow;
             incoming_absorption += vec3<f32>(pigment[0], pigment[1], pigment[2]) * -flow;
             incoming_scattering += vec3<f32>(pigment[3], pigment[4], pigment[5]) * -flow;
+            incoming_medium += pigment[6] * -flow;
         }
     }
     if (outgoing > 0.0) { take_from_top(id.xy, outgoing); }
-    if (incoming > 0.0) { add_on_top(id.xy, incoming, incoming_absorption / incoming, incoming_scattering / incoming); }
+    if (incoming > 0.0) { add_on_top(id.xy, incoming, incoming_absorption / incoming, incoming_scattering / incoming, incoming_medium / incoming); }
 }
 
-fn store_flow(paint: f32, surface: f32, neighbour: vec2<i32>) -> f32 {
+fn store_medium(pixel: vec2<i32>) -> f32 {
+    let cell = store_cell(vec2<u32>(pixel));
+    return f32(store[cell + 7u]) / max(f32(store[cell]), 1.0);
+}
+
+fn store_flow(paint: f32, surface: f32, medium: f32, neighbour: vec2<i32>) -> f32 {
     if (!on_canvas(neighbour)) { return 0.0; }
     let other = heights[pixel_index(neighbour)];
-    return pair_flow(paint, surface, other, other + ground_of(neighbour));
+    return pair_flow(paint, surface, other, other + ground_of(neighbour), shared_medium(paint, medium, other, store_medium(neighbour)));
 }
 
 fn level_store_pixel(pixel: vec2<i32>) {
@@ -163,27 +188,28 @@ fn level_store_pixel(pixel: vec2<i32>) {
     let height = heights[pixel_index(pixel)];
     let surface = height + ground_of(pixel);
     let cell = store_cell(vec2<u32>(pixel));
+    let medium = store_medium(pixel);
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;
     var incoming = 0.0;
-    var incoming_pigment: array<f32, 6>;
-    for (var channel = 0u; channel < 6u; channel++) { incoming_pigment[channel] = 0.0; }
+    var incoming_pigment: array<f32, 7>;
+    for (var channel = 0u; channel < 7u; channel++) { incoming_pigment[channel] = 0.0; }
     for (var n = 0u; n < 4u; n++) {
         let neighbour = pixel + offsets[n];
-        let flow = store_flow(height, surface, neighbour);
+        let flow = store_flow(height, surface, medium, neighbour);
         if (flow > 0.0) {
             outgoing += flow;
         } else if (flow < 0.0) {
             let pigment = neighbour_pigment(neighbour - window.origin);
             incoming -= flow;
-            for (var channel = 0u; channel < 6u; channel++) {
+            for (var channel = 0u; channel < 7u; channel++) {
                 incoming_pigment[channel] += pigment[channel] * -flow;
             }
         }
     }
     let keep = 1.0 - min(outgoing / max(height, 1e-6), 1.0);
     store[cell] = i32(round((height * keep + incoming) * PAINT_SCALE));
-    for (var channel = 0u; channel < 6u; channel++) {
+    for (var channel = 0u; channel < 7u; channel++) {
         let own = f32(store[cell + 1u + channel]);
         store[cell + 1u + channel] = i32(round(own * keep + incoming_pigment[channel] * PAINT_SCALE));
     }

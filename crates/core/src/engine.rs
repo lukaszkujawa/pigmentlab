@@ -15,6 +15,7 @@ const SUBSTEPS_PER_DEPOSIT: u64 = 2;
 const DEPOSIT_DT: f32 = SIMULATION_DT * SUBSTEPS_PER_DEPOSIT as f32;
 const UNDO_DEPTH: usize = 6;
 const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
+const LEVELLING_SETTLE_SECONDS_PER_MEDIUM: f64 = 4.0;
 const WET_MARGIN: i32 = 48;
 const DEPOSIT_REACH: i32 = 24;
 const LIFTED_HEIGHT: f32 = 1.25;
@@ -312,7 +313,7 @@ impl Engine {
             },
         };
         self.paint_on_tool = thinned.coefficients;
-        self.brush.dip(&self.gpu, thinned, self.paint.load.clamp(0.0, 1.0));
+        self.brush.dip(&self.gpu, thinned, self.paint.load.clamp(0.0, 1.0), self.paint.medium.clamp(0.0, 1.0));
     }
 
     pub fn clean(&self) {
@@ -323,7 +324,20 @@ impl Engine {
         read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| f64::from(*load)).sum::<f64>() as f32
     }
 
-    pub fn paint_columns(&mut self) -> Vec<[f32; 7]> {
+    pub fn brush_sample_absorption(&self) -> Vec<Vec3> {
+        read_buffer::<Vec4>(&self.gpu, &self.brush.sample_absorption).iter().map(|v| v.truncate()).collect()
+    }
+
+    pub fn brush_pigment(&self) -> Coefficients {
+        let loads = read_buffer::<f32>(&self.gpu, &self.brush.sample_load);
+        let absorption = read_buffer::<Vec4>(&self.gpu, &self.brush.sample_absorption);
+        let scattering = read_buffer::<Vec4>(&self.gpu, &self.brush.sample_scattering);
+        let total: f32 = loads.iter().sum::<f32>().max(1e-6);
+        let weighted = |values: &[Vec4]| values.iter().zip(&loads).map(|(v, load)| v.truncate() * *load).sum::<Vec3>() / total;
+        Coefficients { absorption: weighted(&absorption), scattering: weighted(&scattering) }
+    }
+
+    pub fn paint_columns(&mut self) -> Vec<[f32; 8]> {
         let mut encoder = self.encoder("bake");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -368,7 +382,7 @@ impl Engine {
                 self.pressure = if state.pressed { state.pressure.clamp(0.0, 1.0) } else { 0.0 };
                 self.pressed = state.pressed;
                 if state.pressed {
-                    self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS;
+                    self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(self.paint.medium.clamp(0.0, 1.0));
                 }
                 if state.fresh_press {
                     self.tuft_centre = self.handle_position();
@@ -412,7 +426,7 @@ impl Engine {
                 Tool::Tube => {
                     if self.pressed {
                         let from = self.position_at_last_deposit.truncate();
-                        self.tube.encode_squeeze(&self.gpu, &mut encoder, from, self.handle_position(), self.pressure, self.paint_on_tool);
+                        self.tube.encode_squeeze(&self.gpu, &mut encoder, [from, self.handle_position()], self.pressure, self.paint_on_tool, self.paint.medium.clamp(0.0, 1.0));
                     }
                     self.position_at_last_deposit = self.pose.position;
                 }
