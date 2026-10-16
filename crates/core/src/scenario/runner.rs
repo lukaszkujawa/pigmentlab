@@ -23,7 +23,11 @@ pub struct Report {
 
 impl Report {
     pub fn passed(&self) -> bool {
-        self.checkpoints.iter().all(|c| c.comparison.is_none_or(|c| c.passed))
+        self.failures().next().is_none()
+    }
+
+    pub fn failures(&self) -> impl Iterator<Item = &CheckpointResult> {
+        self.checkpoints.iter().filter(|c| c.comparison.is_some_and(|c| !c.passed))
     }
 }
 
@@ -105,9 +109,12 @@ fn check(
         actual.save(&baseline_path).expect("cannot write baseline");
         return None;
     }
-    let expected = image::open(&baseline_path)
-        .unwrap_or_else(|e| panic!("missing baseline {}: {e}", baseline_path.display()))
-        .into_rgba8();
+    let Ok(expected) = image::open(&baseline_path) else {
+        std::fs::create_dir_all(baseline_dir).expect("cannot create baseline dir");
+        actual.save(baseline_dir.join(format!("{name}.actual.png"))).expect("cannot write actual");
+        return Some(Comparison::missing_baseline());
+    };
+    let expected = expected.into_rgba8();
     let comparison = compare(actual, &expected, scenario.tolerance);
     if !comparison.passed {
         actual.save(baseline_dir.join(format!("{name}.actual.png"))).expect("cannot write actual");

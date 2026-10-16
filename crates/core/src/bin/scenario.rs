@@ -10,17 +10,35 @@ fn main() {
         std::process::exit(2);
     }
 
-    let mut all_passed = true;
+    let mut failures = Vec::new();
+    let mut checkpoints = 0;
     for path in &paths {
-        let scenario = Scenario::load(path).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(2);
-        });
+        let scenario = match Scenario::load(path) {
+            Ok(scenario) => scenario,
+            Err(error) => {
+                failures.push(error);
+                continue;
+            }
+        };
         let report = run(&scenario, &baseline_dir(path), update_baselines);
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
-        all_passed &= report.passed();
+        checkpoints += report.checkpoints.len();
+        let name = path.file_stem().unwrap().to_string_lossy();
+        failures.extend(report.failures().map(|failed| {
+            let comparison = failed.comparison.expect("failures carry a comparison");
+            let reason = if comparison.missing_baseline {
+                "missing baseline".to_string()
+            } else {
+                format!("{:.2}% of pixels differ, mean difference {:.2}", comparison.differing_fraction * 100.0, comparison.mean_difference)
+            };
+            format!("{name}/{}: {reason}", failed.name)
+        }));
     }
-    if !all_passed {
+    eprintln!("{} scenarios, {checkpoints} checkpoints, {} failed", paths.len(), failures.len());
+    for failure in &failures {
+        eprintln!("  FAILED {failure}");
+    }
+    if !failures.is_empty() {
         std::process::exit(1);
     }
 }

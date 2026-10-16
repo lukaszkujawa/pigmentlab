@@ -18,12 +18,19 @@ impl Default for Tolerance {
 pub struct Comparison {
     pub mean_difference: f32,
     pub differing_fraction: f32,
+    pub missing_baseline: bool,
     pub passed: bool,
+}
+
+impl Comparison {
+    pub fn missing_baseline() -> Self {
+        Self { mean_difference: f32::MAX, differing_fraction: 1.0, missing_baseline: true, passed: false }
+    }
 }
 
 pub fn compare(actual: &RgbaImage, expected: &RgbaImage, tolerance: Tolerance) -> Comparison {
     if actual.dimensions() != expected.dimensions() {
-        return Comparison { mean_difference: f32::MAX, differing_fraction: 1.0, passed: false };
+        return Comparison { mean_difference: f32::MAX, differing_fraction: 1.0, missing_baseline: false, passed: false };
     }
     let mut total = 0u64;
     let mut differing = 0u64;
@@ -39,6 +46,7 @@ pub fn compare(actual: &RgbaImage, expected: &RgbaImage, tolerance: Tolerance) -
     Comparison {
         mean_difference,
         differing_fraction,
+        missing_baseline: false,
         passed: mean_difference <= tolerance.max_mean_difference
             && differing_fraction <= tolerance.max_differing_fraction,
     }
