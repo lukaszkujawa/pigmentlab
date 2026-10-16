@@ -184,7 +184,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let film = mix(0.015 * PIXELS_PER_CM, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
         if (point.z > column_height(local) + film) { continue; }
         let deposit_share = select(0.0, deposit.deposit_rate * share * motion * f32(stride), depositing);
-        exchange(pixel, point.xy, point.z + film, deposit_share, deposit.pickup_rate * share, &load, &absorption, &scattering, &request);
+        exchange(pixel, point.xy, point.z + film, deposit_share, deposit.pickup_rate * share * motion, &load, &absorption, &scattering, &request);
     }
 
     sample_load[sample] = load;

@@ -1,0 +1,81 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 1024,
+    "height": 512
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "tool",
+      "name": "Round medium"
+    },
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 150,
+      "y": 200,
+      "pressure": 0.7
+    },
+    {
+      "t": 0.6,
+      "action": "move",
+      "x": 850,
+      "y": 200,
+      "pressure": 0.7
+    },
+    {
+      "t": 0.6,
+      "action": "release"
+    },
+    {
+      "t": 0.8,
+      "action": "clean"
+    },
+    {
+      "t": 0.8,
+      "action": "param",
+      "name": "load",
+      "value": 0.0
+    },
+    {
+      "t": 0.8,
+      "action": "param",
+      "name": "medium",
+      "value": 0.0
+    },
+    {
+      "t": 0.8,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 0.8,
+      "action": "press",
+      "x": 500,
+      "y": 420,
+      "pressure": 0.7
+    },
+    {
+      "t": 1.2,
+      "action": "move",
+      "x": 500,
+      "y": 200,
+      "pressure": 0.7
+    },
+    {
+      "t": 1.8,
+      "action": "release"
+    },
+    {
+      "t": 2.3,
+      "action": "checkpoint",
+      "name": "rested"
+    }
+  ]
+}
