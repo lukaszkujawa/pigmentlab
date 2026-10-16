@@ -20,7 +20,7 @@ fn run_loaded(preset: BrushPreset, load: f32, poses: impl Iterator<Item = BrushP
     let window = ActiveWindow::new(&gpu, &canvas);
     let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
     let brush = Brush::new(&gpu, preset, 7, &window, &canvas, &flat_canvas);
-    brush.dip(&gpu, by_name("cadmium_red").unwrap(), load, 0.0);
+    brush.dip(&gpu, by_name("cadmium_red").unwrap().into(), load, 0.0);
     let step = |pose: &BrushPose| {
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
         brush.encode_step(&gpu, &mut encoder, pose, 1.0, 0.0, CANVAS);

@@ -66,6 +66,7 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
                 let pigment = crate::pigment::by_name(pigment).unwrap_or_else(|| panic!("unknown pigment {pigment}"));
                 engine.dip(pigment);
             }
+            Action::DipColour { colour } => engine.dip(crate::pigment::Coefficients::from_srgb(*colour)),
             Action::Clean => engine.clean(),
             Action::Undo => {
                 engine.undo();

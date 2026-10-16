@@ -55,6 +55,7 @@ pub enum Action {
     },
     Release,
     Dip { pigment: String },
+    DipColour { colour: [u8; 3] },
     Clean,
     Undo,
     Clear,

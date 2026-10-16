@@ -4,7 +4,7 @@ use super::preset::BrushPreset;
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use crate::canvas::Canvas;
 use crate::paint::ActiveWindow;
-use crate::pigment::Pigment;
+use crate::pigment::Coefficients;
 use crate::rng::SplitMix64;
 use glam::{Mat3, Vec2, Vec3, Vec4};
 use std::cell::Cell;
@@ -158,11 +158,11 @@ impl Brush {
         gpu.queue.write_buffer(&self.sample_load, 0, &vec![0u8; samples * 4]);
     }
 
-    pub fn dip(&self, gpu: &Gpu, pigment: Pigment, load_fraction: f32, medium: f32) {
+    pub fn dip(&self, gpu: &Gpu, paint: Coefficients, load_fraction: f32, medium: f32) {
         let samples = (self.preset.bristle_count * SAMPLES_PER_BRISTLE) as usize;
         let loads = vec![self.preset.sample_capacity * load_fraction; samples];
-        let absorption = vec![pigment.coefficients.absorption.extend(medium); samples];
-        let scattering = vec![pigment.coefficients.scattering.extend(0.0); samples];
+        let absorption = vec![paint.absorption.extend(medium); samples];
+        let scattering = vec![paint.scattering.extend(0.0); samples];
         gpu.queue.write_buffer(&self.sample_load, 0, bytemuck::cast_slice(&loads));
         gpu.queue.write_buffer(&self.sample_absorption, 0, bytemuck::cast_slice(&absorption));
         gpu.queue.write_buffer(&self.sample_scattering, 0, bytemuck::cast_slice(&scattering));

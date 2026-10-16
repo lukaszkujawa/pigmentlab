@@ -28,6 +28,10 @@ impl Recorder {
         self.push(time, Action::Dip { pigment: pigment.to_string() });
     }
 
+    pub fn dip_colour(&mut self, time: f64, colour: [u8; 3]) {
+        self.push(time, Action::DipColour { colour });
+    }
+
     pub fn tool(&mut self, time: f64, name: &str) {
         self.push(time, Action::Tool { name: name.to_string() });
     }

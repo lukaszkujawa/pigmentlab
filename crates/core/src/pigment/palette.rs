@@ -32,6 +32,12 @@ pub const PALETTE: [Pigment; 10] = [
     pigment("ivory_black", [2.5, 2.5, 2.5], [0.02, 0.02, 0.02]),
 ];
 
+impl From<Pigment> for Coefficients {
+    fn from(pigment: Pigment) -> Self {
+        pigment.coefficients
+    }
+}
+
 pub fn by_name(name: &str) -> Option<Pigment> {
     PALETTE.iter().copied().find(|p| p.name == name)
 }

@@ -1,4 +1,4 @@
-use simpaint_core::brush::BrushAdjustments;
+use simpaint_core::brush::{BrushAdjustments, SAMPLES_PER_BRISTLE};
 use simpaint_core::pigment::by_name;
 use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
@@ -150,4 +150,90 @@ fn releasing_a_still_brush_leaves_the_paint_alone() {
     let total: f32 = held.iter().sum();
     let changed: f32 = held.iter().zip(&released).map(|(a, b)| (a - b).abs()).sum();
     assert!(changed < total * 0.005, "lifting a still brush reshaped {:.1}% of the paint", changed / total * 100.0);
+}
+
+#[test]
+fn a_loaded_brush_runs_out_over_a_few_long_strokes() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    let full = engine.brush_load();
+    let mut peaks = Vec::new();
+    for row in 0..6 {
+        let y = 40.0 + row as f32 * 80.0;
+        let start = row as f64 * 1.4;
+        engine.pointer(sample(PointerPhase::Down, 80.0, y, 0.6, start));
+        engine.pointer(sample(PointerPhase::Move, 940.0, y, 0.6, start + 1.2));
+        engine.pointer(sample(PointerPhase::Up, 940.0, y, 0.0, start + 1.2));
+        engine.advance_exact(start + 1.4);
+        let heights = engine.paint_heights();
+        peaks.push((y as usize - 20..y as usize + 20).map(|row| heights[row * WIDTH + 500]).fold(0.0f32, f32::max));
+    }
+    let remaining = engine.brush_load() / full;
+    assert!(peaks[0] > 2.0, "the first stroke should lay down thick paint, peak {:.2} px", peaks[0]);
+    assert!(peaks[5] < peaks[0] * 0.25, "the brush should be nearly empty after six strokes: peaks {peaks:?}");
+    assert!(remaining < 0.25, "the brush still holds {:.0}% of its paint", remaining * 100.0);
+}
+
+fn settled_contents(engine: &mut Engine) -> simpaint_core::paint::BrushContents {
+    for _ in 0..2 {
+        engine.brush_contents();
+        engine.brush_load();
+    }
+    engine.brush_contents()
+}
+
+#[test]
+fn the_brush_gauge_follows_paint_leaving_and_entering_the_brush() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_yellow").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 400.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 900.0, 400.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 900.0, 400.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    engine.select_brush("Round medium");
+    assert_eq!(engine.brush_contents().fill, 0.0, "a freshly selected brush is clean");
+    engine.set_param("load", 0.6);
+    engine.dip(by_name("french_ultramarine").unwrap());
+    let dipped = engine.brush_contents();
+    assert!((dipped.fill - 0.6).abs() < 1e-6, "dipping shows the chosen load at once, got {}", dipped.fill);
+    engine.pointer(sample(PointerPhase::Down, 100.0, 150.0, 0.7, 1.2));
+    engine.pointer(sample(PointerPhase::Move, 900.0, 150.0, 0.7, 2.2));
+    engine.pointer(sample(PointerPhase::Up, 900.0, 150.0, 0.0, 2.2));
+    engine.advance_exact(2.4);
+    let painted = settled_contents(&mut engine);
+    assert!(painted.fill < dipped.fill - 0.05, "painting should drain the gauge: {} -> {}", dipped.fill, painted.fill);
+    let preset = *engine.brush().preset();
+    let exact = engine.brush_load() / (preset.sample_capacity * (preset.bristle_count * SAMPLES_PER_BRISTLE) as f32);
+    assert!((painted.fill - exact).abs() < 0.01, "the gauge should match the brush's real load: {} vs {exact}", painted.fill);
+    engine.set_param("load", 0.1);
+    engine.dip(by_name("french_ultramarine").unwrap());
+    let light = engine.brush_contents();
+    engine.pointer(sample(PointerPhase::Down, 250.0, 400.0, 0.9, 2.5));
+    engine.pointer(sample(PointerPhase::Move, 950.0, 400.0, 0.9, 3.5));
+    engine.pointer(sample(PointerPhase::Up, 950.0, 400.0, 0.0, 3.5));
+    engine.advance_exact(3.7);
+    let wiped = settled_contents(&mut engine);
+    assert!(wiped.fill > light.fill, "dragging a lightly loaded brush through a thick bead should load it up: {} -> {}", light.fill, wiped.fill);
+    assert!(wiped.paint.absorption.z > dipped.paint.absorption.z * 1.1, "the brush should take on yellow: blue absorption {} -> {}", dipped.paint.absorption.z, wiped.paint.absorption.z);
+    engine.clean();
+    assert_eq!(engine.brush_contents().fill, 0.0, "cleaning empties the gauge");
+}
+
+#[test]
+fn the_eyedropper_reads_the_colour_on_the_canvas() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+    engine.select_brush("Paint tube");
+    engine.dip(simpaint_core::pigment::Coefficients::from_srgb([40, 90, 200]));
+    engine.pointer(sample(PointerPhase::Down, 300.0, 256.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 700.0, 256.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 700.0, 256.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    let picked = engine.colour_at(500.0, 256.0);
+    let canvas = engine.colour_at(500.0, 60.0);
+    assert!(picked[2] > picked[0] + 60 && picked[2] > picked[1] + 40, "the bead should read blue, got {picked:?}");
+    assert!(canvas.iter().all(|c| *c > 180), "bare canvas should read pale, got {canvas:?}");
 }

@@ -64,7 +64,7 @@ impl BrushPreset {
             splay: 0.55,
             cohesion: 0.85,
             sink: 0.5,
-            sample_capacity: cm(0.3),
+            sample_capacity: cm(0.1),
             deposit_rate: cm(0.0022),
             pickup_rate: cm(0.00005),
         }

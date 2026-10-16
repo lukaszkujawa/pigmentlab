@@ -4,6 +4,18 @@ const ROW_ALIGNMENT: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 pub fn read_rgba8(gpu: &Gpu, texture: &wgpu::Texture) -> image::RgbaImage {
     let size = texture.size();
+    let pixels = read_region(gpu, texture, wgpu::Origin3d::ZERO, wgpu::Extent3d { depth_or_array_layers: 1, ..size });
+    image::RgbaImage::from_raw(size.width, size.height, pixels).expect("readback size mismatch")
+}
+
+pub fn read_texel(gpu: &Gpu, texture: &wgpu::Texture, x: u32, y: u32) -> [u8; 4] {
+    let size = texture.size();
+    let origin = wgpu::Origin3d { x: x.min(size.width - 1), y: y.min(size.height - 1), z: 0 };
+    let pixel = read_region(gpu, texture, origin, wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 });
+    [pixel[0], pixel[1], pixel[2], pixel[3]]
+}
+
+fn read_region(gpu: &Gpu, texture: &wgpu::Texture, origin: wgpu::Origin3d, size: wgpu::Extent3d) -> Vec<u8> {
     let unpadded_row = size.width * 4;
     let padded_row = unpadded_row.div_ceil(ROW_ALIGNMENT) * ROW_ALIGNMENT;
     let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -14,7 +26,7 @@ pub fn read_rgba8(gpu: &Gpu, texture: &wgpu::Texture) -> image::RgbaImage {
     });
     let mut encoder = gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     encoder.copy_texture_to_buffer(
-        texture.as_image_copy(),
+        wgpu::TexelCopyTextureInfo { origin, ..texture.as_image_copy() },
         wgpu::TexelCopyBufferInfo {
             buffer: &buffer,
             layout: wgpu::TexelCopyBufferLayout {
@@ -40,7 +52,7 @@ pub fn read_rgba8(gpu: &Gpu, texture: &wgpu::Texture) -> image::RgbaImage {
     }
     drop(data);
     buffer.unmap();
-    image::RgbaImage::from_raw(size.width, size.height, pixels).expect("readback size mismatch")
+    pixels
 }
 
 pub fn read_buffer<T: bytemuck::Pod>(gpu: &Gpu, source: &wgpu::Buffer) -> Vec<T> {

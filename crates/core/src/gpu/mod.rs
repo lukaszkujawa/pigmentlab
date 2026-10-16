@@ -2,7 +2,7 @@ mod compute;
 mod readback;
 
 pub use compute::{Binding, ComputePass};
-pub use readback::{read_buffer, read_rgba8};
+pub use readback::{read_buffer, read_rgba8, read_texel};
 
 #[derive(Clone)]
 pub struct Gpu {

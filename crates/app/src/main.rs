@@ -5,7 +5,7 @@ mod tablet;
 use simpaint_core::brush::{BrushAdjustments, PRESETS};
 use simpaint_core::engine::{PaintSettings, tool_names};
 use simpaint_core::scenario::Recorder;
-use simpaint_core::pigment::{PALETTE, linear_to_srgb};
+use simpaint_core::pigment::{Coefficients, PALETTE};
 use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
 use tablet::Tablet;
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings};
@@ -16,10 +16,20 @@ use std::time::Instant;
 const CANVAS: CanvasSize = CanvasSize { width: 2048, height: 1536 };
 const SEED: u64 = 1;
 
+const MAX_CUSTOM_COLOURS: usize = 12;
+
+#[derive(Clone, Copy, Debug)]
+enum Dip {
+    Pigment(usize),
+    Colour([u8; 3]),
+}
+
 #[derive(Default)]
 struct Requests {
     pointer: Vec<PointerSample>,
-    dip: Option<usize>,
+    dip: Option<Dip>,
+    clean: bool,
+    pick: Option<(f32, f32)>,
     brush: Option<(usize, BrushAdjustments)>,
     paint: Option<PaintSettings>,
     tooth: Option<f32>,
@@ -41,10 +51,15 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_canvas_width(CANVAS.width as f32 / scale);
     app.set_canvas_height(CANVAS.height as f32 / scale);
     app.set_canvas_scale(scale);
-    app.set_swatches(swatches());
+    let custom: Rc<RefCell<Vec<[u8; 3]>>> = Rc::default();
+    app.set_swatches(swatches(&custom.borrow()));
     app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(
         tool_names().into_iter().map(slint::SharedString::from).collect::<Vec<_>>(),
     )));
+
+    let [r, g, b] = PALETTE[2].coefficients.srgb();
+    app.invoke_show_in_picker(slint::Color::from_rgb_u8(r, g, b));
+    app.set_picker_hex(format!("#{r:02x}{g:02x}{b:02x}").into());
 
     let requests: Rc<RefCell<Requests>> = Rc::default();
     let started = Instant::now();
@@ -71,9 +86,43 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     let shared = requests.clone();
     let app_weak = app.as_weak();
+    let colours = custom.clone();
     app.on_dip(move |index| {
         app_weak.unwrap().set_active_swatch(index);
-        shared.borrow_mut().dip = Some(index as usize);
+        let index = index.max(0) as usize;
+        shared.borrow_mut().dip = Some(match index.checked_sub(PALETTE.len()) {
+            Some(custom_index) => Dip::Colour(colours.borrow()[custom_index]),
+            None => Dip::Pigment(index),
+        });
+    });
+    let shared = requests.clone();
+    app.on_clean(move || shared.borrow_mut().clean = true);
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    let colours = custom.clone();
+    app.on_use_colour(move |colour| {
+        let rgb = [colour.red(), colour.green(), colour.blue()];
+        let app = app_weak.unwrap();
+        select_custom_colour(&app, &mut colours.borrow_mut(), rgb);
+        shared.borrow_mut().dip = Some(Dip::Colour(rgb));
+    });
+    let app_weak = app.as_weak();
+    app.on_picker_changed(move |colour| {
+        app_weak.unwrap().set_picker_hex(format!("#{:02x}{:02x}{:02x}", colour.red(), colour.green(), colour.blue()).into());
+    });
+    let app_weak = app.as_weak();
+    app.on_hex_entered(move |text| {
+        let app = app_weak.unwrap();
+        match parse_hex(&text) {
+            Some([r, g, b]) => app.invoke_show_in_picker(slint::Color::from_rgb_u8(r, g, b)),
+            None => app.set_status(format!("not a colour: {text}").into()),
+        }
+    });
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    app.on_pick_colour(move |x, y| {
+        let scale = app_weak.unwrap().get_canvas_scale();
+        shared.borrow_mut().pick = Some((x * scale, y * scale));
     });
     let shared = requests.clone();
     let app_weak = app.as_weak();
@@ -129,7 +178,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 if let (Some(engine), Some(app)) = (engine.as_mut(), app_weak.upgrade()) {
                     let now = started.elapsed().as_secs_f64();
                     update_recorder(&mut recorder, &app, now, &requests.borrow());
-                    apply_requests(engine, &app, &mut requests.borrow_mut());
+                    apply_requests(engine, &app, &mut requests.borrow_mut(), &mut custom.borrow_mut());
+                    show_brush_contents(engine, &app);
                     engine.set_brush_angle(app.get_brush_angle());
                     engine.set_show_bristles(app.get_show_bristles());
                     engine.set_levelling_enabled(app.get_levelling_enabled());
@@ -170,8 +220,13 @@ fn main() -> Result<(), slint::PlatformError> {
 fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, requests: &Requests) {
     if app.get_recording() {
         let active = recorder.get_or_insert_with(|| Recorder::start(CANVAS, SEED, now));
-        if let Some(index) = requests.dip {
-            active.dip(now, PALETTE[index].name);
+        match requests.dip {
+            Some(Dip::Pigment(index)) => active.dip(now, PALETTE[index].name),
+            Some(Dip::Colour(colour)) => active.dip_colour(now, colour),
+            None => {}
+        }
+        if requests.clean {
+            active.clean(now);
         }
         if let Some((index, adjustments)) = requests.brush {
             active.tool(now, tool_name(index));
@@ -209,9 +264,20 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
     }
 }
 
-fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests) {
-    if let Some(index) = requests.dip.take() {
-        engine.dip(PALETTE[index]);
+fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests, custom: &mut Vec<[u8; 3]>) {
+    if let Some((x, y)) = requests.pick.take() {
+        let colour = engine.colour_at(x, y);
+        select_custom_colour(app, custom, colour);
+        app.invoke_show_in_picker(slint::Color::from_rgb_u8(colour[0], colour[1], colour[2]));
+        requests.dip = Some(Dip::Colour(colour));
+    }
+    match requests.dip.take() {
+        Some(Dip::Pigment(index)) => engine.dip(PALETTE[index]),
+        Some(Dip::Colour(colour)) => engine.dip(Coefficients::from_srgb(colour)),
+        None => {}
+    }
+    if std::mem::take(&mut requests.clean) {
+        engine.clean();
     }
     if let Some((index, adjustments)) = requests.brush.take() {
         engine.configure_brush(tool_name(index), adjustments);
@@ -252,16 +318,44 @@ fn save_path() -> std::path::PathBuf {
     std::path::PathBuf::from(format!("simpaint-{}.png", stamp()))
 }
 
-fn swatches() -> slint::ModelRc<slint::Color> {
-    let colors: Vec<slint::Color> = PALETTE
+fn swatches(custom: &[[u8; 3]]) -> slint::ModelRc<slint::Color> {
+    let colours: Vec<slint::Color> = PALETTE
         .iter()
-        .map(|pigment| {
-            let reflectance = pigment.coefficients.opaque_reflectance();
-            let channel = |v: f32| (linear_to_srgb(v) * 255.0).round() as u8;
-            slint::Color::from_rgb_u8(channel(reflectance.x), channel(reflectance.y), channel(reflectance.z))
-        })
+        .map(|pigment| pigment.coefficients.srgb())
+        .chain(custom.iter().copied())
+        .map(|[r, g, b]| slint::Color::from_rgb_u8(r, g, b))
         .collect();
-    slint::ModelRc::new(slint::VecModel::from(colors))
+    slint::ModelRc::new(slint::VecModel::from(colours))
+}
+
+fn select_custom_colour(app: &AppWindow, custom: &mut Vec<[u8; 3]>, colour: [u8; 3]) {
+    let position = custom.iter().position(|existing| *existing == colour).unwrap_or_else(|| {
+        if custom.len() == MAX_CUSTOM_COLOURS {
+            custom.remove(0);
+        }
+        custom.push(colour);
+        custom.len() - 1
+    });
+    app.set_swatches(swatches(custom));
+    app.set_active_swatch((PALETTE.len() + position) as i32);
+}
+
+fn parse_hex(text: &str) -> Option<[u8; 3]> {
+    let digits = text.trim().trim_start_matches('#');
+    if digits.len() != 6 {
+        return None;
+    }
+    let channel = |range: std::ops::Range<usize>| u8::from_str_radix(digits.get(range)?, 16).ok();
+    Some([channel(0..2)?, channel(2..4)?, channel(4..6)?])
+}
+
+fn show_brush_contents(engine: &mut Engine, app: &AppWindow) {
+    let contents = engine.brush_contents();
+    app.set_brush_fill(contents.fill);
+    if contents.fill > 0.0 {
+        let [r, g, b] = contents.paint.srgb();
+        app.set_brush_paint(slint::Color::from_rgb_u8(r, g, b));
+    }
 }
 
 fn phase(kind: i32) -> PointerPhase {
@@ -279,4 +373,17 @@ fn tool_name(index: usize) -> &'static str {
 
 fn adjustments_of(app: &AppWindow, bristle_count: Option<u32>) -> BrushAdjustments {
     BrushAdjustments { scale: app.get_brush_scale(), bristle_count, stiffness: app.get_brush_stiffness() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_hex;
+
+    #[test]
+    fn hex_colours_parse_with_or_without_hash() {
+        assert_eq!(parse_hex("#ff8000"), Some([255, 128, 0]));
+        assert_eq!(parse_hex(" 0a0B0c "), Some([10, 11, 12]));
+        assert_eq!(parse_hex("#fff"), None);
+        assert_eq!(parse_hex("#gg0000"), None);
+    }
 }

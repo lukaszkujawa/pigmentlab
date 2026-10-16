@@ -3,7 +3,7 @@ const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
 const FILM_MAX_RADIUS: f32 = 0.035 * PIXELS_PER_CM;
 const FILM_MIN_RADIUS: f32 = 0.015 * PIXELS_PER_CM;
 const VALLEY_SOFTNESS: f32 = 0.5;
-const WICKING_PER_SECOND: f32 = 0.5;
+const WICKING_PER_SECOND: f32 = 6.0;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 1;
 const PUSH_DISTANCE: f32 = 2.5;
@@ -18,6 +18,7 @@ const DRAG_RADIUS: i32 = 2;
 const DRAG_RATE_PER_SECOND: f32 = 24.0;
 const WIPE_RATE_PER_SECOND: f32 = 60.0;
 const PICKUP_FILM: f32 = 0.15;
+const BRUSH_CONTENTS_SCALE: f32 = 16.0;
 const SATURATED_BLEED: f32 = 0.5;
 const STIR_RATE_PER_SECOND: f32 = 30.0;
 const DISPLACEMENT_SLOTS: u32 = 5u;
@@ -250,6 +251,7 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var channel = 0u; channel < CHANNELS; channel++) { atomicStore(&film[column * CHANNELS + channel], 0); }
     for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
     atomicStore(&coarse_marks[coarse_index(id.xy)], 0u);
+    if (id.x < 7u && id.y == 0u) { atomicStore(&pickup_demand[brush_contents_slot() + id.x], 0); }
 }
 
 fn max_surface_slot() -> u32 {
@@ -591,13 +593,33 @@ fn apply_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     sample_scattering[sample] = vec4<f32>(scattering / max(load, 1e-6), 0.0);
 }
 
+fn brush_contents_slot() -> u32 {
+    return 2u * window.width * window.height + 1u;
+}
+
+fn report_brush_contents(load: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
+    let slot = brush_contents_slot();
+    let values = array<f32, 7>(load, absorption.x, absorption.y, absorption.z, scattering.x, scattering.y, scattering.z);
+    for (var channel = 0u; channel < 7u; channel++) {
+        atomicAdd(&pickup_demand[slot + channel], i32(round(values[channel] * BRUSH_CONTENTS_SCALE)));
+    }
+}
+
 @compute @workgroup_size(64)
 fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
     let bristle = id.x;
     if (bristle * deposit.samples_per_bristle >= deposit.sample_count) { return; }
     let base = bristle * deposit.samples_per_bristle;
     var total = 0.0;
-    for (var i = 0u; i < deposit.samples_per_bristle; i++) { total += sample_load[base + i]; }
+    var absorption_mass = vec3<f32>(0.0);
+    var scattering_mass = vec3<f32>(0.0);
+    for (var i = 0u; i < deposit.samples_per_bristle; i++) {
+        let load = sample_load[base + i];
+        total += load;
+        absorption_mass += sample_absorption[base + i].xyz * load;
+        scattering_mass += sample_scattering[base + i].xyz * load;
+    }
+    report_brush_contents(total, absorption_mass, scattering_mass);
     let mean = total / f32(deposit.samples_per_bristle);
     let rate = min(WICKING_PER_SECOND * deposit.dt, 1.0);
     var given = 0.0;

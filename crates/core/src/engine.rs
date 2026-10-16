@@ -1,10 +1,10 @@
 use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, PRESETS, Touch, preset_by_name};
 use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
-use crate::gpu::{Gpu, read_buffer, read_rgba8};
+use crate::gpu::{Gpu, read_buffer, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{PointerSample, PointerTrack};
-use crate::paint::{ActiveWindow, Deposit, Levelling, NOZZLE_RADIUS, StrokeState, Tube, WetBounds};
-use crate::pigment::{Coefficients, Pigment};
+use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, NOZZLE_RADIUS, StrokeState, Tube, WetBounds};
+use crate::pigment::Coefficients;
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::{IVec2, Quat, Vec2, Vec3, Vec4};
 
@@ -53,6 +53,9 @@ pub struct Engine {
     pose: BrushPose,
     position_at_last_deposit: Vec3,
     touch: Touch,
+    brush_contents: BrushContents,
+    contents_version: u64,
+    gauge_version: u64,
     pressed: bool,
     levelling_active_until: f64,
     show_bristles: bool,
@@ -130,6 +133,9 @@ impl Engine {
             pose: BrushPose::upright(lifted),
             position_at_last_deposit: lifted,
             touch: Touch::default(),
+            brush_contents: BrushContents::empty(),
+            contents_version: 0,
+            gauge_version: 0,
             pressed: false,
             levelling_active_until: 0.0,
             show_bristles: false,
@@ -244,6 +250,8 @@ impl Engine {
         self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.canvas, &self.stroke_base, DEPOSIT_DT);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
+        self.brush_contents = BrushContents::empty();
+        self.gauge_version = self.contents_version;
     }
 
     pub fn clear(&mut self) {
@@ -305,21 +313,39 @@ impl Engine {
         self.needs_render = true;
     }
 
-    pub fn dip(&mut self, pigment: Pigment) {
+    pub fn dip(&mut self, paint: impl Into<Coefficients>) {
+        let paint = paint.into();
         let dilution = 1.0 - DILUTION_PER_MEDIUM * self.paint.medium.clamp(0.0, 1.0);
-        let thinned = Pigment {
-            name: pigment.name,
-            coefficients: Coefficients {
-                absorption: pigment.coefficients.absorption * dilution,
-                scattering: pigment.coefficients.scattering * dilution,
-            },
-        };
-        self.paint_on_tool = thinned.coefficients;
-        self.brush.dip(&self.gpu, thinned, self.paint.load.clamp(0.0, 1.0), self.paint.medium.clamp(0.0, 1.0));
+        let thinned = Coefficients { absorption: paint.absorption * dilution, scattering: paint.scattering * dilution };
+        self.paint_on_tool = thinned;
+        let load = self.paint.load.clamp(0.0, 1.0);
+        self.brush.dip(&self.gpu, thinned, load, self.paint.medium.clamp(0.0, 1.0));
+        self.deposit.discard_brush_reading();
+        self.brush_contents = BrushContents { fill: load, paint: thinned };
     }
 
-    pub fn clean(&self) {
+    pub fn brush_contents(&mut self) -> BrushContents {
+        self.collect_brush_contents();
+        self.brush_contents
+    }
+
+    fn collect_brush_contents(&mut self) {
+        let _ = self.gpu.device.poll(wgpu::PollType::Poll);
+        if let Some(contents) = self.deposit.brush_contents() {
+            self.brush_contents = contents;
+        }
+        if self.gauge_version != self.contents_version {
+            let mut encoder = self.encoder("brush gauge");
+            self.request_gauge_reading(&mut encoder);
+            self.gpu.queue.submit(Some(encoder.finish()));
+            self.deposit.after_submit();
+        }
+    }
+
+    pub fn clean(&mut self) {
         self.brush.clean(&self.gpu);
+        self.deposit.discard_brush_reading();
+        self.brush_contents = BrushContents { fill: 0.0, ..self.brush_contents };
     }
 
     pub fn brush_load(&self) -> f32 {
@@ -423,6 +449,7 @@ impl Engine {
                         let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
                         let stroke = StrokeState { travel, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
                         self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke);
+                        self.contents_version += 1;
                         self.position_at_last_deposit = self.pose.position;
                     }
                 }
@@ -441,7 +468,16 @@ impl Engine {
                 self.levelling.encode(&self.gpu, &mut encoder, wet);
                 self.mark_stale(wet.expand(1));
             }
+            self.request_gauge_reading(&mut encoder);
             self.gpu.queue.submit(Some(encoder.finish()));
+            self.deposit.after_submit();
+            self.collect_brush_contents();
+        }
+    }
+
+    fn request_gauge_reading(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.gauge_version != self.contents_version && self.deposit.encode_gauge_reading(encoder) {
+            self.gauge_version = self.contents_version;
         }
     }
 
@@ -522,6 +558,12 @@ impl Engine {
         }
         self.gpu.queue.submit(Some(encoder.finish()));
         &self.display
+    }
+
+    pub fn colour_at(&mut self, x: f32, y: f32) -> [u8; 3] {
+        self.render();
+        let [r, g, b, _] = read_texel(&self.gpu, &self.display, x.max(0.0) as u32, y.max(0.0) as u32);
+        [r, g, b]
     }
 
     pub fn read_back(&self) -> image::RgbaImage {

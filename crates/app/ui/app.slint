@@ -1,4 +1,4 @@
-import { ScrollView } from "std-widgets.slint";
+import { LineEdit, ScrollView } from "std-widgets.slint";
 
 export global Theme {
     out property <color> window: #16181c;
@@ -152,6 +152,221 @@ component PresetRow inherits Rectangle {
     area := TouchArea { clicked => { root.clicked(); } }
 }
 
+component BrushGauge inherits Rectangle {
+    in property <float> fill;
+    in property <color> paint;
+    property <float> shown: root.fill;
+    property <length> tuft-start: self.width * 178 / 260;
+    property <length> tuft-length: self.width * 76 / 260;
+    animate shown { duration: 220ms; easing: ease-out; }
+    height: 64px;
+
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 260;
+        viewbox-height: 64;
+        commands: "M 6 29 C 40 26, 110 25, 152 24 L 152 40 C 110 39, 40 38, 6 35 C 2 34, 2 30, 6 29 Z";
+        fill: @linear-gradient(180deg, #c48a57 0%, #9a6235 55%, #6e4122 100%);
+        stroke: #00000040;
+        stroke-width: 1px;
+    }
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 260;
+        viewbox-height: 64;
+        commands: "M 150 21 L 180 19 L 180 45 L 150 43 Z";
+        fill: @linear-gradient(180deg, #f1f3f6 0%, #b9bec6 40%, #7d838c 75%, #c4c8ce 100%);
+        stroke: #00000050;
+        stroke-width: 1px;
+    }
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 260;
+        viewbox-height: 64;
+        commands: "M 158 20 L 158 44 M 164 20 L 164 44";
+        stroke: #00000035;
+        stroke-width: 1px;
+    }
+
+    tuft := Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 260;
+        viewbox-height: 64;
+        commands: "M 179 20 C 205 13, 236 18, 252 32 C 236 46, 205 51, 179 44 Z";
+        fill: @linear-gradient(180deg, #ece0c4 0%, #d3c29c 60%, #b9a67c 100%);
+        stroke: #00000040;
+        stroke-width: 1px;
+    }
+    Rectangle {
+        x: root.tuft-start;
+        width: root.tuft-length * root.shown;
+        height: root.height;
+        clip: true;
+        Path {
+            x: -root.tuft-start;
+            width: root.width;
+            height: root.height;
+            viewbox-width: 260;
+            viewbox-height: 64;
+            commands: "M 179 20 C 205 13, 236 18, 252 32 C 236 46, 205 51, 179 44 Z";
+            fill: root.paint;
+            stroke: root.paint.darker(30%);
+            stroke-width: 1px;
+        }
+        Path {
+            x: -root.tuft-start;
+            width: root.width;
+            height: root.height;
+            viewbox-width: 260;
+            viewbox-height: 64;
+            commands: "M 186 23 C 206 18, 226 21, 238 27";
+            stroke: #ffffff70;
+            stroke-width: 2px;
+        }
+    }
+}
+
+component Swatch inherits Rectangle {
+    in property <color> paint;
+    in property <bool> active;
+    callback clicked;
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: root.paint;
+    border-width: root.active ? 3px : 1px;
+    border-color: root.active ? Theme.accent : #ffffff26;
+    drop-shadow-blur: area.has-hover ? 8px : 4px;
+    drop-shadow-color: #00000090;
+    Rectangle {
+        x: 8px;
+        y: 6px;
+        width: 11px;
+        height: 7px;
+        border-radius: 4px;
+        background: #ffffff55;
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+}
+
+component IconSwatch inherits Rectangle {
+    in property <string> glyph;
+    in property <string> icon;
+    in property <bool> active;
+    callback clicked;
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: root.active ? Theme.accent-soft : (area.has-hover ? Theme.track : transparent);
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.line;
+    Text {
+        text: root.glyph;
+        color: root.active ? Theme.text : Theme.muted;
+        font-size: 17px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    Path {
+        x: 9px;
+        y: 9px;
+        width: 16px;
+        height: 16px;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        commands: root.icon;
+        stroke: root.active ? Theme.text : Theme.muted;
+        stroke-width: 1.6px;
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+}
+
+component ColourPicker {
+    in-out property <float> hue: 20;
+    in-out property <float> saturation: 0.8;
+    in-out property <float> value: 0.8;
+    in property <string> hex;
+    out property <color> colour: Colors.hsv(root.hue, root.saturation, root.value);
+    callback hex-entered(string);
+    callback use-colour(color);
+
+    VerticalLayout {
+        spacing: 10px;
+        field := Rectangle {
+            height: 140px;
+            border-radius: 6px;
+            clip: true;
+            background: Colors.hsv(root.hue, 1, 1);
+            Rectangle { background: @linear-gradient(90deg, #ffffff 0%, #ffffff00 100%); }
+            Rectangle { background: @linear-gradient(180deg, #00000000 0%, #000000 100%); }
+            Rectangle {
+                x: root.saturation * parent.width - 8px;
+                y: (1 - root.value) * parent.height - 8px;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border-width: 2px;
+                border-color: white;
+                background: root.colour;
+                drop-shadow-blur: 3px;
+                drop-shadow-color: #000000a0;
+            }
+            TouchArea {
+                function pick() {
+                    root.saturation = clamp(self.mouse-x / self.width, 0, 1);
+                    root.value = clamp(1 - self.mouse-y / self.height, 0, 1);
+                }
+                pointer-event(event) => { if (event.kind == PointerEventKind.down) { self.pick(); } }
+                moved => { if (self.pressed) { self.pick(); } }
+            }
+        }
+        hue-bar := Rectangle {
+            height: 14px;
+            border-radius: 7px;
+            background: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%);
+            Rectangle {
+                x: root.hue / 360 * parent.width - 7px;
+                y: 0;
+                width: 14px;
+                height: 14px;
+                border-radius: 7px;
+                border-width: 2px;
+                border-color: white;
+                background: Colors.hsv(root.hue, 1, 1);
+                drop-shadow-blur: 3px;
+                drop-shadow-color: #000000a0;
+            }
+            TouchArea {
+                function pick() { root.hue = clamp(self.mouse-x / self.width, 0, 0.9999) * 360; }
+                pointer-event(event) => { if (event.kind == PointerEventKind.down) { self.pick(); } }
+                moved => { if (self.pressed) { self.pick(); } }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: root.colour;
+                border-width: 1px;
+                border-color: #ffffff26;
+            }
+            hex-field := LineEdit {
+                text: root.hex;
+                font-size: 13px;
+                horizontal-stretch: 1;
+                accepted(text) => { root.hex-entered(text); }
+            }
+            ToolButton { label: "Use"; clicked => { root.use-colour(root.colour); } }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "SimPaint";
     preferred-width: 1440px;
@@ -164,6 +379,17 @@ export component AppWindow inherits Window {
     in property <float> canvas-scale: 1.0;
     in property <[color]> swatches: [];
     in property <int> active-swatch: 2;
+    in property <float> brush-fill: 0;
+    in property <color> brush-paint: #c0392b;
+    in property <string> picker-hex: "";
+    in-out property <bool> eyedropper: false;
+    property <float> picker-hue: 20;
+    property <float> picker-saturation: 0.8;
+    property <float> picker-value: 0.8;
+    property <color> picker-colour: Colors.hsv(self.picker-hue, self.picker-saturation, self.picker-value);
+    property <int> swatch-columns: 6;
+    property <length> swatch-cell: 42px;
+    changed picker-colour => { root.picker-changed(self.picker-colour); }
     in property <string> status: "";
     in property <float> frame-ms: 0;
     in property <bool> pen-present: false;
@@ -187,6 +413,17 @@ export component AppWindow inherits Window {
 
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
+    callback clean();
+    callback use-colour(color);
+    callback hex-entered(string);
+    callback picker-changed(color);
+    callback pick-colour(x: float, y: float);
+
+    public function show-in-picker(colour: color) {
+        root.picker-hue = colour.to-hsv().hue;
+        root.picker-saturation = colour.to-hsv().saturation;
+        root.picker-value = colour.to-hsv().value;
+    }
     callback brush-selected(index: int);
     callback brush-adjusted();
     callback paint-changed();
@@ -255,6 +492,11 @@ export component AppWindow inherits Window {
                     TouchArea {
                         pointer-event(event) => {
                             if (event.button != PointerEventButton.left) { return; }
+                            if (event.kind == PointerEventKind.down && root.eyedropper) {
+                                root.eyedropper = false;
+                                root.pick-colour((self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
+                                return;
+                            }
                             if (event.kind == PointerEventKind.down) {
                                 root.pointer(0, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
                             } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
@@ -307,26 +549,26 @@ export component AppWindow inherits Window {
                             alignment: start;
 
                             Card {
-                                title: "PALETTE";
-                                HorizontalLayout {
-                                    spacing: 5px;
-                                    for swatch[index] in root.swatches: Rectangle {
-                                        width: 20px;
-                                        height: 20px;
-                                        border-radius: 10px;
-                                        background: swatch;
-                                        border-width: index == root.active-swatch ? 2px : 1px;
-                                        border-color: index == root.active-swatch ? Theme.text : #ffffff22;
-                                        TouchArea { clicked => { root.dip(index); } }
-                                    }
-                                }
-                            }
-
-                            Card {
                                 title: "BRUSH";
-                                VerticalLayout {
-                                    spacing: 2px;
+                                BrushGauge { fill: root.brush-fill; paint: root.brush-paint; }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: root.brush-fill > 0.005 ? "Paint " + round(root.brush-fill * 100) + "%" : "Clean brush";
+                                        color: Theme.muted;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                    ToolButton { label: "Clean"; clicked => { root.clean(); } }
+                                }
+                                Rectangle { height: 1px; background: Theme.line; }
+                                Rectangle {
+                                    height: ceil(root.brush-names.length / 2) * 32px - 2px;
                                     for name[index] in root.brush-names: PresetRow {
+                                        x: mod(index, 2) * (parent.width + 4px) / 2;
+                                        y: floor(index / 2) * 32px;
+                                        width: (parent.width - 4px) / 2;
                                         label: name;
                                         selected: index == root.brush-index;
                                         clicked => { root.brush-index = index; root.brush-selected(index); }
@@ -338,6 +580,68 @@ export component AppWindow inherits Window {
                                 stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
                                 angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 180; value: 0; value-text: round(self.value) + "°"; }
                                 pressure-slider := ParamSlider { label: root.pen-present ? "Pressure (pen)" : "Pressure"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
+                            }
+
+                            Card {
+                                title: "PALETTE";
+                                Rectangle {
+                                    height: ceil((root.swatches.length + 2) / root.swatch-columns) * root.swatch-cell - 8px;
+                                    for swatch[index] in root.swatches: Swatch {
+                                        x: mod(index, root.swatch-columns) * root.swatch-cell;
+                                        y: floor(index / root.swatch-columns) * root.swatch-cell;
+                                        paint: swatch;
+                                        active: index == root.active-swatch;
+                                        clicked => { root.dip(index); }
+                                    }
+                                    IconSwatch {
+                                        x: mod(root.swatches.length, root.swatch-columns) * root.swatch-cell;
+                                        y: floor(root.swatches.length / root.swatch-columns) * root.swatch-cell;
+                                        glyph: "+";
+                                        clicked => { picker-popup.show(); }
+                                    }
+                                    IconSwatch {
+                                        x: mod(root.swatches.length + 1, root.swatch-columns) * root.swatch-cell;
+                                        y: floor((root.swatches.length + 1) / root.swatch-columns) * root.swatch-cell;
+                                        icon: "M 2 14 L 4 14 L 10.5 7.5 M 2 14 L 2 12 L 8.5 5.5 M 7.5 4.5 L 11.5 8.5 M 9.5 6.5 L 12.5 3.5 C 13.5 2.5 14.5 3.5 13.5 4.5 L 10.5 7.5";
+                                        active: root.eyedropper;
+                                        clicked => { root.eyedropper = !root.eyedropper; }
+                                    }
+                                }
+                                if root.eyedropper: Text {
+                                    text: "Click the canvas to pick a colour";
+                                    color: Theme.muted;
+                                    font-size: 12px;
+                                }
+                                picker-popup := PopupWindow {
+                                    x: -self.width - 24px;
+                                    y: -140px;
+                                    width: 280px;
+                                    close-policy: PopupClosePolicy.close-on-click-outside;
+                                    Rectangle {
+                                        background: Theme.card;
+                                        border-radius: Theme.radius;
+                                        border-width: 1px;
+                                        border-color: Theme.line;
+                                        drop-shadow-blur: 24px;
+                                        drop-shadow-color: #000000a0;
+                                        VerticalLayout {
+                                            padding: 14px;
+                                            spacing: 12px;
+                                            HorizontalLayout {
+                                                SectionTitle { text: "MIX A COLOUR"; horizontal-stretch: 1; vertical-alignment: center; }
+                                                IconSwatch { width: 24px; height: 24px; glyph: "×"; clicked => { picker-popup.close(); } }
+                                            }
+                                            ColourPicker {
+                                                hue <=> root.picker-hue;
+                                                saturation <=> root.picker-saturation;
+                                                value <=> root.picker-value;
+                                                hex: root.picker-hex;
+                                                hex-entered(text) => { root.hex-entered(text); }
+                                                use-colour(colour) => { root.use-colour(colour); picker-popup.close(); }
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             Card {

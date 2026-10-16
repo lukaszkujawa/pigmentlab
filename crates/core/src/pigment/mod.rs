@@ -5,6 +5,9 @@ pub use palette::{PALETTE, Pigment, by_name};
 use glam::Vec3;
 
 pub const OPTICAL_THICKNESS_PER_PIXEL: f32 = 400.0 / crate::units::PIXELS_PER_CM;
+const PAINT_BODY: f32 = 3.0;
+const MIN_REFLECTANCE: f32 = 0.004;
+const MAX_REFLECTANCE: f32 = 0.95;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Coefficients {
@@ -22,6 +25,17 @@ impl Coefficients {
             absorption: (self.absorption * mass + other.absorption * other_mass) / total,
             scattering: (self.scattering * mass + other.scattering * other_mass) / total,
         }
+    }
+
+    pub fn from_srgb(colour: [u8; 3]) -> Coefficients {
+        let reflectance = Vec3::from_array(colour.map(|channel| srgb_to_linear(f32::from(channel) / 255.0)));
+        let ratio = reflectance.clamp(Vec3::splat(MIN_REFLECTANCE), Vec3::splat(MAX_REFLECTANCE)).map(|r| (1.0 - r) * (1.0 - r) / (2.0 * r));
+        let scattering = Vec3::splat(PAINT_BODY) / (Vec3::ONE + ratio);
+        Coefficients { absorption: ratio * scattering, scattering }
+    }
+
+    pub fn srgb(self) -> [u8; 3] {
+        self.opaque_reflectance().to_array().map(|r| (linear_to_srgb(r) * 255.0).round() as u8)
     }
 
     pub fn opaque_reflectance(self) -> Vec3 {
@@ -95,6 +109,11 @@ pub fn visible_coefficients(layers_top_down: impl IntoIterator<Item = (f32, Coef
     Coefficients { absorption: absorption / weight, scattering: scattering / weight }
 }
 
+pub fn srgb_to_linear(encoded: f32) -> f32 {
+    let clamped = encoded.clamp(0.0, 1.0);
+    if clamped <= 0.040_45 { clamped / 12.92 } else { ((clamped + 0.055) / 1.055).powf(2.4) }
+}
+
 pub fn linear_to_srgb(linear: f32) -> f32 {
     let clamped = linear.clamp(0.0, 1.0);
     if clamped <= 0.003_130_8 { clamped * 12.92 } else { 1.055 * clamped.powf(1.0 / 2.4) - 0.055 }
@@ -110,6 +129,26 @@ mod tests {
 
     fn red() -> Coefficients {
         Coefficients { absorption: Vec3::new(0.14, 1.08, 1.68), scattering: Vec3::new(0.77, 0.015, 0.018) }
+    }
+
+    #[test]
+    fn any_colour_round_trips_through_paint() {
+        for colour in [[200u8, 30, 40], [20, 60, 180], [240, 210, 40], [128, 128, 128], [30, 90, 50], [245, 240, 230]] {
+            let back = Coefficients::from_srgb(colour).srgb();
+            for (a, b) in colour.iter().zip(back) {
+                assert!((i32::from(*a) - i32::from(b)).abs() <= 2, "{colour:?} came back as {back:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn colours_from_the_picker_behave_like_palette_paint() {
+        let white = Coefficients::from_srgb([245, 245, 245]);
+        let black = Coefficients::from_srgb([10, 10, 10]);
+        assert!(white.scattering.min_element() > 2.5 && white.absorption.max_element() < 0.05);
+        assert!(black.absorption.min_element() > 2.0 && black.scattering.max_element() < 0.2);
+        let grey = white.mix(1.0, black, 1.0).opaque_reflectance();
+        assert!(grey.x > 0.05 && grey.x < 0.5, "white and black should mix to grey, got {grey}");
     }
 
     #[test]
