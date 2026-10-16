@@ -16,6 +16,7 @@ const DEPOSIT_DT: f32 = SIMULATION_DT * SUBSTEPS_PER_DEPOSIT as f32;
 const UNDO_DEPTH: usize = 6;
 const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
 const WET_MARGIN: i32 = 48;
+const DEPOSIT_REACH: i32 = 24;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
@@ -59,6 +60,9 @@ pub struct Engine {
     tuft_centre: Vec2,
     levelling_enabled: bool,
     wet_bounds: Option<WetBounds>,
+    stale_heights: Option<WetBounds>,
+    stale_blur: Option<WetBounds>,
+    needs_render: bool,
     history: History,
     dry_history: History,
     seed: u64,
@@ -107,7 +111,7 @@ impl Engine {
         let history = History::new(&gpu, canvas.paint.size(), UNDO_DEPTH);
         let dry_history = History::new(&gpu, canvas.dry.size(), UNDO_DEPTH);
         let lifted = Vec3::new(size.width as f32 * 0.5, size.height as f32 * 0.5, brush.preset().length * LIFTED_HEIGHT);
-        Self {
+        let mut engine = Self {
             gpu,
             canvas,
             brush,
@@ -134,6 +138,9 @@ impl Engine {
             tuft_centre: Vec2::ZERO,
             levelling_enabled: true,
             wet_bounds: None,
+            stale_heights: None,
+            stale_blur: None,
+            needs_render: true,
             history,
             dry_history,
             seed,
@@ -141,7 +148,9 @@ impl Engine {
             adjustments: BrushAdjustments::default(),
             brush_angle_degrees: 0.0,
             paint: PaintSettings::default(),
-        }
+        };
+        engine.mark_whole_canvas_stale();
+        engine
     }
 
     pub fn canvas_size(&self) -> CanvasSize {
@@ -213,7 +222,10 @@ impl Engine {
             "angle" => self.set_brush_angle(value),
             "load" => self.set_paint(PaintSettings { load: value, ..self.paint }),
             "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),
-            "tooth" => self.canvas.set_tooth(&self.gpu, value),
+            "tooth" => {
+                self.canvas.set_tooth(&self.gpu, value);
+                self.mark_whole_canvas_stale();
+            }
             _ => return false,
         }
         true
@@ -239,6 +251,7 @@ impl Engine {
         self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.wet_bounds = None;
+        self.mark_whole_canvas_stale();
     }
 
     pub fn dry(&mut self) {
@@ -249,6 +262,7 @@ impl Engine {
         self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.wet_bounds = None;
+        self.mark_whole_canvas_stale();
     }
 
     pub fn undo(&mut self) -> bool {
@@ -261,6 +275,7 @@ impl Engine {
             self.wet_bounds = Some(self.whole_canvas());
         }
         self.gpu.queue.submit(Some(encoder.finish()));
+        self.mark_whole_canvas_stale();
         restored
     }
 
@@ -273,8 +288,9 @@ impl Engine {
         self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) })
     }
 
-    pub fn set_lighting(&self, lighting: Lighting) {
+    pub fn set_lighting(&mut self, lighting: Lighting) {
         self.composite.set_lighting(&self.gpu, lighting);
+        self.needs_render = true;
     }
 
     pub fn set_levelling_enabled(&mut self, enabled: bool) {
@@ -283,6 +299,7 @@ impl Engine {
 
     pub fn set_show_bristles(&mut self, show: bool) {
         self.show_bristles = show;
+        self.needs_render = true;
     }
 
     pub fn dip(&mut self, pigment: Pigment) {
@@ -360,10 +377,11 @@ impl Engine {
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
                     self.snapshot(&mut encoder);
-                    self.height_map.encode(&mut encoder);
+                    self.refresh_heights(&mut encoder);
                     encoder.copy_buffer_to_buffer(&self.height_map.heights, 0, &self.stroke_base, 0, self.stroke_base.size());
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
+                self.needs_render |= state.pressed || self.show_bristles;
             }
             let mut encoder = self
                 .gpu
@@ -380,6 +398,7 @@ impl Engine {
             if self.pressed {
                 let touched = WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
                 self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched)));
+                self.mark_stale(WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
             }
             match self.tool {
                 Tool::Brush => {
@@ -401,8 +420,9 @@ impl Engine {
             self.substeps += 1;
             let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;
             if let Some(wet) = self.wet_bounds.filter(|_| levelling_due && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING)) {
-                self.height_map.encode(&mut encoder);
+                self.refresh_heights(&mut encoder);
                 self.levelling.encode(&self.gpu, &mut encoder, wet);
+                self.mark_stale(wet.expand(1));
             }
             self.gpu.queue.submit(Some(encoder.finish()));
         }
@@ -410,6 +430,29 @@ impl Engine {
 
     fn whole_canvas(&self) -> WetBounds {
         WetBounds { min: IVec2::ZERO, max: IVec2::new(self.canvas.size.width as i32, self.canvas.size.height as i32) }
+    }
+
+    fn mark_whole_canvas_stale(&mut self) {
+        self.mark_stale(self.whole_canvas());
+    }
+
+    fn mark_stale(&mut self, region: WetBounds) {
+        self.stale_heights = Some(self.stale_heights.map_or(region, |stale| stale.include(region)));
+        self.needs_render = true;
+    }
+
+    fn refresh_heights(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if let Some(region) = self.stale_heights.take() {
+            self.height_map.encode_build(&self.gpu, encoder, region);
+            self.stale_blur = Some(self.stale_blur.map_or(region, |stale| stale.include(region)));
+        }
+    }
+
+    fn refresh_blur(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        self.refresh_heights(encoder);
+        if let Some(region) = self.stale_blur.take() {
+            self.height_map.encode_blur(&self.gpu, encoder, region);
+        }
     }
 
     fn handle_position(&self) -> Vec2 {
@@ -444,12 +487,16 @@ impl Engine {
     }
 
     pub fn render(&mut self) -> &wgpu::Texture {
+        if !self.needs_render {
+            return &self.display;
+        }
+        self.needs_render = false;
         let mut encoder = self
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
         let view = self.display.create_view(&wgpu::TextureViewDescriptor::default());
-        self.height_map.encode(&mut encoder);
+        self.refresh_blur(&mut encoder);
         self.composite.encode(&mut encoder, &view);
         if self.show_bristles && self.tool == Tool::Brush {
             self.brush_lines.encode(&mut encoder, &view);

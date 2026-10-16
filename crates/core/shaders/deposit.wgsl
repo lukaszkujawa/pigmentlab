@@ -209,7 +209,18 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
         height += density;
         top = f32(z);
     }
-    column_state[column_index(id.xy)] = vec4<f32>(f32(height) / PAINT_SCALE, top, 0.0, ground_at(vec2<i32>(id.xy) + window.origin));
+    let column = column_index(id.xy);
+    let ground_here = ground_at(vec2<i32>(id.xy) + window.origin);
+    column_state[column] = vec4<f32>(f32(height) / PAINT_SCALE, top, 0.0, ground_here);
+    atomicMax(&pickup_demand[max_surface_slot()], fixed(f32(height) / PAINT_SCALE + ground_here));
+    atomicStore(&pickup_demand[column], 0);
+    for (var channel = 0u; channel < CHANNELS; channel++) { atomicStore(&film[column * CHANNELS + channel], 0); }
+    for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
+    atomicStore(&coarse_marks[coarse_index(id.xy)], 0u);
+}
+
+fn max_surface_slot() -> u32 {
+    return window.width * window.height;
 }
 
 fn topmost_filled_cell(local: vec2<u32>) -> i32 {
@@ -287,6 +298,11 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let landing = clamp(1.0 - curves[bristle * 4u].w / LANDING_SUBSTEPS, 0.0, 1.0);
     let initial_load = sample_load[sample];
     let segment = segment_of(sample, initial_load);
+    let max_surface = f32(atomicLoad(&pickup_demand[max_surface_slot()])) / PAINT_SCALE;
+    if (min(segment.start.z, segment.end.z) > max_surface + deposit.contact_height) {
+        sample_request[sample] = vec2<f32>(initial_load, 0.0);
+        return;
+    }
     var load = initial_load;
     let absorption = sample_absorption[sample].xyz;
     let scattering = sample_scattering[sample].xyz;
@@ -504,6 +520,7 @@ fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
 @compute @workgroup_size(16, 16)
 fn apply_film(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
+    if (id.x == 0u && id.y == 0u) { atomicStore(&pickup_demand[max_surface_slot()], 0); }
     let slot = (id.y * window.width + id.x) * CHANNELS;
     let mass = f32(atomicLoad(&film[slot])) / PAINT_SCALE;
     if (mass <= 0.0) { return; }

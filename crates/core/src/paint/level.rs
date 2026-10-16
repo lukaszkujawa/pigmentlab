@@ -19,7 +19,11 @@ impl WetBounds {
         Self { min: self.min.min(other.min), max: self.max.max(other.max) }
     }
 
-    fn clamped(self, width: u32, height: u32) -> (IVec2, IVec2) {
+    pub fn expand(self, margin: i32) -> Self {
+        Self { min: self.min - margin, max: self.max + margin }
+    }
+
+    pub fn clamped(self, width: u32, height: u32) -> (IVec2, IVec2) {
         let min = self.min.clamp(IVec2::ZERO, IVec2::new(width as i32, height as i32));
         let max = self.max.clamp(min, IVec2::new(width as i32, height as i32));
         (min, max - min)

@@ -26,10 +26,6 @@ pub struct Deposit {
     uniform: wgpu::Buffer,
     base: DepositUniform,
     medium: f32,
-    film: wgpu::Buffer,
-    pickup_demand: wgpu::Buffer,
-    displacement: wgpu::Buffer,
-    coarse_marks: wgpu::Buffer,
     previous_curves: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::ComputePipeline,
@@ -64,7 +60,7 @@ impl Deposit {
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
         let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
-        let pickup_demand = gpu.storage_buffer("pickup demand", columns * 4);
+        let pickup_demand = gpu.storage_buffer("pickup demand", (columns + 1) * 4);
         let pickup_grant = gpu.storage_buffer("pickup grant", columns * 32);
         let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
         let displacement = gpu.storage_buffer("displacement marks", columns * 20);
@@ -146,10 +142,6 @@ impl Deposit {
             uniform,
             base,
             medium: 0.0,
-            film,
-            pickup_demand,
-            displacement,
-            coarse_marks,
             previous_curves,
             bind_group,
             pipeline: compute_pipeline("step"),
@@ -172,10 +164,6 @@ impl Deposit {
         let flow = 1.0 + FLOW_PER_MEDIUM * self.medium;
         let uniform = DepositUniform { deposit_rate: self.base.deposit_rate * flow, brush_travel, ..self.base };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
-        encoder.clear_buffer(&self.film, 0, None);
-        encoder.clear_buffer(&self.pickup_demand, 0, None);
-        encoder.clear_buffer(&self.displacement, 0, None);
-        encoder.clear_buffer(&self.coarse_marks, 0, None);
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("deposit"),
             timestamp_writes: None,
