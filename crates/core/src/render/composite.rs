@@ -58,6 +58,7 @@ impl Composite {
                 include_str!("../../shaders/km.wgsl"),
                 include_str!("../../shaders/composite.wgsl"),
                 include_str!("../../shaders/wash_outline.wgsl"),
+                include_str!("../../shaders/wash_bridge.wgsl"),
                 include_str!("../../shaders/wash_pigment.wgsl"),
                 include_str!("../../shaders/composite_watercolour.wgsl"),
             ],

@@ -441,3 +441,32 @@ fn mixed_pigments_separate_with_the_granulating_one_settling_into_the_paper_vall
     let separation = correlation(&heights, &green_share);
     assert!(separation > 0.3, "fine phthalo should sit on the peaks and granulating umber in the valleys, correlation {separation}");
 }
+
+fn fingered_columns(darkness: &[f32], columns: std::ops::Range<usize>, rows: std::ops::Range<usize>) -> usize {
+    let level = OUTLINE_LEVEL * darkness[150 * WIDTH + 300];
+    columns
+        .filter(|&x| {
+            let painted: Vec<bool> = rows.clone().map(|y| darkness[y * WIDTH + x] > level).collect();
+            let runs = painted.windows(2).filter(|pair| pair[1] && !pair[0]).count() + usize::from(painted[0]);
+            runs > 1
+        })
+        .count()
+}
+
+#[test]
+fn a_watercolour_stroke_ends_in_a_merged_wash_not_separate_bristle_fingers() {
+    for (from, to) in [((100.0, 150.0), (540.0, 150.0)), ((540.0, 150.0), (100.0, 150.0))] {
+        let mut engine = paper(Surface::HotPressed);
+        engine.set_param("tooth", 0.0);
+        let blank = engine.dry_layer();
+        engine.select_brush("Round medium");
+        engine.dip(by_name("cadmium_red").unwrap());
+        let end = stroke(&mut engine, from, to, 0.5, 0.0, 0.8);
+        engine.advance_exact(end + 4.0);
+        engine.dry();
+        let darkness = darkness(&engine, &blank);
+        let ends = [(60..140), (500..590)];
+        let fingers: usize = ends.into_iter().map(|columns| fingered_columns(&darkness, columns, 110..190)).sum();
+        assert!(fingers <= 4, "stroke {from:?} -> {to:?} ends in {fingers} columns of separate bristle fingers");
+    }
+}

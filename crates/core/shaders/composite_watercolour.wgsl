@@ -50,9 +50,18 @@ fn wet_at(texel: vec2<i32>) -> WetSample {
     return sample;
 }
 
+fn hair_touch(texel: vec2<i32>) -> f32 {
+    if (texel.x < 0 || texel.y < 0 || u32(texel.x) >= water_sim.canvas.x || u32(texel.y) >= water_sim.canvas.y) { return 0.0; }
+    return f32(hair_contact[u32(texel.y) * water_sim.canvas.x + u32(texel.x)] & ~BAKED) / HAIR_TOUCH_SCALE;
+}
+
+fn already_baked(texel: vec2<i32>) -> bool {
+    if (texel.x < 0 || texel.y < 0 || u32(texel.x) >= water_sim.canvas.x || u32(texel.y) >= water_sim.canvas.y) { return false; }
+    return (hair_contact[u32(texel.y) * water_sim.canvas.x + u32(texel.x)] & BAKED) != 0u;
+}
+
 fn wetted_inside(texel: vec2<i32>) -> f32 {
-    let clamped = clamp(texel, vec2<i32>(0), vec2<i32>(water_sim.canvas) - 1);
-    let touch = f32(hair_contact[u32(clamped.y) * water_sim.canvas.x + u32(clamped.x)]) / HAIR_TOUCH_SCALE;
+    let touch = bridged_touch(texel);
     let taps = bilinear_cells(texel);
     var reach = 0.0;
     for (var k = 0u; k < 4u; k++) {

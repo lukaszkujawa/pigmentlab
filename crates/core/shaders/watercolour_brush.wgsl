@@ -10,7 +10,8 @@ const WICKING_PER_SECOND: f32 = 6.0;
 const BLEED_RATE: f32 = 1.5;
 const CONTENTS_SCALE: f32 = 16.0;
 const CONTENTS_CHANNELS: u32 = 8u;
-const HAIR_REACH: f32 = 2.5;
+const HAIR_REACH: f32 = 5.0;
+const FILM_PER_CONTACT: f32 = 0.008;
 const BLEED_ONSET: f32 = 4.0;
 
 struct BrushWaterUniform {
@@ -99,9 +100,11 @@ fn mark_contact(point: vec2<f32>) {
             let target_pixel = pixel + vec2<i32>(dx, dy);
             if (target_pixel.x < 0 || target_pixel.y < 0 || u32(target_pixel.x) >= exchange_uniform.canvas.x || u32(target_pixel.y) >= exchange_uniform.canvas.y) { continue; }
             let distance_to_hair = length(vec2<f32>(target_pixel) + 0.5 - point) / HAIR_REACH;
-            let value = 1.0 - distance_to_hair * distance_to_hair;
-            if (value <= 0.0) { continue; }
-            atomicMax(&touched[u32(target_pixel.y) * exchange_uniform.canvas.x + u32(target_pixel.x)], u32(value * HAIR_TOUCH_SCALE));
+            let falloff = max(1.0 - distance_to_hair * distance_to_hair, 0.0);
+            if (falloff <= 0.0) { continue; }
+            let slot = u32(target_pixel.y) * exchange_uniform.canvas.x + u32(target_pixel.x);
+            let previous = atomicAdd(&touched[slot], u32(falloff * falloff * FILM_PER_CONTACT * HAIR_TOUCH_SCALE));
+            if ((previous & BAKED) != 0u) { atomicAnd(&touched[slot], ~BAKED); }
         }
     }
 }

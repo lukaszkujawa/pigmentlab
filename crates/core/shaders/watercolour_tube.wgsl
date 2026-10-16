@@ -40,5 +40,7 @@ fn squeeze_onto_paper(@builtin(global_invocation_id) id: vec3<u32>) {
         paste.scattering.xyz,
         paste.behaviour.xyz,
     );
-    atomicMax(&touched[u32(pixel.y) * paste.canvas.x + u32(pixel.x)], u32(profile * HAIR_TOUCH_SCALE));
+    let slot = u32(pixel.y) * paste.canvas.x + u32(pixel.x);
+    atomicAnd(&touched[slot], ~BAKED);
+    atomicMax(&touched[slot], u32(profile * HAIR_TOUCH_SCALE));
 }

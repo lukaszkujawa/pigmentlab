@@ -359,7 +359,11 @@ fn pixel_on_canvas(pixel: vec2<i32>) -> bool {
 
 fn hair_touch(pixel: vec2<i32>) -> f32 {
     if (!pixel_on_canvas(pixel)) { return 0.0; }
-    return f32(touched[u32(pixel.y) * sim.canvas.x + u32(pixel.x)]) / HAIR_TOUCH_SCALE;
+    return f32(touched[u32(pixel.y) * sim.canvas.x + u32(pixel.x)] & ~BAKED) / HAIR_TOUCH_SCALE;
+}
+
+fn already_baked(pixel: vec2<i32>) -> bool {
+    return pixel_on_canvas(pixel) && (touched[u32(pixel.y) * sim.canvas.x + u32(pixel.x)] & BAKED) != 0u;
 }
 
 fn capillary_reach(pixel: vec2<i32>) -> f32 {
@@ -377,7 +381,7 @@ fn capillary_reach(pixel: vec2<i32>) -> f32 {
 
 fn pixel_inside(pixel: vec2<i32>) -> f32 {
     if (!pixel_on_canvas(pixel)) { return 0.0; }
-    return outline_from(hair_touch(pixel), capillary_reach(pixel));
+    return outline_from(bridged_touch(pixel), capillary_reach(pixel));
 }
 
 fn cell_pixel(cell: vec2<i32>, k: u32) -> vec2<i32> {
@@ -481,15 +485,16 @@ fn bake_pixels(@builtin(global_invocation_id) id: vec3<u32>) {
     let cell = pixel / 2;
     if (!on_grid(cell)) { return; }
     let own = cell_index(cell);
+    let slot = u32(pixel.y) * sim.canvas.x + u32(pixel.x);
     var source = own;
     var thickness = 0.0;
     var inside = 1.0;
     if (suspended_next[own].absorption.w > 0.0) {
         let k = u32(pixel.x - cell.x * 2) + 2u * u32(pixel.y - cell.y * 2);
         thickness = suspended_next[own].behaviour[k];
-    } else if (water[own].z < 0.5 && mass(suspended[own]) + mass(deposited[own]) <= 0.0) {
+    } else if (water[own].z < 0.5 && mass(suspended[own]) + mass(deposited[own]) <= 0.0 && !already_baked(pixel)) {
         let neighbour = neighbour_drying(pixel);
-        inside = outline_from(hair_touch(pixel), 0.0);
+        inside = outline_from(bridged_touch(pixel), 0.0);
         if (neighbour < 0 || inside <= 0.0) { return; }
         source = u32(neighbour);
     } else {
@@ -499,8 +504,7 @@ fn bake_pixels(@builtin(global_invocation_id) id: vec3<u32>) {
     let concentration_here = interpolated_concentration(pixel, concentration[source]);
     let settling = granular_settling(paper_height(vec2<u32>(pixel)), drying.scattering.w, concentration_here);
     if (source != own) { thickness = inside * granular_thickness(settling, concentration_here); }
-    let slot = u32(pixel.y) * sim.canvas.x + u32(pixel.x);
-    touched[slot] = 0u;
+    touched[slot] |= BAKED;
     if (thickness <= 0.0) { return; }
     let absorption = separated_absorption(drying.absorption.xyz, drying.settling.xyz, settling);
     let below = dry[slot];
