@@ -123,7 +123,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     apply_requests(engine, &app, &mut requests.borrow_mut());
                     engine.set_brush_angle(app.get_brush_angle());
                     engine.set_show_bristles(app.get_show_bristles());
-                    engine.set_fluid_enabled(app.get_fluid_enabled());
+                    engine.set_levelling_enabled(app.get_levelling_enabled());
                     engine.set_lighting(Lighting {
                         azimuth_degrees: app.get_light_azimuth(),
                         elevation_degrees: app.get_light_elevation(),

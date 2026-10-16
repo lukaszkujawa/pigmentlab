@@ -63,7 +63,7 @@ impl Recorder {
             canvas: self.canvas,
             tolerance: Tolerance::default(),
             show_bristles: false,
-            fluid: true,
+            levelling: true,
             steps: self.steps,
         }
     }

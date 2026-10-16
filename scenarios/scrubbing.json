@@ -1,0 +1,96 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 1024,
+    "height": 768
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "tool",
+      "name": "Round medium"
+    },
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 400,
+      "y": 400,
+      "pressure": 0.8
+    },
+    {
+      "t": 0.5,
+      "action": "move",
+      "x": 700,
+      "y": 400,
+      "pressure": 0.8
+    },
+    {
+      "t": 1.0,
+      "action": "move",
+      "x": 400,
+      "y": 406,
+      "pressure": 0.8
+    },
+    {
+      "t": 1.5,
+      "action": "move",
+      "x": 700,
+      "y": 412,
+      "pressure": 0.8
+    },
+    {
+      "t": 2.0,
+      "action": "move",
+      "x": 400,
+      "y": 400,
+      "pressure": 0.8
+    },
+    {
+      "t": 2.5,
+      "action": "move",
+      "x": 700,
+      "y": 406,
+      "pressure": 0.8
+    },
+    {
+      "t": 3.0,
+      "action": "move",
+      "x": 400,
+      "y": 412,
+      "pressure": 0.8
+    },
+    {
+      "t": 3.5,
+      "action": "move",
+      "x": 700,
+      "y": 400,
+      "pressure": 0.8
+    },
+    {
+      "t": 3.75,
+      "action": "checkpoint",
+      "name": "scrubbing"
+    },
+    {
+      "t": 4.0,
+      "action": "move",
+      "x": 400,
+      "y": 406,
+      "pressure": 0.8
+    },
+    {
+      "t": 4.0,
+      "action": "release"
+    },
+    {
+      "t": 5.5,
+      "action": "checkpoint",
+      "name": "settled"
+    }
+  ]
+}

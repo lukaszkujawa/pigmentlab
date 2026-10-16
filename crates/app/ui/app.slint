@@ -178,7 +178,7 @@ export component AppWindow inherits Window {
     out property <float> paint-load <=> load-slider.value;
     out property <float> paint-medium <=> medium-slider.value;
     out property <bool> show-bristles <=> bristles-toggle.checked;
-    out property <bool> fluid-enabled <=> fluid-toggle.checked;
+    out property <bool> levelling-enabled <=> levelling-toggle.checked;
     out property <bool> recording <=> record-toggle.checked;
     out property <float> light-azimuth <=> azimuth-slider.value;
     out property <float> light-elevation <=> elevation-slider.value;
@@ -352,7 +352,7 @@ export component AppWindow inherits Window {
 
                             Card {
                                 title: "SIMULATION";
-                                fluid-toggle := Toggle { label: "Fluid paint"; checked: true; }
+                                levelling-toggle := Toggle { label: "Paint levelling"; checked: true; }
                                 bristles-toggle := Toggle { label: "Show bristles"; }
                                 record-toggle := Toggle { label: "Record scenario"; }
                             }

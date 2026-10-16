@@ -18,8 +18,7 @@ const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 *
 @group(0) @binding(2) var<uniform> composite: CompositeUniform;
 @group(0) @binding(3) var<uniform> window: WindowUniform;
 @group(0) @binding(4) var<storage, read> volume: array<i32>;
-@group(0) @binding(5) var<storage, read> particle_volume: array<i32>;
-@group(0) @binding(6) var<storage, read> heights: array<f32>;
+@group(0) @binding(5) var<storage, read> heights: array<f32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -61,7 +60,7 @@ fn column_sum(texel: vec2<i32>) -> array<i32, 7> {
         let local = vec2<u32>(texel - window.origin);
         for (var z = 0u; z < window.depth; z++) {
             let cell = window_cell(vec3<u32>(local, z));
-            for (var channel = 0u; channel < 7u; channel++) { column[channel] += volume[cell + channel] + particle_volume[cell + channel]; }
+            for (var channel = 0u; channel < 7u; channel++) { column[channel] += volume[cell + channel]; }
         }
     } else {
         let cell = store_cell(vec2<u32>(texel));

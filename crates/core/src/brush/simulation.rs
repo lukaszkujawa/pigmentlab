@@ -25,13 +25,14 @@ pub struct BrushUniform {
     ferrule_extent: f32,
     cohesion: f32,
     cohesion_radius: f32,
-    _padding: [f32; 2],
+    pressure: f32,
+    _padding: f32,
 }
 
 const COHESION_RADIUS_FRACTION: f32 = 0.5;
 
 impl BrushUniform {
-    fn new(preset: &BrushPreset, pose: &BrushPose, canvas: [f32; 2]) -> Self {
+    fn new(preset: &BrushPreset, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) -> Self {
         let rotation = Mat3::from_quat(pose.canvas_to_brush());
         let column = |v: Vec3| v.extend(0.0).to_array();
         Self {
@@ -47,7 +48,8 @@ impl BrushUniform {
             ferrule_extent: preset.width.max(preset.thickness) * 0.5,
             cohesion: preset.cohesion,
             cohesion_radius: preset.width.max(preset.thickness) * 0.5 * COHESION_RADIUS_FRACTION,
-            _padding: [0.0; 2],
+            pressure,
+            _padding: 0.0,
         }
     }
 }
@@ -69,7 +71,7 @@ pub struct Brush {
 }
 
 impl Brush {
-    pub fn new(gpu: &Gpu, preset: BrushPreset, seed: u64, window: &ActiveWindow) -> Self {
+    pub fn new(gpu: &Gpu, preset: BrushPreset, seed: u64, window: &ActiveWindow, stroke_base: &wgpu::Buffer) -> Self {
         let rest = rest_positions(&preset, &mut SplitMix64::new(seed));
         let vertex_bytes = std::mem::size_of_val(rest.as_slice()) as u64;
         let bristles = u64::from(preset.bristle_count);
@@ -122,7 +124,7 @@ impl Brush {
                 buffer_binding(3, &tips),
                 buffer_binding(4, &curves),
                 buffer_binding(5, &window.uniform),
-                buffer_binding(6, &window.volume),
+                buffer_binding(6, stroke_base),
                 buffer_binding(7, &proposals),
             ],
         });
@@ -193,8 +195,8 @@ impl Brush {
         gpu.queue.write_buffer(&self.tips, 0, bytemuck::cast_slice(&tips));
     }
 
-    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, canvas: [f32; 2]) {
-        let uniform = BrushUniform::new(&self.preset, pose, canvas);
+    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) {
+        let uniform = BrushUniform::new(&self.preset, pose, pressure, canvas);
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         encoder.copy_buffer_to_buffer(&self.curves, 0, &self.previous_curves, 0, self.curves.size());
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {

@@ -19,7 +19,7 @@ pub struct Scenario {
     #[serde(default)]
     pub show_bristles: bool,
     #[serde(default = "default_true")]
-    pub fluid: bool,
+    pub levelling: bool,
     pub steps: Vec<Step>,
 }
 

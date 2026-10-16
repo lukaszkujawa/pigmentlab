@@ -31,7 +31,7 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
     let started = Instant::now();
     let mut engine = Engine::new(Gpu::headless(), scenario.canvas, scenario.seed);
     engine.set_show_bristles(scenario.show_bristles);
-    engine.set_fluid_enabled(scenario.fluid);
+    engine.set_levelling_enabled(scenario.levelling);
     let mut checkpoints = Vec::new();
     let mut last_position = (0.0, 0.0);
 

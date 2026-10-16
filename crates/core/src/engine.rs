@@ -3,27 +3,15 @@ use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::{Gpu, read_buffer, read_rgba8};
 use crate::history::History;
 use crate::input::{PointerSample, PointerState, PointerTrack};
-use crate::paint::{ActiveWindow, Deposit, Fluid, FluidSettings, StoreLevelling};
+use crate::paint::{ActiveWindow, Deposit, Levelling};
 use crate::pigment::{Coefficients, Pigment};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::{Quat, Vec2, Vec3};
 
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
-const SUBSTEPS_PER_FLUID_STEP: u32 = 8;
-const MAX_BRUSH_TRAVEL_PER_FLUID_STEP: f32 = 16.0;
-const MIN_SUBSTEPS_PER_FLUID_STEP: u32 = 4;
+const SUBSTEPS_PER_LEVELLING: u64 = 8;
 const UNDO_DEPTH: usize = 6;
-const FLUID_SETTLE_SECONDS: f64 = 0.5;
-const FLUID: FluidSettings = FluidSettings {
-    dt: SIMULATION_DT * SUBSTEPS_PER_FLUID_STEP as f32,
-    damping: 0.55,
-    viscosity: 400.0,
-    dryness_rate: 0.0,
-    gravity: 0.0,
-    yield_speed: crate::units::cm(1.5),
-    particles: false,
-};
 const MAX_COMPRESSION: f32 = 0.4;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
@@ -35,23 +23,22 @@ pub struct Engine {
     canvas: Canvas,
     brush: Brush,
     window: ActiveWindow,
+    stroke_base: wgpu::Buffer,
     deposit: Deposit,
-    fluid: Fluid,
     height_map: HeightMap,
-    store_levelling: StoreLevelling,
+    levelling: Levelling,
     composite: Composite,
     brush_lines: BrushLines,
     display: wgpu::Texture,
     pointer: PointerTrack,
     pose: BrushPose,
+    previous_position: Vec3,
+    pressure: f32,
     show_bristles: bool,
     time: f64,
     substeps: u64,
-    pose_at_last_fluid_step: BrushPose,
-    substeps_since_fluid: u32,
     tuft_centre: Vec2,
-    fluid_enabled: bool,
-    fluid_active_until: f64,
+    levelling_enabled: bool,
     history: History,
     seed: u64,
     base_preset: BrushPreset,
@@ -76,13 +63,12 @@ impl Engine {
     pub fn new(gpu: Gpu, size: CanvasSize, seed: u64) -> Self {
         let canvas = Canvas::new(&gpu, size, seed);
         let window = ActiveWindow::new(&gpu, &canvas);
-        let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window);
-        let particle_volume = Fluid::particle_volume_buffer(&gpu, &window);
-        let height_map = HeightMap::new(&gpu, &canvas, &window, &particle_volume);
-        let fluid = Fluid::new(&gpu, &canvas, &window, &brush, particle_volume, &height_map.heights, FLUID);
-        let deposit = Deposit::new(&gpu, &brush, &window, &fluid);
-        let store_levelling = StoreLevelling::new(&gpu, &canvas, &window, &height_map);
-        let composite = Composite::new(&gpu, &canvas, &window, &fluid, &height_map);
+        let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
+        let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &stroke_base);
+        let height_map = HeightMap::new(&gpu, &canvas, &window);
+        let deposit = Deposit::new(&gpu, &brush, &window);
+        let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
+        let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
         let display = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("display"),
@@ -103,23 +89,22 @@ impl Engine {
             canvas,
             brush,
             window,
+            stroke_base,
             deposit,
-            fluid,
             height_map,
-            store_levelling,
+            levelling,
             composite,
             brush_lines,
             display,
             pointer: PointerTrack::default(),
             pose: BrushPose::upright(lifted),
+            previous_position: lifted,
+            pressure: 0.0,
             show_bristles: false,
             time: 0.0,
             substeps: 0,
-            pose_at_last_fluid_step: BrushPose::upright(lifted),
-            substeps_since_fluid: 0,
             tuft_centre: Vec2::ZERO,
-            fluid_enabled: true,
-            fluid_active_until: 0.0,
+            levelling_enabled: true,
             history,
             seed,
             base_preset: BrushPreset::default_round(),
@@ -161,7 +146,7 @@ impl Engine {
 
     pub fn set_paint(&mut self, paint: PaintSettings) {
         self.paint = paint;
-        self.deposit.set_medium(&self.gpu, paint.medium);
+        self.deposit.set_medium(paint.medium);
     }
 
     pub fn set_param(&mut self, name: &str, value: f32) -> bool {
@@ -179,50 +164,38 @@ impl Engine {
 
     fn rebuild_brush(&mut self) {
         self.set_brush(self.base_preset.adjusted(self.adjustments));
-        self.deposit.set_medium(&self.gpu, self.paint.medium);
+        self.deposit.set_medium(self.paint.medium);
     }
 
     pub fn set_brush(&mut self, preset: BrushPreset) {
-        self.fluid.submit_return_all_particles(&self.gpu);
-        self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window);
-        let particle_volume = Fluid::particle_volume_buffer(&self.gpu, &self.window);
-        self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window, &particle_volume);
-        self.fluid = Fluid::new(&self.gpu, &self.canvas, &self.window, &self.brush, particle_volume, &self.height_map.heights, FLUID);
-        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.fluid);
-        self.store_levelling = StoreLevelling::new(&self.gpu, &self.canvas, &self.window, &self.height_map);
-        self.composite = Composite::new(&self.gpu, &self.canvas, &self.window, &self.fluid, &self.height_map);
+        self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.stroke_base);
+        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
     }
 
     pub fn clear(&mut self) {
-        self.fluid.submit_return_all_particles(&self.gpu);
         let mut encoder = self.encoder("clear");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.history.push(&mut encoder, &self.canvas.paint);
         encoder.clear_buffer(&self.canvas.paint, 0, None);
         self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
-        self.fluid.clear_velocity(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
     }
 
     pub fn dry(&mut self) {
-        self.fluid.submit_return_all_particles(&self.gpu);
         let mut encoder = self.encoder("dry");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.history.push(&mut encoder, &self.canvas.paint);
-        self.fluid.encode_dry_all(&mut encoder);
-        self.store_levelling.encode_dry(&mut encoder);
+        self.levelling.encode_dry(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
     }
 
     pub fn undo(&mut self) -> bool {
-        self.fluid.submit_return_all_particles(&self.gpu);
         let mut encoder = self.encoder("undo");
         let restored = self.history.pop(&mut encoder, &self.canvas.paint);
         if restored {
             self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
-            self.fluid.clear_velocity(&mut encoder);
         }
         self.gpu.queue.submit(Some(encoder.finish()));
         restored
@@ -241,8 +214,8 @@ impl Engine {
         self.composite.set_lighting(&self.gpu, lighting);
     }
 
-    pub fn set_fluid_enabled(&mut self, enabled: bool) {
-        self.fluid_enabled = enabled;
+    pub fn set_levelling_enabled(&mut self, enabled: bool) {
+        self.levelling_enabled = enabled;
     }
 
     pub fn set_show_bristles(&mut self, show: bool) {
@@ -270,7 +243,6 @@ impl Engine {
     }
 
     pub fn paint_heights(&mut self) -> Vec<f32> {
-        self.fluid.submit_return_all_particles(&self.gpu);
         let mut encoder = self.encoder("bake");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -308,18 +280,15 @@ impl Engine {
             self.time += dt;
             if let Some(state) = self.pointer.state_at(self.time) {
                 self.pose = self.pose_for(state);
-                if state.pressed {
-                    self.fluid_active_until = self.time + FLUID_SETTLE_SECONDS;
-                }
+                self.pressure = if state.pressed { state.pressure.clamp(0.0, 1.0) } else { 0.0 };
                 if state.fresh_press {
                     self.tuft_centre = self.handle_position();
                     self.brush.teleport(&self.gpu, &self.pose);
-                    self.fluid.submit_return_all_particles(&self.gpu);
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
                     self.history.push(&mut encoder, &self.canvas.paint);
                     self.height_map.encode(&mut encoder);
-                    self.fluid.encode_capture_stroke_base(&mut encoder, &self.height_map.heights);
+                    encoder.copy_buffer_to_buffer(&self.height_map.heights, 0, &self.stroke_base, 0, self.stroke_base.size());
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
             }
@@ -332,32 +301,15 @@ impl Engine {
             let focus = self.tow_tuft_centre(reach);
             let footprint_radius = (preset.length + preset.spread()) * 0.5 + FOOTPRINT_SLACK;
             if self.window.needs_relocation(focus, footprint_radius) {
-                self.fluid.submit_return_all_particles(&self.gpu);
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
-                self.fluid.clear_velocity(&mut encoder);
             }
-            self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, canvas);
-            self.deposit.encode(&mut encoder);
+            self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, canvas);
+            self.deposit.encode(&self.gpu, &mut encoder, self.pose.position.distance(self.previous_position));
+            self.previous_position = self.pose.position;
             self.substeps += 1;
-            let fluid_due = self.fluid_enabled && self.time <= self.fluid_active_until;
-            let speed = self.pose.position.distance(self.pose_at_last_fluid_step.position)
-                / (SIMULATION_DT * self.substeps_since_fluid.max(1) as f32);
-            let travel_per_substep = speed * SIMULATION_DT;
-            let cadence = ((MAX_BRUSH_TRAVEL_PER_FLUID_STEP / travel_per_substep.max(1e-3)).floor() as u32)
-                .clamp(MIN_SUBSTEPS_PER_FLUID_STEP, SUBSTEPS_PER_FLUID_STEP);
-            self.substeps_since_fluid += 1;
-            if fluid_due && self.substeps_since_fluid >= cadence {
-                let elapsed = SIMULATION_DT * self.substeps_since_fluid as f32;
-                self.fluid.encode_step(&self.gpu, &mut encoder, &self.brush, speed, elapsed);
-                self.pose_at_last_fluid_step = self.pose;
-                self.substeps_since_fluid = 0;
-            }
-            if self.substeps.is_multiple_of(u64::from(SUBSTEPS_PER_FLUID_STEP)) {
-                if self.fluid_enabled {
-                    self.height_map.encode(&mut encoder);
-                    self.fluid.encode_levelling(&mut encoder);
-                    self.store_levelling.encode(&mut encoder);
-                }
+            if self.levelling_enabled && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING) {
+                self.height_map.encode(&mut encoder);
+                self.levelling.encode(&mut encoder);
             }
             self.gpu.queue.submit(Some(encoder.finish()));
         }

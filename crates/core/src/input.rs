@@ -51,10 +51,11 @@ impl PointerTrack {
         let (x, y, pressure, tilt, rotation) = match next {
             Some(next) if next.time > current.time => {
                 let t = ((time - current.time) / (next.time - current.time)).clamp(0.0, 1.0) as f32;
+                let held_pressure = if next.phase == PointerPhase::Up { current.pressure } else { next.pressure };
                 (
                     blend(current.x, next.x, t),
                     blend(current.y, next.y, t),
-                    blend(current.pressure, next.pressure, t),
+                    blend(current.pressure, held_pressure, t),
                     [blend(current.tilt[0], next.tilt[0], t), blend(current.tilt[1], next.tilt[1], t)],
                     blend(current.rotation, next.rotation, t),
                 )
@@ -92,6 +93,15 @@ mod tests {
         let state = track.state_at(3.0).unwrap();
         assert_eq!(state.x, 10.0);
         assert!(!state.pressed);
+    }
+
+    #[test]
+    fn holds_pressure_until_release() {
+        let mut track = PointerTrack::default();
+        track.push(sample(PointerPhase::Down, 0.0, 0.0));
+        track.push(PointerSample { pressure: 0.0, ..sample(PointerPhase::Up, 0.0, 1.0) });
+        assert_eq!(track.state_at(0.5).unwrap().pressure, 1.0);
+        assert!(!track.state_at(1.0).unwrap().pressed);
     }
 
     #[test]

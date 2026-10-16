@@ -5,6 +5,7 @@ const SPLAY_RATE: f32 = 0.3;
 const RECOVER_RATE: f32 = 0.04;
 const MAX_REACH_FRACTION: f32 = 0.98;
 const LIFT_CLEARANCE: f32 = 0.1 * PIXELS_PER_CM;
+const PRESSURE_SINK: f32 = 0.75;
 
 struct BrushUniform {
     rotation_x: vec4<f32>,
@@ -21,7 +22,8 @@ struct BrushUniform {
     ferrule_extent: f32,
     cohesion: f32,
     cohesion_radius: f32,
-    padding: vec2<f32>,
+    pressure: f32,
+    padding: f32,
 };
 
 @group(0) @binding(0) var<uniform> brush: BrushUniform;
@@ -30,7 +32,7 @@ struct BrushUniform {
 @group(0) @binding(3) var<storage, read_write> tips: array<vec4<f32>>;
 @group(0) @binding(4) var<storage, read_write> curves: array<vec4<f32>>;
 @group(0) @binding(5) var<uniform> window: WindowUniform;
-@group(0) @binding(6) var<storage, read> volume: array<i32>;
+@group(0) @binding(6) var<storage, read> stroke_base: array<f32>;
 @group(0) @binding(7) var<storage, read_write> proposals: array<vec4<f32>>;
 
 struct Frame {
@@ -45,15 +47,10 @@ struct Frame {
     contact: bool,
 }
 
-fn paint_height_under(xy: vec2<f32>) -> f32 {
+fn base_height_under(xy: vec2<f32>) -> f32 {
     let pixel = vec2<i32>(floor(xy));
-    if (!window_contains(pixel)) { return 0.0; }
-    let local = vec2<u32>(pixel - window.origin);
-    var total = 0;
-    for (var z = 0u; z < window.depth; z++) {
-        total += volume[window_cell(vec3<u32>(local, z))];
-    }
-    return f32(total) / PAINT_SCALE;
+    if (pixel.x < 0 || pixel.y < 0 || pixel.x >= i32(window.canvas_width) || pixel.y >= i32(window.canvas_height)) { return 0.0; }
+    return stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
 }
 
 fn canvas_to_brush() -> mat3x3<f32> {
@@ -131,7 +128,7 @@ fn frame_of(bristle: u32) -> Frame {
     let ferrule_radius = max(length(rest[base + 1u].xy), 1e-3);
     let radial = clamp(ferrule_radius / brush.ferrule_extent, 0.0, 1.0);
     let splay = brush.splay * mix(0.25, 1.0, radial);
-    let floor_height = brush.sink * paint_height_under(tips[bristle].xy);
+    let floor_height = brush.sink * (1.0 - PRESSURE_SINK * brush.pressure) * base_height_under(tips[bristle].xy);
     let lift = vec3<f32>(0.0, 0.0, floor_height);
     let root = to_canvas(rest[base + 1u].xyz) - lift;
     let root_tangent = direction_to_canvas(normalize(rest[base + 2u].xyz - rest[base + 1u].xyz));

@@ -1,0 +1,22 @@
+{
+  "seed": 1,
+  "canvas": { "width": 1024, "height": 768 },
+  "steps": [
+    { "t": 0.0, "action": "tool", "name": "Round medium" },
+    { "t": 0.0, "action": "dip", "pigment": "cadmium_red" },
+    { "t": 0.0, "action": "press", "x": 400, "y": 400, "pressure": 0.8 },
+    { "t": 0.5, "action": "move", "x": 700, "y": 400, "pressure": 0.8 },
+    { "t": 1.0, "action": "move", "x": 400, "y": 406, "pressure": 0.8 },
+    { "t": 1.5, "action": "move", "x": 700, "y": 412, "pressure": 0.8 },
+    { "t": 1.5, "action": "release" },
+    { "t": 1.6, "action": "checkpoint", "name": "first_pass" },
+    { "t": 1.6, "action": "dip", "pigment": "cadmium_red" },
+    { "t": 1.6, "action": "press", "x": 700, "y": 404, "pressure": 0.8 },
+    { "t": 2.1, "action": "move", "x": 400, "y": 404, "pressure": 0.8 },
+    { "t": 2.6, "action": "move", "x": 700, "y": 410, "pressure": 0.8 },
+    { "t": 2.85, "action": "checkpoint", "name": "brushing" },
+    { "t": 3.1, "action": "move", "x": 400, "y": 400, "pressure": 0.8 },
+    { "t": 3.1, "action": "release" },
+    { "t": 4.6, "action": "checkpoint", "name": "settled" }
+  ]
+}

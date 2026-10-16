@@ -12,7 +12,8 @@ fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Bru
     let gpu = Gpu::headless();
     let canvas = Canvas::new(&gpu, CanvasSize { width: 512, height: 512 }, 1);
     let window = ActiveWindow::new(&gpu, &canvas);
-    let brush = Brush::new(&gpu, preset, 7, &window);
+    let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
+    let brush = Brush::new(&gpu, preset, 7, &window, &flat_canvas);
     let mut teleported = false;
     for pose in poses {
         if !teleported {
@@ -20,7 +21,7 @@ fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Bru
             teleported = true;
         }
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        brush.encode_step(&gpu, &mut encoder, &pose, CANVAS);
+        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, CANVAS);
         gpu.queue.submit(Some(encoder.finish()));
     }
     let positions = read_buffer::<Vec4>(&gpu, &brush.positions);
@@ -105,7 +106,7 @@ fn static_press_settles_without_jitter() {
     let pressed = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * 0.7));
     let (gpu, brush, settled) = run(preset, std::iter::repeat_n(pressed, 120));
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    brush.encode_step(&gpu, &mut encoder, &pressed, CANVAS);
+    brush.encode_step(&gpu, &mut encoder, &pressed, 1.0, CANVAS);
     gpu.queue.submit(Some(encoder.finish()));
     let after = read_buffer::<Vec4>(&gpu, &brush.positions);
     let max_motion = settled.iter().zip(&after).map(|(a, b)| a.distance(*b)).fold(0.0f32, f32::max);
