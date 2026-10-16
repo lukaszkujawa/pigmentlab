@@ -103,3 +103,71 @@ fn dried_paint_is_not_pushed() {
     let after = centroid_x(&mut engine, width);
     assert!((after - before).abs() < 2.0, "dry paint should stay put ({before} -> {after})");
 }
+
+fn stroke_region(heights: &[f32], width: usize) -> impl Iterator<Item = usize> + '_ {
+    (380..420usize).flat_map(move |y| (470..630usize).map(move |x| y * width + x)).filter(move |&i| heights[i] > 0.5)
+}
+
+fn gradient_energies(heights: &[f32], width: usize) -> (f32, f32) {
+    let mut along = 0.0;
+    let mut across = 0.0;
+    for i in stroke_region(heights, width) {
+        along += (heights[i + 1] - heights[i - 1]).powi(2);
+        across += (heights[i + width] - heights[i - width]).powi(2);
+    }
+    (along, across)
+}
+
+fn scrub_passes(engine: &mut Engine, from: f32, to: f32, passes: u32, start: f64) -> f64 {
+    let mut t = start;
+    for pass in 0..passes {
+        t += 0.5;
+        let x = if pass % 2 == 0 { to } else { from };
+        engine.pointer(sample(PointerPhase::Move, x, 400.0 + (pass % 3) as f32 * 6.0, 0.8, t));
+    }
+    t
+}
+
+#[test]
+fn brushing_over_wet_paint_leaves_grooves_along_the_stroke() {
+    let width = 1024;
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width, height: 768 }, 1);
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 400.0, 400.0, 0.8, 0.0));
+    let released = scrub_passes(&mut engine, 400.0, 700.0, 3, 0.0);
+    engine.pointer(sample(PointerPhase::Up, 700.0, 400.0, 0.0, released));
+    engine.advance_exact(released + 0.1);
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 700.0, 404.0, 0.8, released + 0.1));
+    let second = scrub_passes(&mut engine, 700.0, 400.0, 2, released + 0.1);
+    engine.advance_exact(second - 0.25);
+    let heights = engine.paint_heights();
+    let (along, across) = gradient_energies(&heights, width as usize);
+    let ratio = across / along.max(1e-6);
+    assert!(ratio > 3.0, "marks should run along the stroke, across/along gradient ratio {ratio:.2}");
+}
+
+#[test]
+fn resting_brush_leaves_wet_paint_alone() {
+    let width = 1024;
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width, height: 768 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 400.0, 400.0, 0.8, 0.0));
+    let released = scrub_passes(&mut engine, 400.0, 700.0, 2, 0.0);
+    engine.pointer(sample(PointerPhase::Up, 400.0, 400.0, 0.0, released));
+    engine.advance_exact(released + 0.1);
+    engine.clean();
+    engine.pointer(sample(PointerPhase::Down, 550.0, 400.0, 0.7, released + 0.1));
+    engine.advance_exact(released + 0.2);
+    let before = engine.paint_heights();
+    engine.advance_exact(released + 1.2);
+    let after = engine.paint_heights();
+    let largest_change = before.iter().zip(&after).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+    let mass_before: f32 = before.iter().sum();
+    let mass_after: f32 = after.iter().sum();
+    assert!(largest_change < 0.05, "a resting brush changed a column by {largest_change:.3} px");
+    assert!((mass_after - mass_before).abs() < mass_before * 0.001);
+}
