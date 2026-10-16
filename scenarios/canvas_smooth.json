@@ -1,0 +1,169 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 1024,
+    "height": 700
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "param",
+      "name": "tooth",
+      "value": 0.0
+    },
+    {
+      "t": 0.0,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 0.0,
+      "action": "param",
+      "name": "load",
+      "value": 0.3
+    },
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "ivory_black"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 100,
+      "y": 130,
+      "pressure": 0.25
+    },
+    {
+      "t": 0.8,
+      "action": "move",
+      "x": 920,
+      "y": 130,
+      "pressure": 0.25
+    },
+    {
+      "t": 0.8,
+      "action": "release"
+    },
+    {
+      "t": 0.9,
+      "action": "param",
+      "name": "load",
+      "value": 1.0
+    },
+    {
+      "t": 0.9,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.9,
+      "action": "press",
+      "x": 100,
+      "y": 260,
+      "pressure": 0.9
+    },
+    {
+      "t": 1.9,
+      "action": "move",
+      "x": 920,
+      "y": 260,
+      "pressure": 0.9
+    },
+    {
+      "t": 1.9,
+      "action": "release"
+    },
+    {
+      "t": 2.0,
+      "action": "param",
+      "name": "load",
+      "value": 0.5
+    },
+    {
+      "t": 2.0,
+      "action": "dip",
+      "pigment": "french_ultramarine"
+    },
+    {
+      "t": 2.0,
+      "action": "press",
+      "x": 100,
+      "y": 390,
+      "pressure": 0.5
+    },
+    {
+      "t": 3.0,
+      "action": "move",
+      "x": 920,
+      "y": 390,
+      "pressure": 0.5
+    },
+    {
+      "t": 3.0,
+      "action": "release"
+    },
+    {
+      "t": 3.1,
+      "action": "tool",
+      "name": "Paint tube"
+    },
+    {
+      "t": 3.1,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 3.1,
+      "action": "press",
+      "x": 150,
+      "y": 560,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.1,
+      "action": "move",
+      "x": 850,
+      "y": 560,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.1,
+      "action": "release"
+    },
+    {
+      "t": 4.2,
+      "action": "tool",
+      "name": "Colour shaper"
+    },
+    {
+      "t": 4.2,
+      "action": "param",
+      "name": "angle",
+      "value": 90
+    },
+    {
+      "t": 4.2,
+      "action": "press",
+      "x": 450,
+      "y": 560,
+      "pressure": 0.9
+    },
+    {
+      "t": 4.9,
+      "action": "move",
+      "x": 900,
+      "y": 560,
+      "pressure": 0.9
+    },
+    {
+      "t": 4.9,
+      "action": "release"
+    },
+    {
+      "t": 5.6,
+      "action": "checkpoint",
+      "name": "smooth"
+    }
+  ]
+}

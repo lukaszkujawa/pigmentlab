@@ -25,13 +25,14 @@ pub struct BrushUniform {
     cohesion: f32,
     cohesion_radius: f32,
     pressure: f32,
-    _padding: [f32; 2],
+    tooth: f32,
+    _padding: f32,
 }
 
 const COHESION_RADIUS_FRACTION: f32 = 0.5;
 
 impl BrushUniform {
-    fn new(preset: &BrushPreset, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) -> Self {
+    fn new(preset: &BrushPreset, pose: &BrushPose, pressure: f32, tooth: f32, canvas: [f32; 2]) -> Self {
         let rotation = Mat3::from_quat(pose.canvas_to_brush());
         let column = |v: Vec3| v.extend(0.0).to_array();
         Self {
@@ -47,7 +48,8 @@ impl BrushUniform {
             cohesion: preset.cohesion,
             cohesion_radius: preset.width.max(preset.thickness) * 0.5 * COHESION_RADIUS_FRACTION,
             pressure,
-            _padding: [0.0; 2],
+            tooth,
+            _padding: 0.0,
         }
     }
 }
@@ -190,8 +192,8 @@ impl Brush {
         gpu.queue.write_buffer(&self.tips, 0, bytemuck::cast_slice(&tips));
     }
 
-    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) {
-        let uniform = BrushUniform::new(&self.preset, pose, pressure, canvas);
+    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, tooth: f32, canvas: [f32; 2]) {
+        let uniform = BrushUniform::new(&self.preset, pose, pressure, tooth, canvas);
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("bristles"),

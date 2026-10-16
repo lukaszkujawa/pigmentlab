@@ -19,6 +19,8 @@ const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 *
 @group(0) @binding(3) var<uniform> window: WindowUniform;
 @group(0) @binding(4) var<storage, read> volume: array<i32>;
 @group(0) @binding(5) var<storage, read> heights: array<f32>;
+@group(0) @binding(6) var<storage, read> smooth_surface: array<f32>;
+@group(0) @binding(7) var<storage, read> smooth_paint: array<f32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -69,19 +71,17 @@ fn column_sum(texel: vec2<i32>) -> array<i32, 7> {
     return column;
 }
 
-fn height_at(texel: vec2<i32>) -> f32 {
+fn clamped_index(texel: vec2<i32>) -> u32 {
     let clamped = clamp(texel, vec2<i32>(0), vec2<i32>(i32(composite.canvas_width) - 1, i32(composite.canvas_height) - 1));
-    return heights[u32(clamped.y) * composite.canvas_width + u32(clamped.x)];
+    return u32(clamped.y) * composite.canvas_width + u32(clamped.x);
+}
+
+fn height_at(texel: vec2<i32>) -> f32 {
+    return smooth_surface[clamped_index(texel)];
 }
 
 fn smooth_height(texel: vec2<i32>) -> f32 {
-    var total = 0.0;
-    for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-            total += height_at(texel + vec2<i32>(dx, dy));
-        }
-    }
-    return total / 9.0;
+    return smooth_surface[clamped_index(texel)];
 }
 
 fn light_direction() -> vec3<f32> {
@@ -119,16 +119,17 @@ fn shadow(texel: vec2<i32>, height: f32, light: vec3<f32>) -> f32 {
     return 1.0 - composite.shadow_strength * blocked;
 }
 
-fn shade(albedo: vec3<f32>, texel: vec2<i32>, height: f32) -> vec3<f32> {
-    let relief = smoothstep(0.0, 0.015 * PIXELS_PER_CM, height);
-    let slope_x = (smooth_height(texel + vec2<i32>(1, 0)) - smooth_height(texel - vec2<i32>(1, 0))) * 0.5 * relief;
-    let slope_y = (smooth_height(texel + vec2<i32>(0, 1)) - smooth_height(texel - vec2<i32>(0, 1))) * 0.5 * relief;
+fn shade(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32) -> vec3<f32> {
+    let height = height_at(texel);
+    let glossy = smoothstep(0.0, 0.015 * PIXELS_PER_CM, paint_height);
+    let slope_x = (smooth_height(texel + vec2<i32>(1, 0)) - smooth_height(texel - vec2<i32>(1, 0))) * 0.5;
+    let slope_y = (smooth_height(texel + vec2<i32>(0, 1)) - smooth_height(texel - vec2<i32>(0, 1))) * 0.5;
     let normal = normalize(vec3<f32>(-slope_x, -slope_y, 1.0));
     let light = light_direction();
     let diffuse = min(max(dot(normal, light), 0.0) / max(light.z, 0.2), 1.5);
     let halfway = normalize(light + vec3<f32>(0.0, 0.0, 1.0));
     let shininess = mix(8.0, 96.0, composite.gloss);
-    let specular = pow(max(dot(normal, halfway), 0.0), shininess) * composite.gloss * 0.5 * relief;
+    let specular = pow(max(dot(normal, halfway), 0.0), shininess) * composite.gloss * 0.5 * glossy;
     let lit = shadow(texel, height, light);
     let ambient = composite.ambient * occlusion(texel, height);
     return albedo * (ambient + (1.0 - composite.ambient) * diffuse * lit) + vec3<f32>(specular * lit);
@@ -145,7 +146,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let k = vec3<f32>(f32(column[1]), f32(column[2]), f32(column[3])) / PAINT_SCALE / height;
     let s = vec3<f32>(f32(column[4]), f32(column[5]), f32(column[6])) / PAINT_SCALE / height;
-    let thickness = max(mix(height, smooth_height(texel), 0.3), 1e-4);
+    let thickness = max(mix(height, smooth_paint[clamped_index(texel)], 0.3), 1e-4);
     let albedo = layer_reflectance(max(k, vec3<f32>(0.0)), max(s, vec3<f32>(0.0)), thickness * composite.optical_thickness_per_pixel, paper);
     let color = shade(albedo, texel, height);
     return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);

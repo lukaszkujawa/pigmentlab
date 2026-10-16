@@ -4,6 +4,7 @@ use crate::gpu::Gpu;
 
 pub const PAINT_CHANNELS: u64 = 8;
 pub const PAINT_SCALE: f32 = 65536.0;
+pub const DEFAULT_TOOTH: f32 = crate::units::cm(0.00625);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CanvasSize {
@@ -25,6 +26,9 @@ pub struct Canvas {
     pub size: CanvasSize,
     pub substrate: wgpu::Texture,
     pub paint: wgpu::Buffer,
+    pub relief: wgpu::Buffer,
+    relief_pattern: Vec<f32>,
+    tooth: f32,
 }
 
 impl Canvas {
@@ -51,6 +55,22 @@ impl Canvas {
             size.extent(),
         );
         let paint = gpu.storage_buffer("canvas paint", size.pixel_count() * PAINT_CHANNELS * 4);
-        Self { size, substrate, paint }
+        let relief = gpu.storage_buffer("canvas relief", size.pixel_count() * 4);
+        let mut canvas = Self { size, substrate, paint, relief, relief_pattern: substrate::relief(size, seed), tooth: DEFAULT_TOOTH };
+        canvas.set_tooth(gpu, DEFAULT_TOOTH);
+        canvas
+    }
+
+    pub fn tooth(&self) -> f32 {
+        self.tooth
+    }
+
+    pub fn relief_heights(&self) -> Vec<f32> {
+        self.relief_pattern.iter().map(|r| r * self.tooth).collect()
+    }
+
+    pub fn set_tooth(&mut self, gpu: &Gpu, tooth: f32) {
+        self.tooth = tooth.max(0.0);
+        gpu.queue.write_buffer(&self.relief, 0, bytemuck::cast_slice(&self.relief_heights()));
     }
 }

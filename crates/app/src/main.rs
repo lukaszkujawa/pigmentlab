@@ -22,6 +22,7 @@ struct Requests {
     dip: Option<usize>,
     brush: Option<(usize, BrushAdjustments)>,
     paint: Option<PaintSettings>,
+    tooth: Option<f32>,
     clear: bool,
     undo: bool,
     save: bool,
@@ -92,6 +93,11 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_paint_changed(move || {
         let app = app_weak.unwrap();
         shared.borrow_mut().paint = Some(PaintSettings { load: app.get_paint_load(), medium: app.get_paint_medium() });
+    });
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    app.on_canvas_changed(move || {
+        shared.borrow_mut().tooth = Some(app_weak.unwrap().get_canvas_tooth());
     });
     let shared = requests.clone();
     app.on_clear(move || shared.borrow_mut().clear = true);
@@ -174,6 +180,9 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
             active.param(now, "load", paint.load);
             active.param(now, "medium", paint.medium);
         }
+        if let Some(tooth) = requests.tooth {
+            active.param(now, "tooth", tooth);
+        }
         if requests.clear {
             active.clear(now);
         }
@@ -205,6 +214,9 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests)
     }
     if let Some(paint) = requests.paint.take() {
         engine.set_paint(paint);
+    }
+    if let Some(tooth) = requests.tooth.take() {
+        engine.set_param("tooth", tooth);
     }
     if std::mem::take(&mut requests.clear) {
         engine.clear();

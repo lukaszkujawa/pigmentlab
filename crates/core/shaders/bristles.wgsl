@@ -23,7 +23,8 @@ struct BrushUniform {
     cohesion: f32,
     cohesion_radius: f32,
     pressure: f32,
-    padding: vec2<f32>,
+    tooth: f32,
+    padding: f32,
 };
 
 @group(0) @binding(0) var<uniform> brush: BrushUniform;
@@ -126,7 +127,8 @@ fn horizontal_direction(preferred: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> 
 
 fn frame_of(bristle: u32) -> Frame {
     let base = bristle * VERTICES;
-    let floor_height = brush.sink * (1.0 - PRESSURE_SINK * brush.pressure) * base_height_under(tips[bristle].xy);
+    let light_touch = 1.0 - brush.pressure;
+    let floor_height = brush.sink * (1.0 - PRESSURE_SINK * brush.pressure) * base_height_under(tips[bristle].xy) + brush.tooth * light_touch * light_touch;
     let lift = vec3<f32>(0.0, 0.0, floor_height);
     let root = to_canvas(rest[base + 1u].xyz) - lift;
     let root_tangent = direction_to_canvas(normalize(rest[base + 2u].xyz - rest[base + 1u].xyz));

@@ -21,7 +21,7 @@ fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Bru
             teleported = true;
         }
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, CANVAS);
+        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, 0.0, CANVAS);
         gpu.queue.submit(Some(encoder.finish()));
     }
     let positions = read_buffer::<Vec4>(&gpu, &brush.positions);
@@ -106,7 +106,7 @@ fn static_press_settles_without_jitter() {
     let pressed = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * 0.7));
     let (gpu, brush, settled) = run(preset, std::iter::repeat_n(pressed, 120));
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    brush.encode_step(&gpu, &mut encoder, &pressed, 1.0, CANVAS);
+    brush.encode_step(&gpu, &mut encoder, &pressed, 1.0, 0.0, CANVAS);
     gpu.queue.submit(Some(encoder.finish()));
     let after = read_buffer::<Vec4>(&gpu, &brush.positions);
     let max_motion = settled.iter().zip(&after).map(|(a, b)| a.distance(*b)).fold(0.0f32, f32::max);
@@ -184,7 +184,7 @@ fn jittery_hand_does_not_catapult_tips() {
     let last = *poses.last().unwrap();
     let next = BrushPose::upright(last.position + Vec3::new(1.5, 0.0, 0.0));
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    brush.encode_step(&gpu, &mut encoder, &next, 1.0, CANVAS);
+    brush.encode_step(&gpu, &mut encoder, &next, 1.0, 0.0, CANVAS);
     gpu.queue.submit(Some(encoder.finish()));
     let after = read_buffer::<Vec4>(&gpu, &brush.positions);
     let jump = tips_of(&last, &before).iter().zip(tips_of(&next, &after)).map(|(a, b)| a.distance(b)).fold(0.0f32, f32::max);

@@ -1,5 +1,5 @@
 use super::window::{ActiveWindow, WINDOW_SIZE};
-use crate::canvas::PAINT_CHANNELS;
+use crate::canvas::{Canvas, PAINT_CHANNELS};
 use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 
@@ -44,7 +44,7 @@ pub struct Deposit {
 }
 
 impl Deposit {
-    pub fn new(gpu: &Gpu, brush: &Brush, window: &ActiveWindow, stroke_base: &wgpu::Buffer, dt: f32) -> Self {
+    pub fn new(gpu: &Gpu, brush: &Brush, window: &ActiveWindow, canvas: &Canvas, stroke_base: &wgpu::Buffer, dt: f32) -> Self {
         let preset = brush.preset();
         let cadence = dt / crate::engine::SIMULATION_DT;
         let sample_count = preset.bristle_count * SAMPLES_PER_BRISTLE;
@@ -95,6 +95,7 @@ impl Deposit {
                 buffer_layout_entry(14, compute, read_write),
                 buffer_layout_entry(15, compute, read_write),
                 buffer_layout_entry(16, compute, read_write),
+                buffer_layout_entry(17, compute, read_only),
             ],
         });
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -118,6 +119,7 @@ impl Deposit {
                 buffer_binding(14, &displacement),
                 buffer_binding(15, &column_state),
                 buffer_binding(16, &coarse_marks),
+                buffer_binding(17, &canvas.relief),
             ],
         });
         let shader = gpu.shader(

@@ -3,10 +3,10 @@ use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::{Gpu, read_buffer, read_rgba8};
 use crate::history::History;
 use crate::input::{PointerSample, PointerState, PointerTrack};
-use crate::paint::{ActiveWindow, Deposit, Levelling, NOZZLE_RADIUS, Tube};
+use crate::paint::{ActiveWindow, Deposit, Levelling, NOZZLE_RADIUS, Tube, WetBounds};
 use crate::pigment::{Coefficients, Pigment};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
-use glam::{Quat, Vec2, Vec3};
+use glam::{IVec2, Quat, Vec2, Vec3};
 
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
@@ -15,6 +15,7 @@ const SUBSTEPS_PER_DEPOSIT: u64 = 2;
 const DEPOSIT_DT: f32 = SIMULATION_DT * SUBSTEPS_PER_DEPOSIT as f32;
 const UNDO_DEPTH: usize = 6;
 const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
+const WET_MARGIN: i32 = 48;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
@@ -57,6 +58,7 @@ pub struct Engine {
     substeps: u64,
     tuft_centre: Vec2,
     levelling_enabled: bool,
+    wet_bounds: Option<WetBounds>,
     history: History,
     seed: u64,
     base_preset: BrushPreset,
@@ -84,7 +86,7 @@ impl Engine {
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
-        let deposit = Deposit::new(&gpu, &brush, &window, &stroke_base, DEPOSIT_DT);
+        let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base, DEPOSIT_DT);
         let tube = Tube::new(&gpu, &window);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
@@ -129,6 +131,7 @@ impl Engine {
             substeps: 0,
             tuft_centre: Vec2::ZERO,
             levelling_enabled: true,
+            wet_bounds: None,
             history,
             seed,
             base_preset: BrushPreset::default_round(),
@@ -140,6 +143,10 @@ impl Engine {
 
     pub fn canvas_size(&self) -> CanvasSize {
         self.canvas.size
+    }
+
+    pub fn canvas_relief(&self) -> Vec<f32> {
+        self.canvas.relief_heights()
     }
 
     pub fn brush(&self) -> &Brush {
@@ -186,6 +193,7 @@ impl Engine {
             "angle" => self.set_brush_angle(value),
             "load" => self.set_paint(PaintSettings { load: value, ..self.paint }),
             "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),
+            "tooth" => self.canvas.set_tooth(&self.gpu, value),
             _ => return false,
         }
         true
@@ -198,7 +206,7 @@ impl Engine {
 
     pub fn set_brush(&mut self, preset: BrushPreset) {
         self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.stroke_base);
-        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.stroke_base, DEPOSIT_DT);
+        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.canvas, &self.stroke_base, DEPOSIT_DT);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
     }
@@ -210,6 +218,7 @@ impl Engine {
         encoder.clear_buffer(&self.canvas.paint, 0, None);
         self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
+        self.wet_bounds = None;
     }
 
     pub fn dry(&mut self) {
@@ -218,6 +227,7 @@ impl Engine {
         self.history.push(&mut encoder, &self.canvas.paint);
         self.levelling.encode_dry(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
+        self.wet_bounds = None;
     }
 
     pub fn undo(&mut self) -> bool {
@@ -225,6 +235,7 @@ impl Engine {
         let restored = self.history.pop(&mut encoder, &self.canvas.paint);
         if restored {
             self.window.encode_unbake(&self.gpu, &mut encoder, &self.canvas);
+            self.wet_bounds = Some(self.whole_canvas());
         }
         self.gpu.queue.submit(Some(encoder.finish()));
         restored
@@ -339,9 +350,13 @@ impl Engine {
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
+            if self.pressed {
+                let touched = WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
+                self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched)));
+            }
             match self.tool {
                 Tool::Brush => {
-                    self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, canvas);
+                    self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, self.canvas.tooth(), canvas);
                     if self.pressed && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
                         let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
                         self.deposit.encode(&self.gpu, &mut encoder, &self.brush, travel);
@@ -358,12 +373,16 @@ impl Engine {
             }
             self.substeps += 1;
             let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;
-            if levelling_due && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING) {
+            if let Some(wet) = self.wet_bounds.filter(|_| levelling_due && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING)) {
                 self.height_map.encode(&mut encoder);
-                self.levelling.encode(&mut encoder);
+                self.levelling.encode(&self.gpu, &mut encoder, wet);
             }
             self.gpu.queue.submit(Some(encoder.finish()));
         }
+    }
+
+    fn whole_canvas(&self) -> WetBounds {
+        WetBounds { min: IVec2::ZERO, max: IVec2::new(self.canvas.size.width as i32, self.canvas.size.height as i32) }
     }
 
     fn handle_position(&self) -> Vec2 {

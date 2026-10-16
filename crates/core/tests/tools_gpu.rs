@@ -10,6 +10,7 @@ fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, time: f64) -> Poin
 fn fresh_engine() -> Engine {
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
     engine.set_levelling_enabled(false);
+    engine.set_param("tooth", 0.0);
     engine
 }
 

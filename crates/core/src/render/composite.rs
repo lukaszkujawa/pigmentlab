@@ -77,6 +77,8 @@ impl Composite {
                 buffer_layout_entry(3, fragment, wgpu::BufferBindingType::Uniform),
                 buffer_layout_entry(4, fragment, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_layout_entry(5, fragment, wgpu::BufferBindingType::Storage { read_only: true }),
+                buffer_layout_entry(6, fragment, wgpu::BufferBindingType::Storage { read_only: true }),
+                buffer_layout_entry(7, fragment, wgpu::BufferBindingType::Storage { read_only: true }),
             ],
         });
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -94,6 +96,8 @@ impl Composite {
                 buffer_binding(3, &window.uniform),
                 buffer_binding(4, &window.volume),
                 buffer_binding(5, &height_map.heights),
+                buffer_binding(6, &height_map.smooth_surface),
+                buffer_binding(7, &height_map.smooth_paint),
             ],
         });
         let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

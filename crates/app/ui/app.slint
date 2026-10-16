@@ -177,6 +177,7 @@ export component AppWindow inherits Window {
     out property <float> brush-angle <=> angle-slider.value;
     out property <float> paint-load <=> load-slider.value;
     out property <float> paint-medium <=> medium-slider.value;
+    out property <float> canvas-tooth <=> tooth-slider.value;
     out property <bool> show-bristles <=> bristles-toggle.checked;
     out property <bool> levelling-enabled <=> levelling-toggle.checked;
     out property <bool> recording <=> record-toggle.checked;
@@ -188,6 +189,7 @@ export component AppWindow inherits Window {
     callback dip(index: int);
     callback brush-changed();
     callback paint-changed();
+    callback canvas-changed();
     callback clear();
     callback undo();
     callback save();
@@ -341,6 +343,11 @@ export component AppWindow inherits Window {
                                 title: "PAINT";
                                 load-slider := ParamSlider { label: "Load"; minimum: 0.05; maximum: 1; value: 1; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
                                 medium-slider := ParamSlider { label: "Medium"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                            }
+
+                            Card {
+                                title: "CANVAS";
+                                tooth-slider := ParamSlider { label: "Tooth"; minimum: 0; maximum: 2; value: 0.5; value-text: round(self.value * 100) / 100 + " px"; released => { root.canvas-changed(); } }
                             }
 
                             Card {
