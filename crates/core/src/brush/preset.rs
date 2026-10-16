@@ -1,7 +1,7 @@
 use crate::units::cm;
 
 pub const MAX_COMPRESSION: f32 = 0.4;
-const SPREAD_PER_COMPRESSION: f32 = 2.5;
+pub const SPREAD_PER_COMPRESSION: f32 = 2.5;
 const BEND_REACH_FRACTION: f32 = 0.66;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

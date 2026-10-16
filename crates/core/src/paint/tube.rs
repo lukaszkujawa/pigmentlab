@@ -21,24 +21,25 @@ struct TubeUniform {
 pub struct Tube {
     uniform: wgpu::Buffer,
     squeeze: ComputePass,
+    dt: f32,
 }
 
 impl Tube {
-    pub fn new(gpu: &Gpu, window: &ActiveWindow) -> Self {
+    pub fn new(gpu: &Gpu, window: &ActiveWindow, dt: f32) -> Self {
         let uniform = gpu.uniform_buffer("tube uniform", std::mem::size_of::<TubeUniform>() as u64);
         let shader = gpu.shader(
             "tube",
-            &[include_str!("../../shaders/units.wgsl"), include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/tube.wgsl")],
+            &[ include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/tube.wgsl")],
         );
         let bindings = [
             (0, Binding::Uniform(&uniform)),
             (1, Binding::Uniform(&window.uniform)),
             (2, Binding::ReadWrite(&window.volume)),
         ];
-        Self { squeeze: ComputePass::new(gpu, "squeeze tube", &shader, "squeeze", &bindings), uniform }
+        Self { squeeze: ComputePass::new(gpu, "squeeze tube", &shader, "squeeze", &bindings), uniform, dt }
     }
 
-    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, from: Vec2, to: Vec2, pressure: f32, dt: f32, paint: Coefficients) {
+    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, from: Vec2, to: Vec2, pressure: f32, paint: Coefficients) {
         let low = (from.min(to) - NOZZLE_RADIUS).floor();
         let high = (from.max(to) + NOZZLE_RADIUS).ceil();
         let size = (high - low).as_uvec2().max(glam::UVec2::ONE);
@@ -46,7 +47,7 @@ impl Tube {
             start: from.to_array(),
             end: to.to_array(),
             radius: NOZZLE_RADIUS,
-            height: FLOW_PER_SECOND * pressure * dt,
+            height: FLOW_PER_SECOND * pressure * self.dt,
             corner: low.as_ivec2().to_array(),
             absorption: paint.absorption.extend(0.0).to_array(),
             scattering: paint.scattering.extend(0.0).to_array(),

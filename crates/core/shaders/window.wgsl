@@ -17,6 +17,10 @@ fn store_cell(pixel: vec2<u32>) -> u32 {
     return (pixel.y * window.canvas_width + pixel.x) * CHANNELS;
 }
 
+fn on_canvas(pixel: vec2<i32>) -> bool {
+    return pixel.x >= 0 && pixel.y >= 0 && pixel.x < i32(window.canvas_width) && pixel.y < i32(window.canvas_height);
+}
+
 fn window_contains(pixel: vec2<i32>) -> bool {
     let local = pixel - window.origin;
     return local.x >= 0 && local.y >= 0 && local.x < i32(window.width) && local.y < i32(window.height);

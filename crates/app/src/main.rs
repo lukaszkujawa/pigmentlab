@@ -2,7 +2,7 @@ slint::include_modules!();
 
 mod tablet;
 
-use simpaint_core::brush::BrushAdjustments;
+use simpaint_core::brush::{BrushAdjustments, PRESETS};
 use simpaint_core::engine::{PaintSettings, tool_names};
 use simpaint_core::scenario::Recorder;
 use simpaint_core::pigment::{PALETTE, linear_to_srgb};
@@ -77,16 +77,19 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     let shared = requests.clone();
     let app_weak = app.as_weak();
-    app.on_brush_changed(move || {
+    app.on_brush_selected(move |index| {
         let app = app_weak.unwrap();
-        shared.borrow_mut().brush = Some((
-            app.get_brush_index().max(0) as usize,
-            BrushAdjustments {
-                scale: app.get_brush_scale(),
-                bristle_count: Some(app.get_brush_bristles().round() as u32),
-                stiffness: app.get_brush_stiffness(),
-            },
-        ));
+        if let Some(named) = PRESETS.get(index.max(0) as usize) {
+            app.set_brush_bristles(named.preset.adjusted(adjustments_of(&app, None)).bristle_count as f32);
+        }
+        shared.borrow_mut().brush = Some((index.max(0) as usize, adjustments_of(&app, None)));
+    });
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    app.on_brush_adjusted(move || {
+        let app = app_weak.unwrap();
+        let count = app.get_brush_bristles().round() as u32;
+        shared.borrow_mut().brush = Some((app.get_brush_index().max(0) as usize, adjustments_of(&app, Some(count))));
     });
     let shared = requests.clone();
     let app_weak = app.as_weak();
@@ -173,7 +176,9 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
         if let Some((index, adjustments)) = requests.brush {
             active.tool(now, tool_name(index));
             active.param(now, "size", adjustments.scale);
-            active.param(now, "bristles", adjustments.bristle_count.unwrap_or(0) as f32);
+            if let Some(count) = adjustments.bristle_count {
+                active.param(now, "bristles", count as f32);
+            }
             active.param(now, "stiffness", adjustments.stiffness);
         }
         if let Some(paint) = requests.paint {
@@ -209,8 +214,7 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests)
         engine.dip(PALETTE[index]);
     }
     if let Some((index, adjustments)) = requests.brush.take() {
-        engine.select_brush(tool_name(index));
-        engine.set_brush_adjustments(adjustments);
+        engine.configure_brush(tool_name(index), adjustments);
     }
     if let Some(paint) = requests.paint.take() {
         engine.set_paint(paint);
@@ -271,4 +275,8 @@ fn phase(kind: i32) -> PointerPhase {
 fn tool_name(index: usize) -> &'static str {
     let names = tool_names();
     names[index.min(names.len() - 1)]
+}
+
+fn adjustments_of(app: &AppWindow, bristle_count: Option<u32>) -> BrushAdjustments {
+    BrushAdjustments { scale: app.get_brush_scale(), bristle_count, stiffness: app.get_brush_stiffness() }
 }

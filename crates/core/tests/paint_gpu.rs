@@ -223,3 +223,62 @@ fn a_held_brush_stamps_once_and_then_stops_adding_paint() {
     assert!(stamped > 20.0, "landing should leave a dab, got {stamped:.1}");
     assert!(held < stamped * 1.1, "holding the brush still kept adding paint ({stamped:.0} -> {held:.0})");
 }
+
+#[test]
+fn selecting_a_preset_keeps_its_own_bristle_count() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: 512, height: 384 }, 1);
+    assert!(engine.configure_brush("Rigger", simpaint_core::brush::BrushAdjustments::default()));
+    assert_eq!(engine.brush().preset().bristle_count, 40);
+    assert!(engine.configure_brush("Round large", simpaint_core::brush::BrushAdjustments::default()));
+    assert_eq!(engine.brush().preset().bristle_count, 450);
+}
+
+#[test]
+fn pickup_is_spread_along_a_fast_stroke() {
+    let width = 1024usize;
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: width as u32, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_yellow").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 200.0, 256.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 800.0, 256.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 800.0, 256.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    engine.select_brush("Round medium");
+    engine.clean();
+    engine.pointer(sample(PointerPhase::Down, 150.0, 256.0, 0.6, 1.1));
+    engine.pointer(sample(PointerPhase::Move, 850.0, 256.0, 0.6, 1.3));
+    engine.pointer(sample(PointerPhase::Up, 850.0, 256.0, 0.0, 1.3));
+    engine.advance_exact(1.4);
+    let heights = engine.paint_heights();
+    let centre: Vec<f32> = (300..700).map(|x| heights[256 * width + x]).collect();
+    let mut sorted = centre.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = sorted[sorted.len() / 2];
+    let lowest = sorted[0];
+    assert!(lowest > median * 0.5, "a fast pass dug a hole: lowest column {lowest:.2} px against a median of {median:.2} px");
+}
+
+#[test]
+fn levelling_keeps_pigment_consistent_across_the_window_edge() {
+    let width = 1600usize;
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: width as u32, height: 512 }, 1);
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("french_ultramarine").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 100.0, 256.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 1500.0, 256.0, 1.0, 2.0));
+    engine.pointer(sample(PointerPhase::Up, 1500.0, 256.0, 0.0, 2.0));
+    engine.advance_exact(4.5);
+    let expected = by_name("french_ultramarine").unwrap().coefficients.absorption.x;
+    let columns = engine.paint_columns();
+    let mut checked = 0;
+    for (index, column) in columns.iter().enumerate() {
+        if column[0] < 0.1 {
+            continue;
+        }
+        let absorption = column[1] / column[0];
+        assert!((absorption - expected).abs() < expected * 0.25, "pixel {} {} has absorption {absorption:.3}, expected about {expected:.3}: pigment went missing while levelling", index % width, index / width);
+        checked += 1;
+    }
+    assert!(checked > 20_000, "the bar should cover plenty of pixels, checked {checked}");
+}

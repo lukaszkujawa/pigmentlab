@@ -5,6 +5,7 @@ use crate::pigment::OPTICAL_THICKNESS_PER_PIXEL;
 
 pub const PAINT_CHANNELS: u64 = 8;
 pub const PAINT_SCALE: f32 = 65536.0;
+pub const FULL_CELL: f32 = 0.999;
 pub const DEFAULT_TOOTH: f32 = crate::units::cm(0.00625);
 pub const DRY_SHRINK: f32 = 0.8;
 
@@ -54,7 +55,7 @@ impl Canvas {
         let ground = gpu.storage_buffer("canvas ground", size.pixel_count() * 4);
         let uniform = gpu.uniform_buffer("canvas uniform", std::mem::size_of::<CanvasUniform>() as u64);
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&CanvasUniform { width: size.width, height: size.height, shrink: DRY_SHRINK, optical_thickness_per_pixel: OPTICAL_THICKNESS_PER_PIXEL }));
-        let shader = gpu.shader("canvas", &[include_str!("../../shaders/units.wgsl"), include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/canvas.wgsl")]);
+        let shader = gpu.shader("canvas", &[ include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/canvas.wgsl")]);
         let bindings = [
             (0, Binding::Uniform(&uniform)),
             (1, Binding::ReadWrite(&paint)),
@@ -112,11 +113,7 @@ impl Canvas {
         self.encode_refresh_ground(encoder);
     }
 
-    pub fn encode_refresh_ground_after_undo(&self, encoder: &mut wgpu::CommandEncoder) {
-        self.encode_refresh_ground(encoder);
-    }
-
-    fn encode_refresh_ground(&self, encoder: &mut wgpu::CommandEncoder) {
+    pub fn encode_refresh_ground(&self, encoder: &mut wgpu::CommandEncoder) {
         self.refresh_ground.dispatch(encoder, self.groups());
     }
 

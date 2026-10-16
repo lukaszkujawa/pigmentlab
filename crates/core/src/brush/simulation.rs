@@ -90,7 +90,6 @@ impl Brush {
         let shader = gpu.shader(
             "bristles",
             &[
-                include_str!("../../shaders/units.wgsl"),
                 include_str!("../../shaders/hermite.wgsl"),
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/bristles.wgsl"),

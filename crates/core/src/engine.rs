@@ -19,6 +19,7 @@ const WET_MARGIN: i32 = 48;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
+const DILUTION_PER_MEDIUM: f32 = 0.9;
 pub const TUBE_TOOL: &str = "Paint tube";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,7 +31,6 @@ enum Tool {
 pub fn tool_names() -> Vec<&'static str> {
     PRESETS.iter().map(|named| named.name).chain(std::iter::once(TUBE_TOOL)).collect()
 }
-const DILUTION_PER_MEDIUM: f32 = 0.9;
 
 pub struct Engine {
     gpu: Gpu,
@@ -88,7 +88,7 @@ impl Engine {
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &canvas, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
         let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base, DEPOSIT_DT);
-        let tube = Tube::new(&gpu, &window);
+        let tube = Tube::new(&gpu, &window, SIMULATION_DT);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
@@ -170,19 +170,7 @@ impl Engine {
     }
 
     pub fn select_brush(&mut self, name: &str) -> bool {
-        if name.eq_ignore_ascii_case(TUBE_TOOL) {
-            self.tool = Tool::Tube;
-            return true;
-        }
-        self.tool = Tool::Brush;
-        match preset_by_name(name) {
-            Some(preset) => {
-                self.base_preset = preset;
-                self.rebuild_brush();
-                true
-            }
-            None => false,
-        }
+        self.configure_brush(name, self.adjustments)
     }
 
     pub fn set_brush_adjustments(&mut self, adjustments: BrushAdjustments) {
@@ -190,6 +178,22 @@ impl Engine {
             self.adjustments = adjustments;
             self.rebuild_brush();
         }
+    }
+
+    pub fn configure_brush(&mut self, name: &str, adjustments: BrushAdjustments) -> bool {
+        if name.eq_ignore_ascii_case(TUBE_TOOL) {
+            self.tool = Tool::Tube;
+            self.adjustments = adjustments;
+            return true;
+        }
+        let Some(preset) = preset_by_name(name) else { return false };
+        self.tool = Tool::Brush;
+        if preset != self.base_preset || adjustments != self.adjustments || self.brush.preset() != &preset.adjusted(adjustments) {
+            self.base_preset = preset;
+            self.adjustments = adjustments;
+            self.rebuild_brush();
+        }
+        true
     }
 
     pub fn set_brush_angle(&mut self, degrees: f32) {
@@ -252,7 +256,7 @@ impl Engine {
         let restored = self.history.pop(&mut encoder, &self.canvas.paint);
         if restored {
             self.dry_history.pop(&mut encoder, &self.canvas.dry);
-            self.canvas.encode_refresh_ground_after_undo(&mut encoder);
+            self.canvas.encode_refresh_ground(&mut encoder);
             self.window.encode_unbake(&mut encoder);
             self.wet_bounds = Some(self.whole_canvas());
         }
@@ -302,12 +306,16 @@ impl Engine {
         read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| f64::from(*load)).sum::<f64>() as f32
     }
 
-    pub fn paint_heights(&mut self) -> Vec<f32> {
+    pub fn paint_columns(&mut self) -> Vec<[f32; 7]> {
         let mut encoder = self.encoder("bake");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
         let store = read_buffer::<i32>(&self.gpu, &self.canvas.paint);
-        store.chunks(PAINT_CHANNELS as usize).map(|pixel| pixel[0] as f32 / PAINT_SCALE).collect()
+        store.chunks(PAINT_CHANNELS as usize).map(|pixel| std::array::from_fn(|channel| pixel[channel] as f32 / PAINT_SCALE)).collect()
+    }
+
+    pub fn paint_heights(&mut self) -> Vec<f32> {
+        self.paint_columns().iter().map(|column| column[0]).collect()
     }
 
     pub fn paint_mass(&mut self) -> f32 {
@@ -385,7 +393,7 @@ impl Engine {
                 Tool::Tube => {
                     if self.pressed {
                         let from = self.position_at_last_deposit.truncate();
-                        self.tube.encode_squeeze(&self.gpu, &mut encoder, from, self.handle_position(), self.pressure, SIMULATION_DT, self.paint_on_tool);
+                        self.tube.encode_squeeze(&self.gpu, &mut encoder, from, self.handle_position(), self.pressure, self.paint_on_tool);
                     }
                     self.position_at_last_deposit = self.pose.position;
                 }

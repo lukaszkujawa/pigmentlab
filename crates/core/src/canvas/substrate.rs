@@ -61,7 +61,7 @@ fn thread_height(across: f32, along: f32, axis: u32, seed: u64) -> f32 {
         let phase = along / THREAD_PERIOD - 0.5 + (index.rem_euclid(2) as f32) + axis as f32;
         let lift = plateau(0.5 + 0.5 * (std::f32::consts::PI * phase).cos());
         let cell = (along / THREAD_PERIOD).floor() as i64;
-        let knot = (hash((index as i64) as u32, cell as u32, thread_seed ^ 0x44) - 0.5) * 2.0 * KNOT_AMPLITUDE;
+        let knot = (hash(index as u32, cell as u32, thread_seed ^ 0x44) - 0.5) * 2.0 * KNOT_AMPLITUDE;
         let striation = (value_noise((across - centre) / STRIATION_ACROSS, along / STRIATION_ALONG, thread_seed ^ 0x55) - 0.5) * 2.0 * STRIATION_AMPLITUDE;
         best = best.max(profile * (thickness + knot + striation) * (UNDER_LEVEL + (1.0 - UNDER_LEVEL) * lift));
     }
@@ -128,7 +128,7 @@ mod tests {
         let heights = relief(size, 3);
         let highest = heights.iter().cloned().fold(f32::MIN, f32::max);
         let lowest = heights.iter().cloned().fold(f32::MAX, f32::min);
-        assert!(highest > 0.8 && highest <= 1.0 && lowest < -0.5 && lowest >= -1.0, "range {lowest} to {highest}");
+        assert!((0.8..=1.0).contains(&highest) && (-1.0..-0.5).contains(&lowest), "range {lowest} to {highest}");
         let peaks = heights.iter().filter(|h| **h > 0.6).count();
         let hollows = heights.iter().filter(|h| **h < -0.3).count();
         assert!(peaks > heights.len() / 4 && hollows > heights.len() / 50, "peaks {peaks} hollows {hollows}");

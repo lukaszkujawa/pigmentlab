@@ -51,7 +51,6 @@ impl Levelling {
         let shader = gpu.shader(
             "level",
             &[
-                include_str!("../../shaders/units.wgsl"),
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/level.wgsl"),
             ],

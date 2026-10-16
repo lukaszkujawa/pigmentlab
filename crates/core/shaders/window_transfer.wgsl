@@ -3,10 +3,6 @@
 @group(0) @binding(2) var<storage, read_write> store: array<i32>;
 @group(0) @binding(3) var<storage, read_write> previous: array<i32>;
 
-fn on_canvas(pixel: vec2<i32>) -> bool {
-    return pixel.x >= 0 && pixel.y >= 0 && pixel.x < i32(window.canvas_width) && pixel.y < i32(window.canvas_height);
-}
-
 fn previous_window_contains(pixel: vec2<i32>) -> bool {
     let local = pixel - window.previous_origin;
     return local.x >= 0 && local.y >= 0 && local.x < i32(window.width) && local.y < i32(window.height);

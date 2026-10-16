@@ -21,7 +21,7 @@ impl HeightMap {
         let smooth_paint = gpu.storage_buffer("smooth paint map", canvas.size.pixel_count() * 4);
         let shader = gpu.shader(
             "height map",
-            &[include_str!("../../shaders/units.wgsl"), include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/height_map.wgsl")],
+            &[ include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/height_map.wgsl")],
         );
         let bindings = [
             (0, Binding::Uniform(&window.uniform)),

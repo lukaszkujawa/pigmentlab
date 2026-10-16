@@ -172,7 +172,7 @@ export component AppWindow inherits Window {
     out property <float> pressure <=> pressure-slider.value;
     out property <int> brush-index: 1;
     out property <float> brush-scale <=> size-slider.value;
-    out property <float> brush-bristles <=> bristles-slider.value;
+    in-out property <float> brush-bristles <=> bristles-slider.value;
     out property <float> brush-stiffness <=> stiffness-slider.value;
     out property <float> brush-angle <=> angle-slider.value;
     out property <float> paint-load <=> load-slider.value;
@@ -187,7 +187,8 @@ export component AppWindow inherits Window {
 
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
-    callback brush-changed();
+    callback brush-selected(index: int);
+    callback brush-adjusted();
     callback paint-changed();
     callback canvas-changed();
     callback clear();
@@ -328,13 +329,13 @@ export component AppWindow inherits Window {
                                     for name[index] in root.brush-names: PresetRow {
                                         label: name;
                                         selected: index == root.brush-index;
-                                        clicked => { root.brush-index = index; root.brush-changed(); }
+                                        clicked => { root.brush-index = index; root.brush-selected(index); }
                                     }
                                 }
                                 Rectangle { height: 1px; background: Theme.line; }
-                                size-slider := ParamSlider { label: "Size"; minimum: 0.4; maximum: 2.5; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-changed(); } }
-                                bristles-slider := ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value: 200; value-text: round(self.value); released => { root.brush-changed(); } }
-                                stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-changed(); } }
+                                size-slider := ParamSlider { label: "Size"; minimum: 0.4; maximum: 2.5; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
+                                bristles-slider := ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value: 200; value-text: round(self.value); released => { root.brush-adjusted(); } }
+                                stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
                                 angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 180; value: 0; value-text: round(self.value) + "°"; }
                                 pressure-slider := ParamSlider { label: root.pen-present ? "Pressure (pen)" : "Pressure"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
                             }

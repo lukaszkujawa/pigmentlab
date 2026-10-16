@@ -62,10 +62,6 @@ fn height_at(texel: vec2<i32>) -> f32 {
     return smooth_surface[clamped_index(texel)];
 }
 
-fn smooth_height(texel: vec2<i32>) -> f32 {
-    return smooth_surface[clamped_index(texel)];
-}
-
 fn light_direction() -> vec3<f32> {
     let elevation = radians(composite.light_elevation);
     let azimuth = radians(composite.light_azimuth);
@@ -104,8 +100,8 @@ fn shadow(texel: vec2<i32>, height: f32, light: vec3<f32>) -> f32 {
 fn shade(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32) -> vec3<f32> {
     let height = height_at(texel);
     let glossy = smoothstep(0.0, 0.015 * PIXELS_PER_CM, paint_height);
-    let slope_x = (smooth_height(texel + vec2<i32>(1, 0)) - smooth_height(texel - vec2<i32>(1, 0))) * 0.5;
-    let slope_y = (smooth_height(texel + vec2<i32>(0, 1)) - smooth_height(texel - vec2<i32>(0, 1))) * 0.5;
+    let slope_x = (height_at(texel + vec2<i32>(1, 0)) - height_at(texel - vec2<i32>(1, 0))) * 0.5;
+    let slope_y = (height_at(texel + vec2<i32>(0, 1)) - height_at(texel - vec2<i32>(0, 1))) * 0.5;
     let normal = normalize(vec3<f32>(-slope_x, -slope_y, 1.0));
     let light = light_direction();
     let diffuse = min(max(dot(normal, light), 0.0) / max(light.z, 0.2), 1.5);

@@ -18,10 +18,6 @@ struct WetBounds {
 };
 const MAX_SHARE_PER_NEIGHBOUR: f32 = 0.25;
 
-fn on_canvas(pixel: vec2<i32>) -> bool {
-    return pixel.x >= 0 && pixel.y >= 0 && pixel.x < i32(window.canvas_width) && pixel.y < i32(window.canvas_height);
-}
-
 fn pixel_index(pixel: vec2<i32>) -> u32 {
     return u32(pixel.y) * window.canvas_width + u32(pixel.x);
 }
@@ -178,11 +174,10 @@ fn level_store_pixel(pixel: vec2<i32>) {
         if (flow > 0.0) {
             outgoing += flow;
         } else if (flow < 0.0) {
-            let other_cell = store_cell(vec2<u32>(neighbour));
-            let other_height = max(f32(store[other_cell]) / PAINT_SCALE, 1e-6);
+            let pigment = neighbour_pigment(neighbour - window.origin);
             incoming -= flow;
             for (var channel = 0u; channel < 6u; channel++) {
-                incoming_pigment[channel] += f32(store[other_cell + 1u + channel]) / PAINT_SCALE / other_height * -flow;
+                incoming_pigment[channel] += pigment[channel] * -flow;
             }
         }
     }

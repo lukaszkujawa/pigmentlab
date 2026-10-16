@@ -32,10 +32,8 @@ impl Gpu {
     }
 
     pub fn shader(&self, label: &str, sources: &[&str]) -> wgpu::ShaderModule {
-        self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(label),
-            source: wgpu::ShaderSource::Wgsl(sources.join("\n").into()),
-        })
+        let source = std::iter::once(shared_constants()).chain(sources.iter().map(|s| s.to_string())).collect::<Vec<_>>().join("\n");
+        self.device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some(label), source: wgpu::ShaderSource::Wgsl(source.into()) })
     }
 
     pub fn storage_buffer(&self, label: &str, size: u64) -> wgpu::Buffer {
@@ -85,4 +83,16 @@ pub fn buffer_layout_entry(
 
 pub fn buffer_binding(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
     wgpu::BindGroupEntry { binding, resource: buffer.as_entire_binding() }
+}
+
+fn shared_constants() -> String {
+    format!(
+        "const PIXELS_PER_CM: f32 = {:?};\nconst PAINT_SCALE: f32 = {:?};\nconst CHANNELS: u32 = {}u;\nconst FULL_CELL: f32 = {:?};\nconst BRISTLE_VERTICES: u32 = {}u;\nconst SPREAD_PER_COMPRESSION: f32 = {:?};",
+        crate::units::PIXELS_PER_CM,
+        crate::canvas::PAINT_SCALE,
+        crate::canvas::PAINT_CHANNELS,
+        crate::canvas::FULL_CELL,
+        crate::brush::VERTICES_PER_BRISTLE,
+        crate::brush::SPREAD_PER_COMPRESSION,
+    )
 }

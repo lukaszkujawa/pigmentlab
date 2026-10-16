@@ -1,4 +1,3 @@
-const VERTICES: u32 = 10u;
 const CURVE_SAMPLES: u32 = 8u;
 const TIP_TANGENT_WEIGHT: f32 = 0.5;
 const SPLAY_RATE: f32 = 0.3;
@@ -6,7 +5,6 @@ const RECOVER_RATE: f32 = 0.04;
 const MAX_REACH_FRACTION: f32 = 0.98;
 const LIFT_CLEARANCE: f32 = 0.1 * PIXELS_PER_CM;
 const PRESSURE_SINK: f32 = 0.75;
-const SPREAD_PER_COMPRESSION: f32 = 2.5;
 
 struct BrushUniform {
     rotation_x: vec4<f32>,
@@ -138,12 +136,12 @@ fn horizontal_direction(preferred: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> 
 }
 
 fn frame_of(bristle: u32) -> Frame {
-    let base = bristle * VERTICES;
+    let base = bristle * BRISTLE_VERTICES;
     let floor_height = floor_under(tips[bristle].xy);
     let lift = vec3<f32>(0.0, 0.0, floor_height);
     let root = to_canvas(rest[base + 1u].xyz) - lift;
     let root_tangent = direction_to_canvas(normalize(rest[base + 2u].xyz - rest[base + 1u].xyz));
-    let bristle_length = distance(rest[base + VERTICES - 1u].xyz, rest[base + 1u].xyz);
+    let bristle_length = distance(rest[base + BRISTLE_VERTICES - 1u].xyz, rest[base + 1u].xyz);
     let rest_tip = root + root_tangent * bristle_length;
     let contact = rest_tip.z < 0.0 && root.z > 0.0;
     var rest = root.xy;
@@ -189,14 +187,14 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 fn cohered_slip(bristle: u32, own: vec3<f32>, contact: f32) -> vec3<f32> {
-    let anchor = rest[bristle * VERTICES + 1u].xy;
+    let anchor = rest[bristle * BRISTLE_VERTICES + 1u].xy;
     let sigma = max(brush.cohesion_radius, 1e-3);
     var weighted = vec3<f32>(0.0);
     var total = 0.0;
     for (var other = 0u; other < brush.bristle_count; other++) {
         let proposal = proposals[other];
         if (proposal.w != contact) { continue; }
-        let d = distance(anchor, rest[other * VERTICES + 1u].xy) / sigma;
+        let d = distance(anchor, rest[other * BRISTLE_VERTICES + 1u].xy) / sigma;
         let weight = exp(-0.5 * d * d);
         weighted += proposal.xyz * weight;
         total += weight;
@@ -208,7 +206,7 @@ fn cohered_slip(bristle: u32, own: vec3<f32>, contact: f32) -> vec3<f32> {
 fn cohere(@builtin(global_invocation_id) id: vec3<u32>) {
     let bristle = id.x;
     if (bristle >= brush.bristle_count) { return; }
-    let base = bristle * VERTICES;
+    let base = bristle * BRISTLE_VERTICES;
     let f = frame_of(bristle);
     let proposal = proposals[bristle];
     let slip = cohered_slip(bristle, proposal.xyz, proposal.w);
@@ -235,8 +233,8 @@ fn cohere(@builtin(global_invocation_id) id: vec3<u32>) {
     let m0 = f.root_tangent * scale * f.length;
     let m1 = tip_tangent * scale * f.length * TIP_TANGENT_WEIGHT;
     positions[base] = rest[base];
-    for (var k = 1u; k < VERTICES; k++) {
-        let point = above_canvas(hermite(f.root, m0, tip, m1, f32(k - 1u) / f32(VERTICES - 2u))) + f.lift;
+    for (var k = 1u; k < BRISTLE_VERTICES; k++) {
+        let point = above_canvas(hermite(f.root, m0, tip, m1, f32(k - 1u) / f32(BRISTLE_VERTICES - 2u))) + f.lift;
         positions[base + k] = vec4<f32>(to_brush(point), 0.0);
     }
     let settled = f.contact && tips[bristle].w != 0.0;

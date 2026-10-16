@@ -52,7 +52,6 @@ impl Composite {
         let shader = gpu.shader(
             "composite",
             &[
-                include_str!("../../shaders/units.wgsl"),
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/km.wgsl"),
                 include_str!("../../shaders/composite.wgsl"),
