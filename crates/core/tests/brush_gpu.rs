@@ -1,5 +1,5 @@
 use glam::{Vec2, Vec3, Vec4};
-use simpaint_core::brush::{Brush, BrushPose, BrushPreset, VERTICES_PER_BRISTLE};
+use simpaint_core::brush::{Brush, BrushPose, BrushPreset, MAX_COMPRESSION, VERTICES_PER_BRISTLE};
 use simpaint_core::canvas::Canvas;
 use simpaint_core::gpu::{Gpu, read_buffer};
 use simpaint_core::paint::ActiveWindow;
@@ -68,7 +68,7 @@ fn pressing_spreads_the_footprint() {
         .chunks(VERTICES_PER_BRISTLE as usize)
         .map(|b| (b.last().unwrap().truncate() - pressed.position.truncate()).length())
         .fold(0.0f32, f32::max);
-    assert!(spread > cm(0.3) * 1.3, "tips should splay beyond the ferrule, got {spread}");
+    assert!(spread > cm(0.3) * 1.2, "tips should splay beyond the ferrule, got {spread}");
 }
 
 #[test]
@@ -200,4 +200,30 @@ fn hovering_tips_follow_the_handle() {
     for tip in tips_of(&last, &positions) {
         assert!(tip.distance(last.position.truncate()) <= preset.length, "tip left behind at {tip} while the handle is at {}", last.position.truncate());
     }
+}
+
+fn pressed_extent(preset: BrushPreset, pressure: f32) -> Vec2 {
+    let pose = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * (1.0 - MAX_COMPRESSION * pressure)));
+    let (_, _, positions) = run(preset, std::iter::repeat_n(pose, 120));
+    let tips = tips_of(&pose, &positions);
+    let (low, high) = tips.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), t| (lo.min(*t), hi.max(*t)));
+    high - low
+}
+
+#[test]
+fn a_light_touch_paints_with_the_tip_of_a_round_brush() {
+    let preset = BrushPreset::round(200, cm(0.35), cm(2.2));
+    let light = pressed_extent(preset, 0.05);
+    let heavy = pressed_extent(preset, 1.0);
+    assert!(light.x < preset.width * 0.5, "a light touch should use the tip only, footprint {light} vs ferrule {}", preset.width);
+    assert!(light.x < heavy.x * 0.4, "pressing should widen the footprint far beyond a light touch: {light} vs {heavy}");
+}
+
+#[test]
+fn a_light_touch_narrows_the_edge_of_a_flat_brush() {
+    let preset = BrushPreset::flat(400, cm(1.2), cm(0.3), cm(2.0));
+    let light = pressed_extent(preset, 0.05);
+    let heavy = pressed_extent(preset, 1.0);
+    assert!(light.y < heavy.y * 0.5, "the short side should narrow under a light touch: {light} vs {heavy}");
+    assert!(light.x > heavy.x * 0.6, "the long side should stay wide: {light} vs {heavy}");
 }

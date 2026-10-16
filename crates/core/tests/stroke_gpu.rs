@@ -47,3 +47,70 @@ fn paint_at_the_stroke_start_stays_put_once_the_brush_has_left() {
     let drift = ((x_after - x_before).powi(2) + (y_after - y_before).powi(2)).sqrt();
     assert!(drift < 2.0, "the start blob moved {drift:.1} px after the brush left");
 }
+
+fn stroke_width_at(pressure: f32) -> usize {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 256.0, pressure, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 700.0, 256.0, pressure, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 700.0, 256.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    let heights = engine.paint_heights();
+    (156..356).filter(|y| heights[y * WIDTH + 500] > 0.05).count()
+}
+
+#[test]
+fn a_light_stroke_is_narrower_than_a_heavy_one() {
+    let light = stroke_width_at(0.05);
+    let heavy = stroke_width_at(1.0);
+    assert!(light > 0, "a light stroke must still leave paint");
+    assert!(light < heavy * 6 / 10, "light stroke {light} px wide vs heavy {heavy} px");
+}
+
+fn ridge_roughness(engine: &mut Engine) -> f32 {
+    let heights = engine.paint_heights();
+    let mut roughness = 0.0;
+    for y in 226..286 {
+        for x in 350..650 {
+            let i = y * WIDTH + x;
+            roughness += (heights[i + WIDTH] - heights[i - WIDTH]).abs();
+        }
+    }
+    roughness
+}
+
+fn paint_moved(before: &[f32], after: &[f32]) -> f32 {
+    before.iter().zip(after).map(|(b, a)| (a - b).abs()).sum()
+}
+
+fn pass_over_a_heavy_stroke(pressure: f32) -> (f32, f32, f32) {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Round large");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 256.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 700.0, 256.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 700.0, 256.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    let before = ridge_roughness(&mut engine);
+    let heights_before = engine.paint_heights();
+    engine.set_param("load", 0.0);
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 256.0, pressure, 1.2));
+    engine.pointer(sample(PointerPhase::Move, 700.0, 256.0, pressure, 2.2));
+    engine.pointer(sample(PointerPhase::Up, 700.0, 256.0, 0.0, 2.2));
+    engine.advance_exact(2.3);
+    let after = ridge_roughness(&mut engine);
+    let moved = paint_moved(&heights_before, &engine.paint_heights());
+    (before, after, moved)
+}
+
+#[test]
+fn a_light_pass_smooths_ridges_while_a_heavy_pass_reshapes_the_paint() {
+    let (before, after_light, moved_light) = pass_over_a_heavy_stroke(0.05);
+    let (_, _, moved_heavy) = pass_over_a_heavy_stroke(1.0);
+    assert!(after_light < before, "a light pass should plane the ridges down: {before:.0} -> {after_light:.0}");
+    assert!(moved_heavy > moved_light * 2.0, "a heavy pass should move far more paint than a light one: {moved_heavy:.0} vs {moved_light:.0}");
+}

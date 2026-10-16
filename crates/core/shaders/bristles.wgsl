@@ -4,7 +4,8 @@ const SPLAY_RATE: f32 = 0.3;
 const RECOVER_RATE: f32 = 0.04;
 const MAX_REACH_FRACTION: f32 = 0.98;
 const LIFT_CLEARANCE: f32 = 0.1 * PIXELS_PER_CM;
-const PRESSURE_SINK: f32 = 0.75;
+const SINK_AT_FULL_PRESSURE: vec2<f32> = vec2<f32>(0.75, 1.0);
+const TAPER_UNFOLDS_BY_COMPRESSION: f32 = 0.2;
 
 struct BrushUniform {
     rotation_x: vec4<f32>,
@@ -61,7 +62,8 @@ fn floor_under(xy: vec2<f32>) -> f32 {
     let dried = ground[u32(index)] - relief[u32(index)];
     let light_touch = 1.0 - brush.pressure;
     let weave_top = brush.tooth * light_touch * light_touch;
-    let wet_base = brush.sink * (1.0 - PRESSURE_SINK * brush.pressure) * stroke_base[u32(index)];
+    let press = 1.0 - light_touch * light_touch;
+    let wet_base = stroke_base[u32(index)] * (1.0 - press * mix(SINK_AT_FULL_PRESSURE.x, SINK_AT_FULL_PRESSURE.y, brush.sink));
     return dried + weave_top + wet_base;
 }
 
@@ -144,14 +146,15 @@ fn frame_of(bristle: u32) -> Frame {
     let bristle_length = distance(rest[base + BRISTLE_VERTICES - 1u].xyz, rest[base + 1u].xyz);
     let rest_tip = root + root_tangent * bristle_length;
     let contact = rest_tip.z < 0.0 && root.z > 0.0;
-    var rest = root.xy;
+    var rest = rest_tip.xy;
     var drag_reach = 0.0;
     if (contact) {
         let angle_below_horizontal = atan2(-root_tangent.z, length(root_tangent.xy));
         drag_reach = rod_reach(angle_below_horizontal, root.z, bristle_length) * brush.splay;
         let radial_offset = root.xy - brush.translation.xy;
         let compression = clamp(1.0 - root.z / bristle_length, 0.0, 1.0);
-        rest = root.xy + radial_offset * brush.splay * compression * SPREAD_PER_COMPRESSION;
+        let unfolded = mix(rest_tip.xy, root.xy, min(compression / TAPER_UNFOLDS_BY_COMPRESSION, 1.0));
+        rest = unfolded + radial_offset * brush.splay * compression * SPREAD_PER_COMPRESSION;
     }
     let max_reach = sqrt(max(bristle_length * bristle_length - root.z * root.z, 0.0)) * MAX_REACH_FRACTION;
     return Frame(root, root_tangent, rest_tip, tips[bristle].xyz - lift, lift, bristle_length, rest, drag_reach, max_reach, contact);
@@ -166,10 +169,11 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     if (f.contact) {
         let landing = tips[bristle].w == 0.0;
         let stuck = select(f.previous_tip.xy, f.rest, landing);
-        var offset = stuck - f.root.xy;
-        let distance_from_root = length(offset);
-        if (distance_from_root > f.drag_reach) { offset *= f.drag_reach / distance_from_root; }
-        let held = f.root.xy + offset;
+        let distance_from_root = length(stuck - f.root.xy);
+        var lag = stuck - f.rest_tip.xy;
+        let lag_length = length(lag);
+        if (lag_length > f.drag_reach) { lag *= f.drag_reach / lag_length; }
+        let held = f.rest_tip.xy + lag;
         let pull = f.rest - held;
         let pull_length = max(length(pull), 1e-6);
         let slip_limit = brush.friction * -f.rest_tip.z;
@@ -181,10 +185,10 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     } else {
         let clear_of_canvas = f.previous_tip.z > LIFT_CLEARANCE;
         let recovered = mix(f.previous_tip, f.rest_tip, brush.recovery);
-        var hovering = f.previous_tip.xy - f.root.xy;
+        var hovering = f.previous_tip.xy - f.rest_tip.xy;
         let hover_reach = length(hovering);
         if (hover_reach > f.max_reach) { hovering *= f.max_reach / max(hover_reach, 1e-6); }
-        let tip = vec3<f32>(select(f.root.xy + hovering, recovered.xy, clear_of_canvas), max(recovered.z, 0.0));
+        let tip = vec3<f32>(select(f.rest_tip.xy + hovering, recovered.xy, clear_of_canvas), max(recovered.z, 0.0));
         proposals[bristle] = vec4<f32>(tip - f.rest_tip, 0.0);
     }
 }

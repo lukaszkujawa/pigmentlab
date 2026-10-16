@@ -392,7 +392,8 @@ impl Engine {
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
                     self.snapshot(&mut encoder);
                     self.refresh_heights(&mut encoder);
-                    encoder.copy_buffer_to_buffer(&self.height_map.heights, 0, &self.stroke_base, 0, self.stroke_base.size());
+                    self.height_map.encode_tuft_base(&self.gpu, &mut encoder, self.whole_canvas());
+                    encoder.copy_buffer_to_buffer(&self.height_map.tuft_base, 0, &self.stroke_base, 0, self.stroke_base.size());
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
                 self.needs_render |= state.pressed || self.show_bristles;

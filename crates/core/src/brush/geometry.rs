@@ -7,6 +7,7 @@ const LENGTH_JITTER: f32 = 0.04;
 const DIRECTION_JITTER: f32 = 0.02;
 const BRISTLES_PER_CLUMP: u32 = 7;
 const CLUMP_SPREAD: f32 = 0.35;
+const TIP_RADIUS_FRACTION: f32 = 0.3;
 
 pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
     let mut positions = Vec::with_capacity((preset.bristle_count * VERTICES_PER_BRISTLE) as usize);
@@ -86,15 +87,18 @@ fn bristle_length(preset: &BrushPreset, root: Vec2) -> f32 {
     }
 }
 
+fn rest_tip(preset: &BrushPreset, root: Vec2) -> Vec2 {
+    match preset.shape {
+        BrushShape::Round => root * TIP_RADIUS_FRACTION,
+        BrushShape::Flat | BrushShape::Filbert => Vec2::new(root.x, root.y * TIP_RADIUS_FRACTION),
+        BrushShape::Shaper => root,
+    }
+}
+
 fn rest_direction(preset: &BrushPreset, root: Vec2, rng: &mut SplitMix64) -> Vec3 {
-    let outward = root / Vec2::new(preset.width, preset.thickness).max(Vec2::splat(1e-3)) * 2.0;
-    let wobble = jitter(rng, DIRECTION_JITTER);
-    Vec3::new(
-        outward.x * preset.flare + wobble.x,
-        outward.y * preset.flare + wobble.y,
-        -1.0,
-    )
-    .normalize()
+    let wobble = jitter(rng, DIRECTION_JITTER) * preset.length;
+    let towards_tip = rest_tip(preset, root) - root + wobble;
+    Vec3::new(towards_tip.x, towards_tip.y, -preset.length).normalize()
 }
 
 #[cfg(test)]
