@@ -18,24 +18,18 @@ struct WaterUniform {
     padding_1: f32,
 };
 
-struct WetPigment {
-    absorption: vec4<f32>,
-    scattering: vec4<f32>,
-    behaviour: vec4<f32>,
-};
 
 @group(0) @binding(9) var<uniform> water_sim: WaterUniform;
 @group(0) @binding(10) var<storage, read> water_cells: array<vec4<f32>>;
-@group(0) @binding(11) var<storage, read> floating: array<WetPigment>;
-@group(0) @binding(12) var<storage, read> settled: array<WetPigment>;
+@group(0) @binding(11) var<storage, read> floating: array<Pigment>;
+@group(0) @binding(12) var<storage, read> settled: array<Pigment>;
 @group(0) @binding(13) var<storage, read> paper_cells: array<vec4<f32>>;
 @group(0) @binding(14) var<storage, read> paper_relief: array<f32>;
 @group(0) @binding(15) var<storage, read> hair_contact: array<u32>;
 @group(0) @binding(16) var<storage, read> wetted_concentration: array<f32>;
 
 struct WetSample {
-    absorption: vec4<f32>,
-    scattering: vec4<f32>,
+    pigment: Pigment,
     water: vec2<f32>,
 }
 
@@ -46,12 +40,11 @@ fn wet_index(cell: vec2<i32>) -> u32 {
 
 fn wet_at(texel: vec2<i32>) -> WetSample {
     let taps = bilinear_cells(texel);
-    var sample = WetSample(vec4<f32>(0.0), vec4<f32>(0.0), vec2<f32>(0.0));
+    var sample = WetSample(no_pigment(), vec2<f32>(0.0));
     for (var k = 0u; k < 4u; k++) {
         let index = wet_index(vec2<i32>(taps[k].xy));
         let w = taps[k].z;
-        sample.absorption += (floating[index].absorption + settled[index].absorption) * w;
-        sample.scattering += (floating[index].scattering + settled[index].scattering) * w;
+        sample.pigment = added(sample.pigment, scaled(added(floating[index], settled[index]), w));
         sample.water += water_cells[index].xy * w;
     }
     return sample;
@@ -90,12 +83,15 @@ fn fs_watercolour(in: VertexOutput) -> @location(0) vec4<f32> {
     var albedo = dry[index].yzw;
     let wet = wet_at(texel);
     let inside = wetted_inside(texel);
-    let total = wet.absorption.w;
+    let total = mass(wet.pigment);
     if (total > 1e-7 && inside > 0.0) {
         let height = paper_relief[index] / max(water_sim.tooth, 1e-6) * 0.5 + 0.5;
-        let granulation = wet.scattering.w / total * water_sim.granulation;
-        let thickness = granular_thickness(height, granulation, pigment_per_pixel(texel)) * inside * OPTICAL_THICKNESS_PER_PIXEL;
-        albedo = layer_reflectance(wet.absorption.xyz / total, wet.scattering.xyz / total, thickness, albedo);
+        let granulation = wet.pigment.scattering.w / total * water_sim.granulation;
+        let concentration = pigment_per_pixel(texel);
+        let settling = granular_settling(height, granulation, concentration);
+        let thickness = granular_thickness(settling, concentration) * inside * OPTICAL_THICKNESS_PER_PIXEL;
+        let absorption = separated_absorption(wet.pigment.absorption.xyz / total, granulating_absorption(wet.pigment), settling);
+        albedo = layer_reflectance(absorption, wet.pigment.scattering.xyz / total, thickness, albedo);
     }
     let soaked = clamp(wet.water.x / SATURATED_WATER, 0.0, 1.0) * inside;
     let damp = clamp(wet.water.y, 0.0, 1.0) * inside;

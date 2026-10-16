@@ -45,11 +45,6 @@ struct WaterUniform {
     padding_1: f32,
 };
 
-struct Pigment {
-    absorption: vec4<f32>,
-    scattering: vec4<f32>,
-    behaviour: vec4<f32>,
-};
 
 @group(0) @binding(0) var<uniform> sim: WaterUniform;
 @group(0) @binding(1) var<storage, read> paper: array<vec4<f32>>;
@@ -68,26 +63,6 @@ struct Pigment {
 @group(0) @binding(14) var<storage, read> relief: array<f32>;
 @group(0) @binding(15) var<storage, read_write> touched: array<u32>;
 @group(0) @binding(16) var<storage, read_write> concentration: array<f32>;
-
-fn no_pigment() -> Pigment {
-    return Pigment(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
-}
-
-fn scaled(p: Pigment, factor: f32) -> Pigment {
-    return Pigment(p.absorption * factor, p.scattering * factor, p.behaviour * factor);
-}
-
-fn added(a: Pigment, b: Pigment) -> Pigment {
-    return Pigment(a.absorption + b.absorption, a.scattering + b.scattering, a.behaviour + b.behaviour);
-}
-
-fn clamped(p: Pigment) -> Pigment {
-    return Pigment(max(p.absorption, vec4<f32>(0.0)), max(p.scattering, vec4<f32>(0.0)), max(p.behaviour, vec4<f32>(0.0)));
-}
-
-fn mass(p: Pigment) -> f32 {
-    return p.absorption.w;
-}
 
 fn region_cell(id: vec2<u32>) -> vec2<i32> {
     if (id.x >= sim.region_size.x || id.y >= sim.region_size.y) { return vec2<i32>(-1); }
@@ -150,6 +125,7 @@ fn apply_brush(@builtin(global_invocation_id) id: vec3<u32>) {
         vec4<f32>(accumulator(cell, 1u), accumulator(cell, 2u), accumulator(cell, 3u), accumulator(cell, 4u)),
         vec4<f32>(accumulator(cell, 5u), accumulator(cell, 6u), accumulator(cell, 7u), accumulator(cell, 8u)),
         vec4<f32>(accumulator(cell, 9u), accumulator(cell, 10u), 0.0, 0.0),
+        vec4<f32>(accumulator(cell, 13u), accumulator(cell, 14u), accumulator(cell, 15u), 0.0),
     );
     let push = vec2<f32>(accumulator(cell, 11u), accumulator(cell, 12u));
     var state = water[index];
@@ -450,7 +426,12 @@ fn mark_drying(@builtin(global_invocation_id) id: vec3<u32>) {
     let dried = state.x <= 0.0 && state.y < DRY_PAPER * paper[index].y && !refilling;
     if (!dried && sim.force_dry == 0u) { return; }
     let granulation = select(0.0, pigment.scattering.w / total * sim.granulation, total > 1e-7);
-    suspended_next[index] = Pigment(vec4<f32>(select(vec3<f32>(0.0), pigment.absorption.xyz / total, total > 1e-7), max(total, 1e-12)), vec4<f32>(select(vec3<f32>(0.0), pigment.scattering.xyz / total, total > 1e-7), granulation), inside);
+    suspended_next[index] = Pigment(
+        vec4<f32>(select(vec3<f32>(0.0), pigment.absorption.xyz / total, total > 1e-7), max(total, 1e-12)),
+        vec4<f32>(select(vec3<f32>(0.0), pigment.scattering.xyz / total, total > 1e-7), granulation),
+        inside,
+        vec4<f32>(select(vec3<f32>(0.0), granulating_absorption(pigment), total > 1e-7), 0.0),
+    );
 }
 
 @compute @workgroup_size(16, 16)
@@ -466,7 +447,8 @@ fn dry_cells(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var k = 0u; k < 4u; k++) {
         let pixel = cell_pixel(cell, k);
         if (!pixel_on_canvas(pixel)) { continue; }
-        weights[k] = drying.behaviour[k] * granular_thickness(paper_height(vec2<u32>(pixel)), drying.scattering.w, interpolated_concentration(pixel, own));
+        let concentration_here = interpolated_concentration(pixel, own);
+        weights[k] = drying.behaviour[k] * granular_thickness(granular_settling(paper_height(vec2<u32>(pixel)), drying.scattering.w, concentration_here), concentration_here);
     }
     let state = water[index];
     suspended[index] = no_pigment();
@@ -501,22 +483,26 @@ fn bake_pixels(@builtin(global_invocation_id) id: vec3<u32>) {
     let own = cell_index(cell);
     var source = own;
     var thickness = 0.0;
+    var inside = 1.0;
     if (suspended_next[own].absorption.w > 0.0) {
         let k = u32(pixel.x - cell.x * 2) + 2u * u32(pixel.y - cell.y * 2);
         thickness = suspended_next[own].behaviour[k];
     } else if (water[own].z < 0.5 && mass(suspended[own]) + mass(deposited[own]) <= 0.0) {
         let neighbour = neighbour_drying(pixel);
-        let inside = outline_from(hair_touch(pixel), 0.0);
+        inside = outline_from(hair_touch(pixel), 0.0);
         if (neighbour < 0 || inside <= 0.0) { return; }
         source = u32(neighbour);
-        thickness = inside * granular_thickness(paper_height(vec2<u32>(pixel)), suspended_next[source].scattering.w, interpolated_concentration(pixel, concentration[source]));
     } else {
         return;
     }
+    let drying = suspended_next[source];
+    let concentration_here = interpolated_concentration(pixel, concentration[source]);
+    let settling = granular_settling(paper_height(vec2<u32>(pixel)), drying.scattering.w, concentration_here);
+    if (source != own) { thickness = inside * granular_thickness(settling, concentration_here); }
     let slot = u32(pixel.y) * sim.canvas.x + u32(pixel.x);
     touched[slot] = 0u;
     if (thickness <= 0.0) { return; }
-    let drying = suspended_next[source];
+    let absorption = separated_absorption(drying.absorption.xyz, drying.settling.xyz, settling);
     let below = dry[slot];
-    dry[slot] = vec4<f32>(below.x, layer_reflectance(drying.absorption.xyz, drying.scattering.xyz, thickness * OPTICAL_THICKNESS_PER_PIXEL, below.yzw));
+    dry[slot] = vec4<f32>(below.x, layer_reflectance(absorption, drying.scattering.xyz, thickness * OPTICAL_THICKNESS_PER_PIXEL, below.yzw));
 }

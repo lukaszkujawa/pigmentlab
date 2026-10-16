@@ -22,11 +22,6 @@ struct BrushWaterUniform {
     canvas: vec2<u32>,
 };
 
-struct Pigment {
-    absorption: vec4<f32>,
-    scattering: vec4<f32>,
-    behaviour: vec4<f32>,
-};
 
 @group(0) @binding(0) var<uniform> exchange_uniform: BrushWaterUniform;
 @group(0) @binding(1) var<storage, read> chain: array<vec4<f32>>;
@@ -169,7 +164,7 @@ fn grant_lift(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= exchange_uniform.cells.x || id.y >= exchange_uniform.cells.y) { return; }
     let cell = id.y * exchange_uniform.cells.x + id.x;
     let demand = f32(atomicExchange(&lift_demand[cell], 0)) / ACCUMULATOR_SCALE;
-    lift[cell] = Pigment(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
+    lift[cell] = no_pigment();
     if (demand <= 0.0) { return; }
     let state = water[cell];
     let available = state.x / WATER_PER_LOAD;
@@ -177,7 +172,7 @@ fn grant_lift(@builtin(global_invocation_id) id: vec3<u32>) {
     let granted = min(demand, available * MAX_LIFT_FRACTION);
     let removed = granted / available;
     let floating = suspended[cell];
-    let taken = Pigment(floating.absorption * removed, floating.scattering * removed, floating.behaviour * removed);
+    let taken = scaled(floating, removed);
     accumulate(cell, 0u, -state.x * removed);
     accumulate(cell, 1u, -taken.absorption.x);
     accumulate(cell, 2u, -taken.absorption.y);
@@ -189,7 +184,10 @@ fn grant_lift(@builtin(global_invocation_id) id: vec3<u32>) {
     accumulate(cell, 8u, -taken.scattering.w);
     accumulate(cell, 9u, -taken.behaviour.x);
     accumulate(cell, 10u, -taken.behaviour.y);
-    lift[cell] = Pigment(taken.absorption / granted, taken.scattering / granted, vec4<f32>(taken.behaviour.xy / granted, 0.0, granted / demand));
+    accumulate(cell, 13u, -taken.settling.x);
+    accumulate(cell, 14u, -taken.settling.y);
+    accumulate(cell, 15u, -taken.settling.z);
+    lift[cell] = Pigment(taken.absorption / granted, taken.scattering / granted, vec4<f32>(taken.behaviour.xy / granted, 0.0, granted / demand), taken.settling / granted);
 }
 
 @compute @workgroup_size(128)

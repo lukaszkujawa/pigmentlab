@@ -1,0 +1,390 @@
+{
+ "seed": 1,
+ "canvas": {
+  "width": 680,
+  "height": 360
+ },
+ "levelling": true,
+ "steps": [
+  {
+   "t": 0,
+   "action": "surface",
+   "surface": "rough"
+  },
+  {
+   "t": 0,
+   "action": "tool",
+   "name": "Round large"
+  },
+  {
+   "t": 0,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 0.0,
+   "action": "dip",
+   "pigment": "burnt_umber"
+  },
+  {
+   "t": 0.0,
+   "action": "press",
+   "x": 60,
+   "y": 80,
+   "pressure": 0.7
+  },
+  {
+   "t": 0.5,
+   "action": "move",
+   "x": 320,
+   "y": 80,
+   "pressure": 0.7
+  },
+  {
+   "t": 0.5,
+   "action": "release"
+  },
+  {
+   "t": 0.7,
+   "action": "press",
+   "x": 60,
+   "y": 105,
+   "pressure": 0.7
+  },
+  {
+   "t": 1.2,
+   "action": "move",
+   "x": 320,
+   "y": 105,
+   "pressure": 0.7
+  },
+  {
+   "t": 1.2,
+   "action": "release"
+  },
+  {
+   "t": 1.4,
+   "action": "press",
+   "x": 60,
+   "y": 130,
+   "pressure": 0.7
+  },
+  {
+   "t": 1.9,
+   "action": "move",
+   "x": 320,
+   "y": 130,
+   "pressure": 0.7
+  },
+  {
+   "t": 1.9,
+   "action": "release"
+  },
+  {
+   "t": 2.1,
+   "action": "dip",
+   "pigment": "phthalo_green"
+  },
+  {
+   "t": 2.1,
+   "action": "press",
+   "x": 60,
+   "y": 80,
+   "pressure": 0.7
+  },
+  {
+   "t": 2.6,
+   "action": "move",
+   "x": 320,
+   "y": 80,
+   "pressure": 0.7
+  },
+  {
+   "t": 2.6,
+   "action": "release"
+  },
+  {
+   "t": 2.8,
+   "action": "press",
+   "x": 60,
+   "y": 105,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.3,
+   "action": "move",
+   "x": 320,
+   "y": 105,
+   "pressure": 0.7
+  },
+  {
+   "t": 3.3,
+   "action": "release"
+  },
+  {
+   "t": 3.5,
+   "action": "press",
+   "x": 60,
+   "y": 130,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.0,
+   "action": "move",
+   "x": 320,
+   "y": 130,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.0,
+   "action": "release"
+  },
+  {
+   "t": 4.2,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 4.2,
+   "action": "press",
+   "x": 360,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.7,
+   "action": "move",
+   "x": 620,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 4.7,
+   "action": "release"
+  },
+  {
+   "t": 4.9,
+   "action": "press",
+   "x": 360,
+   "y": 255,
+   "pressure": 0.7
+  },
+  {
+   "t": 5.4,
+   "action": "move",
+   "x": 620,
+   "y": 255,
+   "pressure": 0.7
+  },
+  {
+   "t": 5.4,
+   "action": "release"
+  },
+  {
+   "t": 5.6,
+   "action": "press",
+   "x": 360,
+   "y": 280,
+   "pressure": 0.7
+  },
+  {
+   "t": 6.1,
+   "action": "move",
+   "x": 620,
+   "y": 280,
+   "pressure": 0.7
+  },
+  {
+   "t": 6.1,
+   "action": "release"
+  },
+  {
+   "t": 6.3,
+   "action": "dip",
+   "pigment": "cadmium_red"
+  },
+  {
+   "t": 6.3,
+   "action": "press",
+   "x": 360,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 6.8,
+   "action": "move",
+   "x": 620,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 6.8,
+   "action": "release"
+  },
+  {
+   "t": 7.0,
+   "action": "press",
+   "x": 360,
+   "y": 255,
+   "pressure": 0.7
+  },
+  {
+   "t": 7.5,
+   "action": "move",
+   "x": 620,
+   "y": 255,
+   "pressure": 0.7
+  },
+  {
+   "t": 7.5,
+   "action": "release"
+  },
+  {
+   "t": 7.7,
+   "action": "press",
+   "x": 360,
+   "y": 280,
+   "pressure": 0.7
+  },
+  {
+   "t": 8.2,
+   "action": "move",
+   "x": 620,
+   "y": 280,
+   "pressure": 0.7
+  },
+  {
+   "t": 8.2,
+   "action": "release"
+  },
+  {
+   "t": 8.4,
+   "action": "dip",
+   "pigment": "quinacridone_rose"
+  },
+  {
+   "t": 8.4,
+   "action": "press",
+   "x": 360,
+   "y": 80,
+   "pressure": 0.7
+  },
+  {
+   "t": 8.9,
+   "action": "move",
+   "x": 620,
+   "y": 80,
+   "pressure": 0.7
+  },
+  {
+   "t": 8.9,
+   "action": "release"
+  },
+  {
+   "t": 9.1,
+   "action": "press",
+   "x": 360,
+   "y": 105,
+   "pressure": 0.7
+  },
+  {
+   "t": 9.6,
+   "action": "move",
+   "x": 620,
+   "y": 105,
+   "pressure": 0.7
+  },
+  {
+   "t": 9.6,
+   "action": "release"
+  },
+  {
+   "t": 9.8,
+   "action": "press",
+   "x": 360,
+   "y": 130,
+   "pressure": 0.7
+  },
+  {
+   "t": 10.3,
+   "action": "move",
+   "x": 620,
+   "y": 130,
+   "pressure": 0.7
+  },
+  {
+   "t": 10.3,
+   "action": "release"
+  },
+  {
+   "t": 10.5,
+   "action": "dip",
+   "pigment": "cerulean_blue"
+  },
+  {
+   "t": 10.5,
+   "action": "press",
+   "x": 60,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 11.0,
+   "action": "move",
+   "x": 320,
+   "y": 230,
+   "pressure": 0.7
+  },
+  {
+   "t": 11.0,
+   "action": "release"
+  },
+  {
+   "t": 11.2,
+   "action": "press",
+   "x": 60,
+   "y": 255,
+   "pressure": 0.7
+  },
+  {
+   "t": 11.7,
+   "action": "move",
+   "x": 320,
+   "y": 255,
+   "pressure": 0.7
+  },
+  {
+   "t": 11.7,
+   "action": "release"
+  },
+  {
+   "t": 11.9,
+   "action": "press",
+   "x": 60,
+   "y": 280,
+   "pressure": 0.7
+  },
+  {
+   "t": 12.4,
+   "action": "move",
+   "x": 320,
+   "y": 280,
+   "pressure": 0.7
+  },
+  {
+   "t": 12.4,
+   "action": "release"
+  },
+  {
+   "t": 12.8,
+   "action": "checkpoint",
+   "name": "wet"
+  },
+  {
+   "t": 112.6,
+   "action": "checkpoint",
+   "name": "dried"
+  }
+ ]
+}

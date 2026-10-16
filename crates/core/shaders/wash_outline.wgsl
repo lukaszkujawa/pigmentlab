@@ -29,7 +29,14 @@ const GRANULATION_FLOOR: f32 = 0.3;
 const TOOTH_FILLING_START: f32 = 0.12;
 const TOOTH_FILLED: f32 = 0.6;
 
-fn granular_thickness(paper_height: f32, granulation: f32, concentration: f32) -> f32 {
-    let settling = granulation * (1.0 - smoothstep(TOOTH_FILLING_START, TOOTH_FILLED, concentration));
-    return max(1.0 + settling * (PAPER_MID_HEIGHT - paper_height) * GRANULATION_CONTRAST, GRANULATION_FLOOR) * concentration;
+fn granular_settling(paper_height: f32, granulation: f32, concentration: f32) -> f32 {
+    return granulation * (1.0 - smoothstep(TOOTH_FILLING_START, TOOTH_FILLED, concentration)) * (PAPER_MID_HEIGHT - paper_height) * GRANULATION_CONTRAST;
+}
+
+fn granular_thickness(settling: f32, concentration: f32) -> f32 {
+    return max(1.0 + settling, GRANULATION_FLOOR) * concentration;
+}
+
+fn separated_absorption(mixed: vec3<f32>, granulating: vec3<f32>, settling: f32) -> vec3<f32> {
+    return max(mixed + settling * granulating, vec3<f32>(0.0)) / max(1.0 + settling, GRANULATION_FLOOR);
 }

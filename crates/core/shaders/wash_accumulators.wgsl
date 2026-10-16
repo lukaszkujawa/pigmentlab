@@ -1,5 +1,5 @@
 const ACCUMULATOR_SCALE: f32 = 65536.0;
-const ACCUMULATORS: u32 = 13u;
+const ACCUMULATORS: u32 = 16u;
 
 fn fixed(value: f32) -> i32 {
     return i32(round(value * ACCUMULATOR_SCALE));
@@ -21,4 +21,7 @@ fn add_to_wash(cell: u32, water: f32, pigment: f32, absorption: vec3<f32>, scatt
     accumulate(cell, 8u, behaviour.z * pigment);
     accumulate(cell, 9u, behaviour.x * pigment);
     accumulate(cell, 10u, behaviour.y * pigment);
+    accumulate(cell, 13u, absorption.x * behaviour.z * pigment);
+    accumulate(cell, 14u, absorption.y * behaviour.z * pigment);
+    accumulate(cell, 15u, absorption.z * behaviour.z * pigment);
 }

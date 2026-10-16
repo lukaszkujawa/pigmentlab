@@ -11,8 +11,8 @@ use crate::paint::WetBounds;
 use glam::{IVec2, UVec2};
 
 pub const CELL_PIXELS: u32 = 2;
-pub const ACCUMULATORS: u64 = 13;
-const PIGMENT_BYTES: u64 = 48;
+pub const ACCUMULATORS: u64 = 16;
+pub const PIGMENT_BYTES: u64 = 64;
 const REGION_MARGIN_CELLS: i32 = 24;
 const UNDO_DEPTH: usize = 4;
 
@@ -82,7 +82,7 @@ impl Watercolour {
         let uniform = gpu.uniform_buffer("watercolour uniform", std::mem::size_of::<WaterUniform>() as u64);
         let shader = gpu.shader(
             "watercolour",
-            &[include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/wash_outline.wgsl"), include_str!("../../shaders/wash_accumulators.wgsl"), include_str!("../../shaders/watercolour.wgsl")],
+            &[include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/wash_outline.wgsl"), include_str!("../../shaders/wash_pigment.wgsl"), include_str!("../../shaders/wash_accumulators.wgsl"), include_str!("../../shaders/watercolour.wgsl")],
         );
         let bindings = [
             (0, Binding::Uniform(&uniform)),

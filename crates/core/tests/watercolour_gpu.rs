@@ -35,8 +35,8 @@ fn darkness(engine: &Engine, blank: &[Vec4]) -> Vec<f32> {
 
 fn pigment_mass(engine: &Engine) -> f32 {
     let water = engine.watercolour().unwrap();
-    let floating = read_buffer::<[Vec4; 3]>(engine.gpu(), &water.suspended);
-    let settled = read_buffer::<[Vec4; 3]>(engine.gpu(), &water.deposited);
+    let floating = read_buffer::<[Vec4; 4]>(engine.gpu(), &water.suspended);
+    let settled = read_buffer::<[Vec4; 4]>(engine.gpu(), &water.deposited);
     floating.iter().chain(&settled).map(|p| p[0].w).sum()
 }
 
@@ -406,4 +406,38 @@ fn water_dropped_into_a_damp_wash_dries_into_a_backrun_with_a_dark_rim() {
     let surrounding = ring(95.0);
     assert!(inside < surrounding * 0.8, "the bloom should be paler than the wash: {inside} vs {surrounding}");
     assert!(rim > surrounding * 1.2, "the bloom should dry with a dark rim: {rim} vs {surrounding}");
+}
+
+fn correlation(a: &[f32], b: &[f32]) -> f32 {
+    let (mean_a, mean_b) = (mean(a), mean(b));
+    let covariance: f32 = a.iter().zip(b).map(|(x, y)| (x - mean_a) * (y - mean_b)).sum();
+    let spread = |values: &[f32], centre: f32| values.iter().map(|v| (v - centre).powi(2)).sum::<f32>().sqrt();
+    covariance / (spread(a, mean_a) * spread(b, mean_b))
+}
+
+#[test]
+fn mixed_pigments_separate_with_the_granulating_one_settling_into_the_paper_valleys() {
+    let mut engine = paper(Surface::Rough);
+    let blank = engine.dry_layer();
+    let relief = engine.canvas_relief();
+    engine.set_param("load", 1.0);
+    let mut t = 0.0;
+    for pigment in ["burnt_umber", "phthalo_green"] {
+        engine.dip(by_name(pigment).unwrap());
+        for y in [140.0, 160.0, 180.0] {
+            t = stroke(&mut engine, (120.0, y), (520.0, y), 0.7, t, 0.5);
+        }
+    }
+    engine.advance_exact(t + 90.0);
+    engine.dry();
+    let dried = engine.dry_layer();
+    let pixels: Vec<usize> = (150..172).flat_map(|y| (200..440).map(move |x| y * WIDTH + x)).collect();
+    let green_share: Vec<f32> = pixels.iter().map(|&i| {
+        let red = blank[i].y - dried[i].y;
+        let blue = blank[i].w - dried[i].w;
+        red / (red + blue).max(1e-6)
+    }).collect();
+    let heights: Vec<f32> = pixels.iter().map(|&i| relief[i]).collect();
+    let separation = correlation(&heights, &green_share);
+    assert!(separation > 0.3, "fine phthalo should sit on the peaks and granulating umber in the valleys, correlation {separation}");
 }

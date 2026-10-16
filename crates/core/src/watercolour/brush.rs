@@ -1,4 +1,4 @@
-use super::{ACCUMULATORS, Watercolour};
+use super::{ACCUMULATORS, PIGMENT_BYTES, Watercolour};
 use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
@@ -51,7 +51,7 @@ impl WaterBrush {
         );
         let previous_chain = gpu.storage_buffer("water brush previous chain", brush.chain.size());
         let lift_demand = gpu.storage_buffer("water brush lift demand and contents", (cells + GAUGE_CHANNELS as u64) * 4);
-        let lift = gpu.storage_buffer("water brush lift", cells * 48);
+        let lift = gpu.storage_buffer("water brush lift", cells * PIGMENT_BYTES);
         let sample_request = gpu.storage_buffer("water brush sample request", u64::from(sample_count) * 8);
         let start_concentration = gpu.storage_buffer("water brush start concentration", u64::from(sample_count) * 4);
         let shader = gpu.shader(
@@ -59,6 +59,7 @@ impl WaterBrush {
             &[
                 include_str!("../../shaders/hermite.wgsl"),
                 include_str!("../../shaders/wash_outline.wgsl"),
+                include_str!("../../shaders/wash_pigment.wgsl"),
                 include_str!("../../shaders/wash_accumulators.wgsl"),
                 include_str!("../../shaders/watercolour_brush.wgsl"),
                 include_str!("../../shaders/chain.wgsl"),
