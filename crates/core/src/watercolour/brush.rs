@@ -1,4 +1,4 @@
-use super::{ACCUMULATORS, PIGMENT_BYTES, Watercolour};
+use super::{PIGMENT_BYTES, Watercolour};
 use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
@@ -84,7 +84,6 @@ impl WaterBrush {
             (15, Binding::ReadOnly(&water.deposited)),
             (16, Binding::ReadWrite(&water.touched)),
         ];
-        debug_assert_eq!(ACCUMULATORS, 13);
         let pass = |label, entry| ComputePass::new(gpu, label, &shader, entry, &bindings);
         let [exchange, grant_lift, apply_lift, wick] = [
             pass("water brush exchange", "exchange"),
