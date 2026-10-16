@@ -62,6 +62,7 @@ impl Deposit {
         let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
         let pickup_demand = gpu.storage_buffer("pickup demand", (columns + 1) * 4);
         let pickup_grant = gpu.storage_buffer("pickup grant", columns * 32);
+        let stir_depth = gpu.storage_buffer("stir depth", columns * 4);
         let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
         let displacement = gpu.storage_buffer("displacement marks", columns * 20);
         let previous_curves = gpu.storage_buffer("deposit previous curves", brush.curves.size());
@@ -85,6 +86,7 @@ impl Deposit {
                 buffer_layout_entry(9, compute, read_write),
                 buffer_layout_entry(10, compute, read_write),
                 buffer_layout_entry(11, compute, read_write),
+                buffer_layout_entry(12, compute, read_write),
                 buffer_layout_entry(13, compute, read_write),
                 buffer_layout_entry(14, compute, read_write),
                 buffer_layout_entry(15, compute, read_write),
@@ -108,6 +110,7 @@ impl Deposit {
                 buffer_binding(9, &film),
                 buffer_binding(10, &pickup_demand),
                 buffer_binding(11, &pickup_grant),
+                buffer_binding(12, &stir_depth),
                 buffer_binding(13, &sample_request),
                 buffer_binding(14, &displacement),
                 buffer_binding(15, &column_state),

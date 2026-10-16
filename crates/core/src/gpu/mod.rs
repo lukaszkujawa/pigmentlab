@@ -87,12 +87,13 @@ pub fn buffer_binding(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEnt
 
 fn shared_constants() -> String {
     format!(
-        "const PIXELS_PER_CM: f32 = {:?};\nconst PAINT_SCALE: f32 = {:?};\nconst CHANNELS: u32 = {}u;\nconst FULL_CELL: f32 = {:?};\nconst BRISTLE_VERTICES: u32 = {}u;\nconst SPREAD_PER_COMPRESSION: f32 = {:?};",
+        "const PIXELS_PER_CM: f32 = {:?};\nconst PAINT_SCALE: f32 = {:?};\nconst CHANNELS: u32 = {}u;\nconst FULL_CELL: f32 = {:?};\nconst BRISTLE_VERTICES: u32 = {}u;\nconst SPREAD_PER_COMPRESSION: f32 = {:?};\nconst OPTICAL_THICKNESS_PER_PIXEL: f32 = {:?};",
         crate::units::PIXELS_PER_CM,
         crate::canvas::PAINT_SCALE,
         crate::canvas::PAINT_CHANNELS,
         crate::canvas::FULL_CELL,
         crate::brush::VERTICES_PER_BRISTLE,
         crate::brush::SPREAD_PER_COMPRESSION,
+        crate::pigment::OPTICAL_THICKNESS_PER_PIXEL,
     )
 }

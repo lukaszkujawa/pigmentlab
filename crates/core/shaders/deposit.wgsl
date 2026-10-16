@@ -18,6 +18,7 @@ const DRAG_RATE_PER_SECOND: f32 = 24.0;
 const WIPE_RATE_PER_SECOND: f32 = 60.0;
 const CONTACT_RATE: f32 = 0.3;
 const SATURATED_BLEED: f32 = 0.5;
+const STIR_RATE_PER_SECOND: f32 = 30.0;
 const LANDING_SUBSTEPS: f32 = 24.0;
 const DISPLACEMENT_SLOTS: u32 = 5u;
 const COARSE_CELL: u32 = 16u;
@@ -49,6 +50,7 @@ struct DepositUniform {
 @group(0) @binding(9) var<storage, read_write> film: array<atomic<i32>>;
 @group(0) @binding(10) var<storage, read_write> pickup_demand: array<atomic<i32>>;
 @group(0) @binding(11) var<storage, read_write> pickup_grant: array<PickupGrant>;
+@group(0) @binding(12) var<storage, read_write> stir_depth: array<atomic<i32>>;
 @group(0) @binding(13) var<storage, read_write> sample_request: array<vec2<f32>>;
 @group(0) @binding(14) var<storage, read_write> displacement: array<atomic<i32>>;
 @group(0) @binding(15) var<storage, read_write> column_state: array<vec4<f32>>;
@@ -91,11 +93,15 @@ fn returned_portion(segment: Segment) -> f32 {
     return segment.fill * SATURATED_BLEED / max(exchange_portion(segment), 1e-6);
 }
 
+fn buried_depth(point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>) -> f32 {
+    return clamp(min(state.x, base_height(pixel)) - (point.z - state.w), 0.0, deposit.contact_height);
+}
+
 fn pickup_wanted(segment: Segment, point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>, remaining: ptr<function, f32>) -> f32 {
     let height = state.x + state.w;
     if (!segment.carries_film || state.x <= 0.0 || point.z > height + segment.film) { return 0.0; }
     let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
-    let buried = clamp(min(state.x, base_height(pixel)) - (point.z - state.w), 0.0, deposit.contact_height);
+    let buried = buried_depth(point, pixel, state);
     let share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) / f32(segment.steps) * min(segment.motion, brush_motion);
     let wanted = min(share * exchange_portion(segment), *remaining);
     *remaining -= wanted * (1.0 - returned_portion(segment));
@@ -165,6 +171,12 @@ fn add_vec3(cell: u32, offset: u32, value: vec3<f32>) {
     atomicAdd(&paint[cell + offset + 2u], fixed(value.z));
 }
 
+fn store_vec3(cell: u32, offset: u32, value: vec3<f32>) {
+    atomicStore(&paint[cell + offset], fixed(value.x));
+    atomicStore(&paint[cell + offset + 1u], fixed(value.y));
+    atomicStore(&paint[cell + offset + 2u], fixed(value.z));
+}
+
 fn load_vec3(cell: u32, offset: u32) -> vec3<f32> {
     return vec3<f32>(
         f32(atomicLoad(&paint[cell + offset])),
@@ -225,6 +237,7 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     column_state[column] = vec4<f32>(f32(height) / PAINT_SCALE, top, 0.0, ground_here);
     atomicMax(&pickup_demand[max_surface_slot()], fixed(f32(height) / PAINT_SCALE + ground_here));
     atomicStore(&pickup_demand[column], 0);
+    atomicStore(&stir_depth[column], 0);
     for (var channel = 0u; channel < CHANNELS; channel++) { atomicStore(&film[column * CHANNELS + channel], 0); }
     for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
     atomicStore(&coarse_marks[coarse_index(id.xy)], 0u);
@@ -326,6 +339,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let travelled = distance(segment.start.xy, segment.end.xy);
     let brush_moving = deposit.brush_travel >= MIN_DISPLACING_SPEED * deposit.dt;
     let share = 1.0 / f32(segment.steps);
+    let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
     let direction = select(vec2<f32>(0.0), (segment.end.xy - segment.start.xy) / max(travelled, 1e-6), travelled > 1e-3);
     for (var i = 1u; i <= segment.steps; i++) {
         let point = mix(segment.start, segment.end, f32(i) / f32(segment.steps));
@@ -337,6 +351,10 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         if (wanted > 0.0) {
             atomicAdd(&pickup_demand[column_index(local)], fixed(wanted));
             requested += wanted;
+        }
+        if (state.x > 0.0) {
+            let stirring = buried_depth(point, pixel, state) * min(segment.motion, brush_motion);
+            if (stirring > 0.0) { atomicMax(&stir_depth[column_index(local)], fixed(stirring)); }
         }
         let film = mix(FILM_MIN_RADIUS, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0) * carries_film);
         let height = state.x + state.w;
@@ -353,10 +371,42 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     sample_request[sample] = vec2<f32>(initial_load, requested);
 }
 
+fn stir_column(local: vec2<u32>, depth: f32) {
+    if (depth <= 0.0) { return; }
+    var covered = 0.0;
+    var absorption = vec3<f32>(0.0);
+    var scattering = vec3<f32>(0.0);
+    var medium = 0.0;
+    var bottom = window.depth;
+    for (var step = 0u; step < window.depth && covered < depth; step++) {
+        let z = window.depth - 1u - step;
+        let cell = window_cell(vec3<u32>(local, z));
+        let density = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
+        if (density <= 0.0) { continue; }
+        covered += density;
+        absorption += load_vec3(cell, 1u);
+        scattering += load_vec3(cell, 4u);
+        medium += f32(atomicLoad(&paint[cell + 7u])) / PAINT_SCALE;
+        bottom = z;
+    }
+    if (covered <= 0.0) { return; }
+    let rate = min(STIR_RATE_PER_SECOND * deposit.dt, 1.0);
+    for (var z = bottom; z < window.depth; z++) {
+        let cell = window_cell(vec3<u32>(local, z));
+        let density = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
+        if (density <= 0.0) { continue; }
+        let share = density / covered;
+        store_vec3(cell, 1u, mix(load_vec3(cell, 1u), absorption * share, rate));
+        store_vec3(cell, 4u, mix(load_vec3(cell, 4u), scattering * share, rate));
+        atomicStore(&paint[cell + 7u], fixed(mix(f32(atomicLoad(&paint[cell + 7u])) / PAINT_SCALE, medium * share, rate)));
+    }
+}
+
 @compute @workgroup_size(16, 16)
 fn grant_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= window.width || id.y >= window.height) { return; }
     let column = column_index(id.xy);
+    stir_column(id.xy, f32(atomicLoad(&stir_depth[column])) / PAINT_SCALE);
     let demand = f32(atomicLoad(&pickup_demand[column])) / PAINT_SCALE;
     pickup_grant[column] = PickupGrant(vec3<f32>(0.0), 0.0, vec4<f32>(0.0));
     if (demand <= 0.0) { return; }

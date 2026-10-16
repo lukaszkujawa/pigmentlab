@@ -60,7 +60,7 @@ impl ActiveWindow {
         });
         let shader = gpu.shader(
             "active window transfer",
-            &[ include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/window_transfer.wgsl")],
+            &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/window_transfer.wgsl")],
         );
         let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("active window transfer"),

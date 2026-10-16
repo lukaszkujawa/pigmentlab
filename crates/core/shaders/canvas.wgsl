@@ -2,7 +2,7 @@ struct CanvasUniform {
     width: u32,
     height: u32,
     shrink: f32,
-    optical_thickness_per_pixel: f32,
+    padding: f32,
 };
 
 const MIN_DRY_HEIGHT: f32 = 1e-3;
@@ -27,7 +27,7 @@ fn bake_dry(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     if (height < MIN_DRY_HEIGHT) { return; }
     let previous = dry[index];
-    let colour = layer_reflectance(k, s, height * canvas.optical_thickness_per_pixel, previous.yzw);
+    let colour = layer_reflectance(k, s, height * OPTICAL_THICKNESS_PER_PIXEL, previous.yzw);
     dry[index] = vec4<f32>(previous.x + height * canvas.shrink, colour);
 }
 

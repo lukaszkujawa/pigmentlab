@@ -2,7 +2,6 @@ use crate::canvas::Canvas;
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use super::height_map::HeightMap;
 use crate::paint::ActiveWindow;
-use crate::pigment::OPTICAL_THICKNESS_PER_PIXEL;
 
 pub const DISPLAY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
@@ -11,12 +10,12 @@ pub const DISPLAY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormS
 struct CompositeUniform {
     canvas_width: u32,
     canvas_height: u32,
-    optical_thickness_per_pixel: f32,
     light_azimuth: f32,
     light_elevation: f32,
     gloss: f32,
     ambient: f32,
     shadow_strength: f32,
+    padding: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -129,12 +128,12 @@ impl Composite {
             bytemuck::bytes_of(&CompositeUniform {
                 canvas_width: self.canvas.width,
                 canvas_height: self.canvas.height,
-                optical_thickness_per_pixel: OPTICAL_THICKNESS_PER_PIXEL,
                 light_azimuth: lighting.azimuth_degrees,
                 light_elevation: lighting.elevation_degrees,
                 gloss: lighting.gloss,
                 ambient: lighting.ambient,
                 shadow_strength: lighting.shadow_strength,
+                padding: 0.0,
             }),
         );
     }

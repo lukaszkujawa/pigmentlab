@@ -1,7 +1,6 @@
 mod substrate;
 
 use crate::gpu::{Binding, ComputePass, Gpu};
-use crate::pigment::OPTICAL_THICKNESS_PER_PIXEL;
 
 pub const PAINT_CHANNELS: u64 = 8;
 pub const PAINT_SCALE: f32 = 65536.0;
@@ -31,7 +30,7 @@ struct CanvasUniform {
     width: u32,
     height: u32,
     shrink: f32,
-    optical_thickness_per_pixel: f32,
+    padding: f32,
 }
 
 pub struct Canvas {
@@ -54,7 +53,7 @@ impl Canvas {
         let relief = gpu.storage_buffer("canvas relief", size.pixel_count() * 4);
         let ground = gpu.storage_buffer("canvas ground", size.pixel_count() * 4);
         let uniform = gpu.uniform_buffer("canvas uniform", std::mem::size_of::<CanvasUniform>() as u64);
-        gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&CanvasUniform { width: size.width, height: size.height, shrink: DRY_SHRINK, optical_thickness_per_pixel: OPTICAL_THICKNESS_PER_PIXEL }));
+        gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&CanvasUniform { width: size.width, height: size.height, shrink: DRY_SHRINK, padding: 0.0 }));
         let shader = gpu.shader("canvas", &[ include_str!("../../shaders/km.wgsl"), include_str!("../../shaders/canvas.wgsl")]);
         let bindings = [
             (0, Binding::Uniform(&uniform)),

@@ -14,18 +14,34 @@ fn bake(@builtin(global_invocation_id) id: vec3<u32>) {
     let pixel = vec2<i32>(id.xy) + window.previous_origin;
     let relocating = any(window.previous_origin != window.origin);
     if (!on_canvas(pixel) || (relocating && window_contains(pixel))) { return; }
-    var total: array<i32, 8>;
-    for (var channel = 0u; channel < CHANNELS; channel++) { total[channel] = 0; }
-    for (var z = 0u; z < window.depth; z++) {
-        let cell = window_cell(vec3<u32>(id.x, id.y, z));
-        for (var channel = 0u; channel < CHANNELS; channel++) {
-            total[channel] += previous[cell + channel];
-        }
+    var visible = no_visible_pigment();
+    var height = 0;
+    var medium = 0;
+    for (var step = 0u; step < window.depth; step++) {
+        let cell = window_cell(vec3<u32>(id.x, id.y, window.depth - 1u - step));
+        let density_fixed = previous[cell];
+        if (density_fixed <= 0) { continue; }
+        let density = f32(density_fixed) / PAINT_SCALE;
+        add_layer_below(&visible, density, previous_vec3(cell, 1u) / density, previous_vec3(cell, 4u) / density, 0.0);
+        height += density_fixed;
+        medium += previous[cell + 7u];
     }
     let destination = store_cell(vec2<u32>(pixel));
-    for (var channel = 0u; channel < CHANNELS; channel++) {
-        store[destination + channel] = total[channel];
-    }
+    let total = f32(height) / PAINT_SCALE;
+    let absorption = visible_absorption(visible) * total;
+    let scattering = visible_scattering(visible) * total;
+    store[destination] = height;
+    store[destination + 1u] = i32(round(absorption.x * PAINT_SCALE));
+    store[destination + 2u] = i32(round(absorption.y * PAINT_SCALE));
+    store[destination + 3u] = i32(round(absorption.z * PAINT_SCALE));
+    store[destination + 4u] = i32(round(scattering.x * PAINT_SCALE));
+    store[destination + 5u] = i32(round(scattering.y * PAINT_SCALE));
+    store[destination + 6u] = i32(round(scattering.z * PAINT_SCALE));
+    store[destination + 7u] = medium;
+}
+
+fn previous_vec3(cell: u32, offset: u32) -> vec3<f32> {
+    return vec3<f32>(f32(previous[cell + offset]), f32(previous[cell + offset + 1u]), f32(previous[cell + offset + 2u])) / PAINT_SCALE;
 }
 
 fn carry_column(local: vec2<u32>, previous_local: vec2<u32>) {
