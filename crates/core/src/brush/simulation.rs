@@ -23,7 +23,12 @@ pub struct BrushUniform {
     canvas_height: f32,
     sink: f32,
     ferrule_extent: f32,
+    cohesion: f32,
+    cohesion_radius: f32,
+    _padding: [f32; 2],
 }
+
+const COHESION_RADIUS_FRACTION: f32 = 0.5;
 
 impl BrushUniform {
     fn new(preset: &BrushPreset, pose: &BrushPose, canvas: [f32; 2]) -> Self {
@@ -40,6 +45,9 @@ impl BrushUniform {
             canvas_height: canvas[1],
             sink: preset.sink,
             ferrule_extent: preset.width.max(preset.thickness) * 0.5,
+            cohesion: preset.cohesion,
+            cohesion_radius: preset.width.max(preset.thickness) * 0.5 * COHESION_RADIUS_FRACTION,
+            _padding: [0.0; 2],
         }
     }
 }
@@ -56,7 +64,8 @@ pub struct Brush {
     pub sample_scattering: wgpu::Buffer,
     tips: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
-    pipeline: wgpu::ComputePipeline,
+    step: wgpu::ComputePipeline,
+    cohere: wgpu::ComputePipeline,
 }
 
 impl Brush {
@@ -99,8 +108,10 @@ impl Brush {
                 buffer_layout_entry(4, compute, read_write),
                 buffer_layout_entry(5, compute, wgpu::BufferBindingType::Uniform),
                 buffer_layout_entry(6, compute, read_only),
+                buffer_layout_entry(7, compute, read_write),
             ],
         });
+        let proposals = gpu.storage_buffer("bristle proposals", tips.size());
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("bristles"),
             layout: &layout,
@@ -112,6 +123,7 @@ impl Brush {
                 buffer_binding(4, &curves),
                 buffer_binding(5, &window.uniform),
                 buffer_binding(6, &window.volume),
+                buffer_binding(7, &proposals),
             ],
         });
         let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -119,14 +131,16 @@ impl Brush {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let pipeline = gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("bristles"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("step"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
+        let pipeline = |entry: &str| {
+            gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(entry),
+                layout: Some(&pipeline_layout),
+                module: &shader,
+                entry_point: Some(entry),
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        };
         let brush = Self {
             preset,
             rest,
@@ -139,7 +153,8 @@ impl Brush {
             sample_scattering,
             tips,
             bind_group,
-            pipeline,
+            step: pipeline("step"),
+            cohere: pipeline("cohere"),
         };
         brush.teleport(gpu, &BrushPose::upright(Vec3::ZERO));
         brush
@@ -186,8 +201,11 @@ impl Brush {
             label: Some("bristles"),
             timestamp_writes: None,
         });
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.dispatch_workgroups(self.preset.bristle_count.div_ceil(WORKGROUP_SIZE), 1, 1);
+        let groups = self.preset.bristle_count.div_ceil(WORKGROUP_SIZE);
+        pass.set_pipeline(&self.step);
+        pass.dispatch_workgroups(groups, 1, 1);
+        pass.set_pipeline(&self.cohere);
+        pass.dispatch_workgroups(groups, 1, 1);
     }
 }

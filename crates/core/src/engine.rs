@@ -212,6 +212,7 @@ impl Engine {
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.history.push(&mut encoder, &self.canvas.paint);
         self.fluid.encode_dry_all(&mut encoder);
+        self.store_levelling.encode_dry(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
     }
 

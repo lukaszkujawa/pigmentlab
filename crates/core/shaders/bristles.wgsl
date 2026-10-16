@@ -19,6 +19,9 @@ struct BrushUniform {
     canvas_height: f32,
     sink: f32,
     ferrule_extent: f32,
+    cohesion: f32,
+    cohesion_radius: f32,
+    padding: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> brush: BrushUniform;
@@ -28,6 +31,19 @@ struct BrushUniform {
 @group(0) @binding(4) var<storage, read_write> curves: array<vec4<f32>>;
 @group(0) @binding(5) var<uniform> window: WindowUniform;
 @group(0) @binding(6) var<storage, read> volume: array<i32>;
+@group(0) @binding(7) var<storage, read_write> proposals: array<vec4<f32>>;
+
+struct Frame {
+    root: vec3<f32>,
+    root_tangent: vec3<f32>,
+    rest_tip: vec3<f32>,
+    previous_tip: vec3<f32>,
+    lift: vec3<f32>,
+    length: f32,
+    natural_reach: f32,
+    max_reach: f32,
+    contact: bool,
+}
 
 fn paint_height_under(xy: vec2<f32>) -> f32 {
     let pixel = vec2<i32>(floor(xy));
@@ -110,12 +126,8 @@ fn horizontal_direction(preferred: vec2<f32>, fallback: vec2<f32>) -> vec2<f32> 
     return vec2<f32>(1.0, 0.0);
 }
 
-@compute @workgroup_size(64)
-fn step(@builtin(global_invocation_id) id: vec3<u32>) {
-    let bristle = id.x;
-    if (bristle >= brush.bristle_count) { return; }
+fn frame_of(bristle: u32) -> Frame {
     let base = bristle * VERTICES;
-
     let ferrule_radius = max(length(rest[base + 1u].xy), 1e-3);
     let radial = clamp(ferrule_radius / brush.ferrule_extent, 0.0, 1.0);
     let splay = brush.splay * mix(0.25, 1.0, radial);
@@ -125,51 +137,98 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let root_tangent = direction_to_canvas(normalize(rest[base + 2u].xyz - rest[base + 1u].xyz));
     let bristle_length = distance(rest[base + VERTICES - 1u].xyz, rest[base + 1u].xyz);
     let rest_tip = root + root_tangent * bristle_length;
-    let previous_tip = tips[bristle].xyz - lift;
+    let contact = rest_tip.z < 0.0 && root.z > 0.0;
+    var natural_reach = 0.0;
+    if (contact) {
+        let angle_below_horizontal = atan2(-root_tangent.z, length(root_tangent.xy));
+        natural_reach = rod_reach(angle_below_horizontal, root.z, bristle_length) * splay;
+    }
+    let max_reach = sqrt(max(bristle_length * bristle_length - root.z * root.z, 0.0)) * MAX_REACH_FRACTION;
+    return Frame(root, root_tangent, rest_tip, tips[bristle].xyz - lift, lift, bristle_length, natural_reach, max_reach, contact);
+}
+
+fn lean_of(f: Frame) -> vec2<f32> {
+    return horizontal_direction(f.root_tangent.xy, f.previous_tip.xy - f.root.xy);
+}
+
+@compute @workgroup_size(64)
+fn step(@builtin(global_invocation_id) id: vec3<u32>) {
+    let bristle = id.x;
+    if (bristle >= brush.bristle_count) { return; }
+    let f = frame_of(bristle);
+
+    if (f.contact) {
+        let equilibrium = f.root.xy + lean_of(f) * f.natural_reach;
+        let stuck = f.previous_tip.xy;
+        let pull = equilibrium - stuck;
+        let pull_length = max(length(pull), 1e-6);
+        let slip_limit = brush.friction * -f.rest_tip.z;
+        let excess = max(pull_length - slip_limit, 0.0);
+        let compressed = length(stuck - f.root.xy) < f.natural_reach;
+        let rate = select(RECOVER_RATE, SPLAY_RATE, compressed);
+        let slide = min(excess * rate, pull_length);
+        proposals[bristle] = vec4<f32>(stuck + pull / pull_length * slide - equilibrium, 0.0, 1.0);
+    } else {
+        let clear_of_canvas = f.previous_tip.z > LIFT_CLEARANCE;
+        let recovered = mix(f.previous_tip, f.rest_tip, brush.recovery);
+        let tip = vec3<f32>(select(f.previous_tip.xy, recovered.xy, clear_of_canvas), max(recovered.z, 0.0));
+        proposals[bristle] = vec4<f32>(tip - f.rest_tip, 0.0);
+    }
+}
+
+fn cohered_slip(bristle: u32, own: vec3<f32>, contact: f32) -> vec3<f32> {
+    let anchor = rest[bristle * VERTICES + 1u].xy;
+    let sigma = max(brush.cohesion_radius, 1e-3);
+    var weighted = vec3<f32>(0.0);
+    var total = 0.0;
+    for (var other = 0u; other < brush.bristle_count; other++) {
+        let proposal = proposals[other];
+        if (proposal.w != contact) { continue; }
+        let d = distance(anchor, rest[other * VERTICES + 1u].xy) / sigma;
+        let weight = exp(-0.5 * d * d);
+        weighted += proposal.xyz * weight;
+        total += weight;
+    }
+    return mix(own, weighted / max(total, 1e-6), brush.cohesion);
+}
+
+@compute @workgroup_size(64)
+fn cohere(@builtin(global_invocation_id) id: vec3<u32>) {
+    let bristle = id.x;
+    if (bristle >= brush.bristle_count) { return; }
+    let base = bristle * VERTICES;
+    let f = frame_of(bristle);
+    let proposal = proposals[bristle];
+    let slip = cohered_slip(bristle, proposal.xyz, proposal.w);
 
     var tip: vec3<f32>;
     var tip_tangent: vec3<f32>;
-    var contact = 0.0;
-    if (rest_tip.z < 0.0 && root.z > 0.0) {
-        let lean = horizontal_direction(root_tangent.xy, previous_tip.xy - root.xy);
-        let angle_below_horizontal = atan2(-root_tangent.z, length(root_tangent.xy));
-        let natural_reach = rod_reach(angle_below_horizontal, root.z, bristle_length) * splay;
-        let max_reach = sqrt(max(bristle_length * bristle_length - root.z * root.z, 0.0)) * MAX_REACH_FRACTION;
-        let equilibrium = root.xy + lean * natural_reach;
-        let stuck = previous_tip.xy;
-        let pull = equilibrium - stuck;
-        let pull_length = max(length(pull), 1e-6);
-        let slip_limit = brush.friction * -rest_tip.z;
-        let excess = max(pull_length - slip_limit, 0.0);
-        let compressed = length(stuck - root.xy) < natural_reach;
-        let rate = select(RECOVER_RATE, SPLAY_RATE, compressed);
-        let slide = min(excess * rate, pull_length);
-        var offset = stuck + pull / pull_length * slide - root.xy;
-        let reach = length(offset);
-        if (reach > max_reach) { offset *= max_reach / reach; }
-        tip = vec3<f32>(root.xy + offset, 0.0);
-        let azimuth = horizontal_direction(offset, lean);
-        let flatness = clamp(1.0 - (length(offset) - natural_reach) / max(max_reach - natural_reach, 1e-4), 0.0, 1.0);
+    if (f.contact) {
+        let lean = lean_of(f);
+        var planar = lean * f.natural_reach + slip.xy;
+        let reach = length(planar);
+        if (reach > f.max_reach) { planar *= f.max_reach / reach; }
+        tip = vec3<f32>(f.root.xy + planar, 0.0);
+        let azimuth = horizontal_direction(planar, lean);
+        let flatness = clamp(1.0 - (length(planar) - f.natural_reach) / max(f.max_reach - f.natural_reach, 1e-4), 0.0, 1.0);
         tip_tangent = normalize(mix(vec3<f32>(0.0, 0.0, -1.0), vec3<f32>(azimuth, 0.0), flatness));
-        contact = 1.0;
     } else {
-        let clear_of_canvas = previous_tip.z > LIFT_CLEARANCE;
-        tip = mix(previous_tip, rest_tip, brush.recovery);
-        tip = vec3<f32>(select(previous_tip.xy, tip.xy, clear_of_canvas), max(tip.z, 0.0));
-        tip_tangent = normalize(mix(root_tangent, normalize(tip - root), 0.5));
+        tip = f.rest_tip + vec3<f32>(slip.xy, proposal.z);
+        tip.z = max(tip.z, 0.0);
+        tip_tangent = normalize(mix(f.root_tangent, normalize(tip - f.root), 0.5));
     }
 
-    let scale = tangent_scale_for_length(root, root_tangent, tip, tip_tangent, bristle_length);
-    let m0 = root_tangent * scale * bristle_length;
-    let m1 = tip_tangent * scale * bristle_length * TIP_TANGENT_WEIGHT;
+    let scale = tangent_scale_for_length(f.root, f.root_tangent, tip, tip_tangent, f.length);
+    let m0 = f.root_tangent * scale * f.length;
+    let m1 = tip_tangent * scale * f.length * TIP_TANGENT_WEIGHT;
     positions[base] = rest[base];
     for (var k = 1u; k < VERTICES; k++) {
-        let point = above_canvas(hermite(root, m0, tip, m1, f32(k - 1u) / f32(VERTICES - 2u))) + lift;
+        let point = above_canvas(hermite(f.root, m0, tip, m1, f32(k - 1u) / f32(VERTICES - 2u))) + f.lift;
         positions[base + k] = vec4<f32>(to_brush(point), 0.0);
     }
-    tips[bristle] = vec4<f32>(tip + lift, contact);
-    curves[bristle * 4u] = vec4<f32>(root + lift, 0.0);
+    tips[bristle] = vec4<f32>(tip + f.lift, proposal.w);
+    curves[bristle * 4u] = vec4<f32>(f.root + f.lift, 0.0);
     curves[bristle * 4u + 1u] = vec4<f32>(m0, 0.0);
-    curves[bristle * 4u + 2u] = vec4<f32>(tip + lift, 0.0);
+    curves[bristle * 4u + 2u] = vec4<f32>(tip + f.lift, 0.0);
     curves[bristle * 4u + 3u] = vec4<f32>(m1, 0.0);
 }

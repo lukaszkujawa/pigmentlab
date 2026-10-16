@@ -71,3 +71,12 @@ fn level_odd(@builtin(global_invocation_id) id: vec3<u32>) {
     let pixel = vec2<i32>(i32(id.x) * 2 + 1 - i32(id.y & 1u), i32(id.y));
     level_pixel(pixel);
 }
+
+@compute @workgroup_size(16, 16)
+fn dry_all(@builtin(global_invocation_id) id: vec3<u32>) {
+    let pixel = vec2<i32>(id.xy);
+    if (!on_canvas(pixel)) { return; }
+    let cell = store_cell(vec2<u32>(pixel));
+    if (store[cell] <= 0) { return; }
+    store[cell + 7u] = i32(PAINT_SCALE);
+}
