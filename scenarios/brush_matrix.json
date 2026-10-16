@@ -1,0 +1,734 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 1680,
+    "height": 1400
+  },
+  "steps": [
+    {
+      "t": 0.0,
+      "action": "tool",
+      "name": "Round small"
+    },
+    {
+      "t": 0.0,
+      "action": "param",
+      "name": "size",
+      "value": 0.7
+    },
+    {
+      "t": 0.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.2
+    },
+    {
+      "t": 0.0,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.0,
+      "action": "press",
+      "x": 120,
+      "y": 110,
+      "pressure": 0.35
+    },
+    {
+      "t": 0.4,
+      "action": "move",
+      "x": 540,
+      "y": 150,
+      "pressure": 0.35
+    },
+    {
+      "t": 0.4,
+      "action": "release"
+    },
+    {
+      "t": 0.5,
+      "action": "tool",
+      "name": "Round small"
+    },
+    {
+      "t": 0.5,
+      "action": "param",
+      "name": "size",
+      "value": 1.0
+    },
+    {
+      "t": 0.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.5
+    },
+    {
+      "t": 0.5,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0.5,
+      "action": "press",
+      "x": 640,
+      "y": 110,
+      "pressure": 0.7
+    },
+    {
+      "t": 0.9,
+      "action": "move",
+      "x": 1060,
+      "y": 150,
+      "pressure": 0.7
+    },
+    {
+      "t": 0.9,
+      "action": "release"
+    },
+    {
+      "t": 1.0,
+      "action": "tool",
+      "name": "Round small"
+    },
+    {
+      "t": 1.0,
+      "action": "param",
+      "name": "size",
+      "value": 1.5
+    },
+    {
+      "t": 1.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.9
+    },
+    {
+      "t": 1.0,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 1.0,
+      "action": "press",
+      "x": 1160,
+      "y": 110,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.4,
+      "action": "move",
+      "x": 1580,
+      "y": 150,
+      "pressure": 1.0
+    },
+    {
+      "t": 1.4,
+      "action": "release"
+    },
+    {
+      "t": 1.5,
+      "action": "tool",
+      "name": "Round medium"
+    },
+    {
+      "t": 1.5,
+      "action": "param",
+      "name": "size",
+      "value": 0.7
+    },
+    {
+      "t": 1.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.2
+    },
+    {
+      "t": 1.5,
+      "action": "dip",
+      "pigment": "french_ultramarine"
+    },
+    {
+      "t": 1.5,
+      "action": "press",
+      "x": 120,
+      "y": 290,
+      "pressure": 0.35
+    },
+    {
+      "t": 1.9,
+      "action": "move",
+      "x": 540,
+      "y": 330,
+      "pressure": 0.35
+    },
+    {
+      "t": 1.9,
+      "action": "release"
+    },
+    {
+      "t": 2.0,
+      "action": "tool",
+      "name": "Round medium"
+    },
+    {
+      "t": 2.0,
+      "action": "param",
+      "name": "size",
+      "value": 1.0
+    },
+    {
+      "t": 2.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.5
+    },
+    {
+      "t": 2.0,
+      "action": "dip",
+      "pigment": "french_ultramarine"
+    },
+    {
+      "t": 2.0,
+      "action": "press",
+      "x": 640,
+      "y": 290,
+      "pressure": 0.7
+    },
+    {
+      "t": 2.4,
+      "action": "move",
+      "x": 1060,
+      "y": 330,
+      "pressure": 0.7
+    },
+    {
+      "t": 2.4,
+      "action": "release"
+    },
+    {
+      "t": 2.5,
+      "action": "tool",
+      "name": "Round medium"
+    },
+    {
+      "t": 2.5,
+      "action": "param",
+      "name": "size",
+      "value": 1.5
+    },
+    {
+      "t": 2.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.9
+    },
+    {
+      "t": 2.5,
+      "action": "dip",
+      "pigment": "french_ultramarine"
+    },
+    {
+      "t": 2.5,
+      "action": "press",
+      "x": 1160,
+      "y": 290,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.9,
+      "action": "move",
+      "x": 1580,
+      "y": 330,
+      "pressure": 1.0
+    },
+    {
+      "t": 2.9,
+      "action": "release"
+    },
+    {
+      "t": 3.0,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 3.0,
+      "action": "param",
+      "name": "size",
+      "value": 0.7
+    },
+    {
+      "t": 3.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.2
+    },
+    {
+      "t": 3.0,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 3.0,
+      "action": "press",
+      "x": 120,
+      "y": 560,
+      "pressure": 0.35
+    },
+    {
+      "t": 3.4,
+      "action": "move",
+      "x": 540,
+      "y": 600,
+      "pressure": 0.35
+    },
+    {
+      "t": 3.4,
+      "action": "release"
+    },
+    {
+      "t": 3.5,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 3.5,
+      "action": "param",
+      "name": "size",
+      "value": 1.0
+    },
+    {
+      "t": 3.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.5
+    },
+    {
+      "t": 3.5,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 3.5,
+      "action": "press",
+      "x": 640,
+      "y": 560,
+      "pressure": 0.7
+    },
+    {
+      "t": 3.9,
+      "action": "move",
+      "x": 1060,
+      "y": 600,
+      "pressure": 0.7
+    },
+    {
+      "t": 3.9,
+      "action": "release"
+    },
+    {
+      "t": 4.0,
+      "action": "tool",
+      "name": "Round large"
+    },
+    {
+      "t": 4.0,
+      "action": "param",
+      "name": "size",
+      "value": 1.5
+    },
+    {
+      "t": 4.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.9
+    },
+    {
+      "t": 4.0,
+      "action": "dip",
+      "pigment": "cadmium_yellow"
+    },
+    {
+      "t": 4.0,
+      "action": "press",
+      "x": 1160,
+      "y": 560,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.4,
+      "action": "move",
+      "x": 1580,
+      "y": 600,
+      "pressure": 1.0
+    },
+    {
+      "t": 4.4,
+      "action": "release"
+    },
+    {
+      "t": 4.5,
+      "action": "tool",
+      "name": "Flat"
+    },
+    {
+      "t": 4.5,
+      "action": "param",
+      "name": "size",
+      "value": 0.7
+    },
+    {
+      "t": 4.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.2
+    },
+    {
+      "t": 4.5,
+      "action": "dip",
+      "pigment": "phthalo_green"
+    },
+    {
+      "t": 4.5,
+      "action": "press",
+      "x": 120,
+      "y": 840,
+      "pressure": 0.35
+    },
+    {
+      "t": 4.9,
+      "action": "move",
+      "x": 540,
+      "y": 880,
+      "pressure": 0.35
+    },
+    {
+      "t": 4.9,
+      "action": "release"
+    },
+    {
+      "t": 5.0,
+      "action": "tool",
+      "name": "Flat"
+    },
+    {
+      "t": 5.0,
+      "action": "param",
+      "name": "size",
+      "value": 1.0
+    },
+    {
+      "t": 5.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.5
+    },
+    {
+      "t": 5.0,
+      "action": "dip",
+      "pigment": "phthalo_green"
+    },
+    {
+      "t": 5.0,
+      "action": "press",
+      "x": 640,
+      "y": 840,
+      "pressure": 0.7
+    },
+    {
+      "t": 5.4,
+      "action": "move",
+      "x": 1060,
+      "y": 880,
+      "pressure": 0.7
+    },
+    {
+      "t": 5.4,
+      "action": "release"
+    },
+    {
+      "t": 5.5,
+      "action": "tool",
+      "name": "Flat"
+    },
+    {
+      "t": 5.5,
+      "action": "param",
+      "name": "size",
+      "value": 1.5
+    },
+    {
+      "t": 5.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.9
+    },
+    {
+      "t": 5.5,
+      "action": "dip",
+      "pigment": "phthalo_green"
+    },
+    {
+      "t": 5.5,
+      "action": "press",
+      "x": 1160,
+      "y": 840,
+      "pressure": 1.0
+    },
+    {
+      "t": 5.9,
+      "action": "move",
+      "x": 1580,
+      "y": 880,
+      "pressure": 1.0
+    },
+    {
+      "t": 5.9,
+      "action": "release"
+    },
+    {
+      "t": 6.0,
+      "action": "tool",
+      "name": "Filbert"
+    },
+    {
+      "t": 6.0,
+      "action": "param",
+      "name": "size",
+      "value": 0.7
+    },
+    {
+      "t": 6.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.2
+    },
+    {
+      "t": 6.0,
+      "action": "dip",
+      "pigment": "ivory_black"
+    },
+    {
+      "t": 6.0,
+      "action": "press",
+      "x": 120,
+      "y": 1030,
+      "pressure": 0.35
+    },
+    {
+      "t": 6.4,
+      "action": "move",
+      "x": 540,
+      "y": 1070,
+      "pressure": 0.35
+    },
+    {
+      "t": 6.4,
+      "action": "release"
+    },
+    {
+      "t": 6.5,
+      "action": "tool",
+      "name": "Filbert"
+    },
+    {
+      "t": 6.5,
+      "action": "param",
+      "name": "size",
+      "value": 1.0
+    },
+    {
+      "t": 6.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.5
+    },
+    {
+      "t": 6.5,
+      "action": "dip",
+      "pigment": "ivory_black"
+    },
+    {
+      "t": 6.5,
+      "action": "press",
+      "x": 640,
+      "y": 1030,
+      "pressure": 0.7
+    },
+    {
+      "t": 6.9,
+      "action": "move",
+      "x": 1060,
+      "y": 1070,
+      "pressure": 0.7
+    },
+    {
+      "t": 6.9,
+      "action": "release"
+    },
+    {
+      "t": 7.0,
+      "action": "tool",
+      "name": "Filbert"
+    },
+    {
+      "t": 7.0,
+      "action": "param",
+      "name": "size",
+      "value": 1.5
+    },
+    {
+      "t": 7.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.9
+    },
+    {
+      "t": 7.0,
+      "action": "dip",
+      "pigment": "ivory_black"
+    },
+    {
+      "t": 7.0,
+      "action": "press",
+      "x": 1160,
+      "y": 1030,
+      "pressure": 1.0
+    },
+    {
+      "t": 7.4,
+      "action": "move",
+      "x": 1580,
+      "y": 1070,
+      "pressure": 1.0
+    },
+    {
+      "t": 7.4,
+      "action": "release"
+    },
+    {
+      "t": 7.5,
+      "action": "tool",
+      "name": "Rigger"
+    },
+    {
+      "t": 7.5,
+      "action": "param",
+      "name": "size",
+      "value": 0.7
+    },
+    {
+      "t": 7.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.2
+    },
+    {
+      "t": 7.5,
+      "action": "dip",
+      "pigment": "burnt_umber"
+    },
+    {
+      "t": 7.5,
+      "action": "press",
+      "x": 120,
+      "y": 1220,
+      "pressure": 0.35
+    },
+    {
+      "t": 7.9,
+      "action": "move",
+      "x": 540,
+      "y": 1260,
+      "pressure": 0.35
+    },
+    {
+      "t": 7.9,
+      "action": "release"
+    },
+    {
+      "t": 8.0,
+      "action": "tool",
+      "name": "Rigger"
+    },
+    {
+      "t": 8.0,
+      "action": "param",
+      "name": "size",
+      "value": 1.0
+    },
+    {
+      "t": 8.0,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.5
+    },
+    {
+      "t": 8.0,
+      "action": "dip",
+      "pigment": "burnt_umber"
+    },
+    {
+      "t": 8.0,
+      "action": "press",
+      "x": 640,
+      "y": 1220,
+      "pressure": 0.7
+    },
+    {
+      "t": 8.4,
+      "action": "move",
+      "x": 1060,
+      "y": 1260,
+      "pressure": 0.7
+    },
+    {
+      "t": 8.4,
+      "action": "release"
+    },
+    {
+      "t": 8.5,
+      "action": "tool",
+      "name": "Rigger"
+    },
+    {
+      "t": 8.5,
+      "action": "param",
+      "name": "size",
+      "value": 1.5
+    },
+    {
+      "t": 8.5,
+      "action": "param",
+      "name": "stiffness",
+      "value": 0.9
+    },
+    {
+      "t": 8.5,
+      "action": "dip",
+      "pigment": "burnt_umber"
+    },
+    {
+      "t": 8.5,
+      "action": "press",
+      "x": 1160,
+      "y": 1220,
+      "pressure": 1.0
+    },
+    {
+      "t": 8.9,
+      "action": "move",
+      "x": 1580,
+      "y": 1260,
+      "pressure": 1.0
+    },
+    {
+      "t": 8.9,
+      "action": "release"
+    },
+    {
+      "t": 9.5,
+      "action": "checkpoint",
+      "name": "matrix"
+    }
+  ]
+}

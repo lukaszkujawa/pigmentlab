@@ -159,7 +159,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
 
     if (f.contact) {
         let equilibrium = f.root.xy + lean_of(f) * f.natural_reach;
-        let stuck = f.previous_tip.xy;
+        let landing = tips[bristle].w == 0.0;
+        let stuck = select(f.previous_tip.xy, equilibrium, landing);
         let pull = equilibrium - stuck;
         let pull_length = max(length(pull), 1e-6);
         let slip_limit = brush.friction * -f.rest_tip.z;
