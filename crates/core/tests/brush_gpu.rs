@@ -14,15 +14,14 @@ fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Bru
     let window = ActiveWindow::new(&gpu, &canvas);
     let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
     let brush = Brush::new(&gpu, preset, 7, &window, &flat_canvas);
-    let mut previous: Option<BrushPose> = None;
+    let mut teleported = false;
     for pose in poses {
-        if previous.is_none() {
+        if !teleported {
             brush.teleport(&gpu, &pose);
+            teleported = true;
         }
-        let motion = previous.map_or(Vec2::ZERO, |p| (pose.position - p.position).truncate());
-        previous = Some(pose);
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, motion, CANVAS);
+        brush.encode_step(&gpu, &mut encoder, &pose, 1.0, CANVAS);
         gpu.queue.submit(Some(encoder.finish()));
     }
     let positions = read_buffer::<Vec4>(&gpu, &brush.positions);
@@ -107,7 +106,7 @@ fn static_press_settles_without_jitter() {
     let pressed = BrushPose::upright(Vec3::new(256.0, 256.0, preset.length * 0.7));
     let (gpu, brush, settled) = run(preset, std::iter::repeat_n(pressed, 120));
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    brush.encode_step(&gpu, &mut encoder, &pressed, 1.0, Vec2::ZERO, CANVAS);
+    brush.encode_step(&gpu, &mut encoder, &pressed, 1.0, CANVAS);
     gpu.queue.submit(Some(encoder.finish()));
     let after = read_buffer::<Vec4>(&gpu, &brush.positions);
     let max_motion = settled.iter().zip(&after).map(|(a, b)| a.distance(*b)).fold(0.0f32, f32::max);
@@ -146,4 +145,48 @@ fn dragged_tuft_keeps_the_ferrule_width() {
     let (low, high) = tips.iter().fold((f32::MAX, f32::MIN), |(lo, hi), t| (lo.min(t.y), hi.max(t.y)));
     let width = high - low;
     assert!(width > preset.width * 0.9 && width < preset.splayed_radius() * 2.2, "dragged footprint width {width} vs ferrule {}", preset.width);
+}
+
+fn tips_of(pose: &BrushPose, positions: &[Vec4]) -> Vec<Vec2> {
+    canvas_positions(pose, positions).chunks(VERTICES_PER_BRISTLE as usize).map(|b| b.last().unwrap().truncate()).collect()
+}
+
+#[test]
+fn stroke_start_never_throws_tips_backwards() {
+    let preset = BrushPreset::round(200, cm(0.35), cm(2.2));
+    let height = preset.length * 0.7;
+    let landed = BrushPose::upright(Vec3::new(300.0, 256.0, height));
+    let (_, _, at_landing) = run(preset, std::iter::once(landed));
+    let start = tips_of(&landed, &at_landing);
+    for steps in [3usize, 10, 30] {
+        let poses = std::iter::once(landed).chain((1..=steps).map(|i| BrushPose::upright(Vec3::new(300.0 - i as f32 * 2.5, 256.0, height))));
+        let last = BrushPose::upright(Vec3::new(300.0 - steps as f32 * 2.5, 256.0, height));
+        let (_, _, positions) = run(preset, poses);
+        let backwards = tips_of(&last, &positions).iter().zip(&start).map(|(now, then)| now.x - then.x).fold(0.0f32, f32::max);
+        assert!(backwards < 2.0, "after {steps} steps leftwards a tip moved {backwards:.1} px to the right");
+    }
+}
+
+#[test]
+fn jittery_hand_does_not_catapult_tips() {
+    let preset = BrushPreset::round(200, cm(0.35), cm(2.2));
+    let height = preset.length * 0.7;
+    let mut poses = vec![BrushPose::upright(Vec3::new(256.0, 256.0, height)); 30];
+    let mut rng = 7u32;
+    let mut position = Vec2::new(256.0, 256.0);
+    for _ in 0..200 {
+        rng = rng.wrapping_mul(1664525).wrapping_add(1013904223);
+        let angle = (rng >> 8) as f32 / (1u32 << 24) as f32 * std::f32::consts::TAU;
+        position += Vec2::new(angle.cos(), angle.sin()) * 1.5;
+        poses.push(BrushPose::upright(Vec3::new(position.x, position.y, height)));
+    }
+    let (gpu, brush, before) = run(preset, poses.iter().cloned());
+    let last = *poses.last().unwrap();
+    let next = BrushPose::upright(last.position + Vec3::new(1.5, 0.0, 0.0));
+    let mut encoder = gpu.device.create_command_encoder(&Default::default());
+    brush.encode_step(&gpu, &mut encoder, &next, 1.0, CANVAS);
+    gpu.queue.submit(Some(encoder.finish()));
+    let after = read_buffer::<Vec4>(&gpu, &brush.positions);
+    let jump = tips_of(&last, &before).iter().zip(tips_of(&next, &after)).map(|(a, b)| a.distance(b)).fold(0.0f32, f32::max);
+    assert!(jump < 6.0, "a tip jumped {jump:.1} px in one substep of a 1.5 px hand movement");
 }

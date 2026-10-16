@@ -8,15 +8,17 @@ const GROOVE_RADIUS: i32 = 1;
 const PUSH_DISTANCE: f32 = 2.5;
 const PUSH_PACE: f32 = 1.25;
 const MAX_PUSH_REACH: f32 = 4.0 * PUSH_DISTANCE;
+const MAX_PUSH_TARGETS: u32 = 6u;
 const FORWARD_SHARE: f32 = 0.8;
 const PUSH_RADIUS: f32 = 3.0;
 const LIMIT_ENCODING: i32 = 0x7fffffff;
-const MIN_DISPLACING_TRAVEL: f32 = 0.2;
+const MIN_DISPLACING_SPEED: f32 = 48.0;
 const DRAG_RADIUS: i32 = 2;
-const DRAG_RATE: f32 = 0.1;
-const WIPE_RATE: f32 = 0.005;
+const DRAG_RATE_PER_SECOND: f32 = 24.0;
+const WIPE_RATE_PER_SECOND: f32 = 1.2;
 const CONTACT_RATE: f32 = 0.3;
-const DISPLACEMENT_SLOTS: u32 = 6u;
+const DISPLACEMENT_SLOTS: u32 = 5u;
+const COARSE_CELL: u32 = 16u;
 
 struct DepositUniform {
     sample_count: u32,
@@ -44,6 +46,8 @@ struct DepositUniform {
 @group(0) @binding(12) var<storage, read_write> pickup_grant_scattering: array<vec4<f32>>;
 @group(0) @binding(13) var<storage, read_write> sample_request: array<vec2<f32>>;
 @group(0) @binding(14) var<storage, read_write> displacement: array<atomic<i32>>;
+@group(0) @binding(15) var<storage, read_write> column_state: array<vec4<f32>>;
+@group(0) @binding(16) var<storage, read_write> coarse_marks: array<atomic<u32>>;
 
 const NO_COLUMN: f32 = -1.0;
 
@@ -139,6 +143,31 @@ fn give(cell: u32, deposit_share: f32, load: ptr<function, f32>, absorption: vec
     *load -= given;
 }
 
+fn snapshot_height(local: vec2<u32>) -> f32 {
+    return column_state[column_index(local)].x;
+}
+
+fn snapshot_is_dry(local: vec2<u32>) -> bool {
+    return column_state[column_index(local)].z > 0.5;
+}
+
+@compute @workgroup_size(16, 16)
+fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= window.width || id.y >= window.height) { return; }
+    var height = 0;
+    var top = -1.0;
+    var dry = false;
+    for (var z = 0u; z < window.depth; z++) {
+        let cell = window_cell(vec3<u32>(id.xy, z));
+        let density = atomicLoad(&paint[cell]);
+        if (density <= 0) { continue; }
+        height += density;
+        top = f32(z);
+        dry = atomicLoad(&paint[cell + 7u]) >= i32(PAINT_SCALE);
+    }
+    column_state[column_index(id.xy)] = vec4<f32>(f32(height) / PAINT_SCALE, top, select(0.0, 1.0, dry), 0.0);
+}
+
 fn topmost_filled_cell(local: vec2<u32>) -> i32 {
     for (var step = 0u; step < window.depth; step++) {
         let z = window.depth - 1u - step;
@@ -171,32 +200,40 @@ fn ridge_amount(height: f32, limit: f32, drag: f32) -> f32 {
     return max(height - limit, 0.0) * drag;
 }
 
-fn request_displacement(pixel: vec2<i32>, hair_level: f32, film: f32, direction: vec2<f32>, drag: f32) {
-    let limit = hair_level + film;
-    for (var dy = -DRAG_RADIUS; dy <= DRAG_RADIUS; dy++) {
-        for (var dx = -DRAG_RADIUS; dx <= DRAG_RADIUS; dx++) {
-            let neighbour = pixel + vec2<i32>(dx, dy);
-            if (!window_contains(neighbour) || !on_canvas(neighbour)) { continue; }
-            let local = vec2<u32>(neighbour - window.origin);
-            let height = column_height(local);
-            let in_groove = abs(dx) <= GROOVE_RADIUS && abs(dy) <= GROOVE_RADIUS;
-            let amount = select(ridge_amount(height, limit, drag), groove_amount(height, hair_level, limit, base_height(neighbour), drag), in_groove);
-            if (amount <= 0.0 || surface_is_dry(local)) { continue; }
-            let slot = column_index(local) * DISPLACEMENT_SLOTS;
-            if (in_groove) { atomicMax(&displacement[slot], LIMIT_ENCODING - fixed(limit)); }
-            atomicMax(&displacement[slot + 1u], LIMIT_ENCODING - fixed(limit));
-            atomicMax(&displacement[slot + 2u], LIMIT_ENCODING - fixed(hair_level));
-            atomicMax(&displacement[slot + 3u], fixed(drag));
-            atomicAdd(&displacement[slot + 4u], fixed(direction.x * amount));
-            atomicAdd(&displacement[slot + 5u], fixed(direction.y * amount));
+fn coarse_index(local: vec2<u32>) -> u32 {
+    return (local.y / COARSE_CELL) * ((window.width + COARSE_CELL - 1u) / COARSE_CELL) + local.x / COARSE_CELL;
+}
+
+fn near_marks(local: vec2<u32>) -> bool {
+    let columns = i32((window.width + COARSE_CELL - 1u) / COARSE_CELL);
+    let rows = i32((window.height + COARSE_CELL - 1u) / COARSE_CELL);
+    let block = vec2<i32>(local / COARSE_CELL);
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let b = block + vec2<i32>(dx, dy);
+            if (b.x < 0 || b.y < 0 || b.x >= columns || b.y >= rows) { continue; }
+            if (atomicLoad(&coarse_marks[u32(b.y * columns + b.x)]) > 0u) { return true; }
         }
     }
+    return false;
+}
+
+fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, direction: vec2<f32>, drag: f32) {
+    if (snapshot_is_dry(local)) { return; }
+    let weight = max(height - hair_level, 0.0);
+    let slot = column_index(local) * DISPLACEMENT_SLOTS;
+    atomicMax(&displacement[slot], LIMIT_ENCODING - fixed(hair_level + film));
+    atomicMax(&displacement[slot + 1u], LIMIT_ENCODING - fixed(hair_level));
+    atomicMax(&displacement[slot + 2u], fixed(drag));
+    atomicAdd(&displacement[slot + 3u], fixed(direction.x * weight));
+    atomicAdd(&displacement[slot + 4u], fixed(direction.y * weight));
+    atomicMax(&coarse_marks[coarse_index(local)], 1u);
 }
 
 fn exchange(pixel: vec2<i32>, point_xy: vec2<f32>, height: f32, deposit_share: f32, pickup_share: f32, load: ptr<function, f32>, absorption: ptr<function, vec3<f32>>, scattering: ptr<function, vec3<f32>>, request: ptr<function, vec2<f32>>) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
     let local = vec2<u32>(pixel - window.origin);
-    let wet = !surface_is_dry(local);
+    let wet = !snapshot_is_dry(local);
     if (wet && height > 0.0 && *load < deposit.sample_capacity) {
         let wanted = min(pickup_share * (1.0 - fill), deposit.sample_capacity - *load);
         if (wanted > 0.0) {
@@ -229,7 +266,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let travelled = distance(start.xy, end.xy);
     let motion = min(travelled / (REFERENCE_SPEED * deposit.dt), 1.0);
     let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
-    let brush_moving = deposit.brush_travel >= MIN_DISPLACING_TRAVEL;
+    let brush_moving = deposit.brush_travel >= MIN_DISPLACING_SPEED * deposit.dt;
     let steps = clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS);
     let share = 1.0 / f32(steps);
     let direction = select(vec2<f32>(0.0), (end.xy - start.xy) / max(travelled, 1e-6), travelled > 1e-3);
@@ -239,14 +276,14 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
         let local = vec2<u32>(pixel - window.origin);
         let film = mix(0.015 * PIXELS_PER_CM, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
-        let height = column_height(local);
+        let height = snapshot_height(local);
         if (point.z > height + film) { continue; }
         if (brush_moving && travelled > 1e-3 && height > point.z) {
-            request_displacement(pixel, point.z, film, direction, DRAG_RATE * motion);
+            mark_displacement(local, height, point.z, film, direction, DRAG_RATE_PER_SECOND * deposit.dt * motion);
         }
         if (height > point.z + film) { continue; }
         let buried = clamp(min(height, base_height(pixel)) - point.z, 0.0, film);
-        let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE) * share * min(motion, brush_motion);
+        let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) * share * min(motion, brush_motion);
         let deposit_share = select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE) * f32(stride), depositing);
         exchange(pixel, point.xy, height, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
     }
@@ -311,31 +348,57 @@ fn take_from_top(local: vec2<u32>, amount: f32, absorption: ptr<function, vec3<f
 
 @compute @workgroup_size(16, 16)
 fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height) { return; }
-    let slot = column_index(id.xy) * DISPLACEMENT_SLOTS;
-    let ridge_code = atomicLoad(&displacement[slot + 1u]);
-    if (ridge_code == 0) { return; }
+    if (id.x >= window.width || id.y >= window.height || !near_marks(id.xy)) { return; }
+    var limit_code = 0;
+    var groove_code = 0;
+    var level_code = 0;
+    var drag_code = 0;
+    var push = vec2<f32>(0.0);
+    for (var dy = -DRAG_RADIUS; dy <= DRAG_RADIUS; dy++) {
+        for (var dx = -DRAG_RADIUS; dx <= DRAG_RADIUS; dx++) {
+            let mark = vec2<i32>(id.xy) + vec2<i32>(dx, dy);
+            if (mark.x < 0 || mark.y < 0 || mark.x >= i32(window.width) || mark.y >= i32(window.height)) { continue; }
+            let slot = column_index(vec2<u32>(mark)) * DISPLACEMENT_SLOTS;
+            let code = atomicLoad(&displacement[slot]);
+            if (code == 0) { continue; }
+            limit_code = max(limit_code, code);
+            if (abs(dx) <= GROOVE_RADIUS && abs(dy) <= GROOVE_RADIUS) { groove_code = max(groove_code, code); }
+            level_code = max(level_code, atomicLoad(&displacement[slot + 1u]));
+            drag_code = max(drag_code, atomicLoad(&displacement[slot + 2u]));
+            push += vec2<f32>(f32(atomicLoad(&displacement[slot + 3u])), f32(atomicLoad(&displacement[slot + 4u])));
+        }
+    }
+    if (limit_code == 0 || surface_is_dry(id.xy)) { return; }
     let height = column_height(id.xy);
-    let groove_code = atomicLoad(&displacement[slot]);
-    let hair_level = f32(LIMIT_ENCODING - atomicLoad(&displacement[slot + 2u])) / PAINT_SCALE;
-    let drag = f32(atomicLoad(&displacement[slot + 3u])) / PAINT_SCALE;
+    let hair_level = f32(LIMIT_ENCODING - level_code) / PAINT_SCALE;
+    let drag = f32(drag_code) / PAINT_SCALE;
     let pixel = vec2<i32>(id.xy) + window.origin;
-    var excess = ridge_amount(height, f32(LIMIT_ENCODING - ridge_code) / PAINT_SCALE, drag);
+    var excess = ridge_amount(height, f32(LIMIT_ENCODING - limit_code) / PAINT_SCALE, drag);
     if (groove_code != 0) {
         excess = groove_amount(height, hair_level, f32(LIMIT_ENCODING - groove_code) / PAINT_SCALE, base_height(pixel), drag);
     }
-    if (excess <= 1e-4) { return; }
-    let push = vec2<f32>(f32(atomicLoad(&displacement[slot + 4u])), f32(atomicLoad(&displacement[slot + 5u])));
-    if (length(push) <= 1e-3) { return; }
+    if (excess <= 1e-4 || length(push) <= 1e-3) { return; }
     let forward = normalize(push);
     let side = vec2<f32>(-forward.y, forward.x);
-    let reach = clamp(deposit.brush_travel * PUSH_PACE, PUSH_DISTANCE, MAX_PUSH_REACH) / PUSH_DISTANCE;
-    let offsets = array<vec2<f32>, 3>(forward * reach, side, -side);
-    var shares = array<f32, 3>(FORWARD_SHARE, 0.5 * (1.0 - FORWARD_SHARE), 0.5 * (1.0 - FORWARD_SHARE));
+    let reach = clamp(deposit.brush_travel * PUSH_PACE, PUSH_DISTANCE, MAX_PUSH_REACH);
+    let nearest = max(reach / PUSH_PACE, PUSH_DISTANCE);
+    let hops = max(u32(ceil((reach - nearest) / PUSH_RADIUS)) + 1u, 1u);
+    var offsets: array<vec2<f32>, MAX_PUSH_TARGETS>;
+    var shares: array<f32, MAX_PUSH_TARGETS>;
+    offsets[0] = side * PUSH_DISTANCE;
+    offsets[1] = -side * PUSH_DISTANCE;
+    shares[0] = 0.5 * (1.0 - FORWARD_SHARE);
+    shares[1] = shares[0];
+    for (var hop = 0u; hop < hops; hop++) {
+        let along = mix(nearest, reach, f32(hop) / f32(max(hops - 1u, 1u)));
+        offsets[2u + hop] = forward * along;
+        shares[2u + hop] = FORWARD_SHARE / f32(hops);
+    }
+    let targets = 2u + hops;
     let centre = vec2<f32>(pixel) + 0.5;
     var placeable = 0.0;
-    for (var t = 0u; t < 3u; t++) {
-        let landing = vec2<i32>(floor(centre + offsets[t] * PUSH_DISTANCE));
+    for (var t = 0u; t < targets; t++) {
+        let landing = vec2<i32>(floor(centre + offsets[t]));
         if (!window_contains(landing) || !on_canvas(landing)) { shares[t] = 0.0; }
         placeable += shares[t];
     }
@@ -343,9 +406,9 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     var absorption = vec3<f32>(0.0);
     var scattering = vec3<f32>(0.0);
     let moved = take_from_top(id.xy, excess * placeable, &absorption, &scattering);
-    for (var t = 0u; t < 3u; t++) {
+    for (var t = 0u; t < targets; t++) {
         if (shares[t] <= 0.0) { continue; }
-        splat_film(centre + offsets[t] * PUSH_DISTANCE, PUSH_RADIUS, moved * shares[t] / placeable, absorption, scattering);
+        splat_film(centre + offsets[t], PUSH_RADIUS, moved * shares[t] / placeable, absorption, scattering);
     }
 }
 

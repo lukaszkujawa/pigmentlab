@@ -5,7 +5,7 @@ use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use crate::paint::ActiveWindow;
 use crate::pigment::Pigment;
 use crate::rng::SplitMix64;
-use glam::{Mat3, Vec2, Vec3, Vec4};
+use glam::{Mat3, Vec3, Vec4};
 
 const WORKGROUP_SIZE: u32 = 64;
 pub const SAMPLES_PER_BRISTLE: u32 = 256;
@@ -25,13 +25,13 @@ pub struct BrushUniform {
     cohesion: f32,
     cohesion_radius: f32,
     pressure: f32,
-    motion: [f32; 2],
+    _padding: [f32; 2],
 }
 
 const COHESION_RADIUS_FRACTION: f32 = 0.5;
 
 impl BrushUniform {
-    fn new(preset: &BrushPreset, pose: &BrushPose, pressure: f32, motion: Vec2, canvas: [f32; 2]) -> Self {
+    fn new(preset: &BrushPreset, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) -> Self {
         let rotation = Mat3::from_quat(pose.canvas_to_brush());
         let column = |v: Vec3| v.extend(0.0).to_array();
         Self {
@@ -47,7 +47,7 @@ impl BrushUniform {
             cohesion: preset.cohesion,
             cohesion_radius: preset.width.max(preset.thickness) * 0.5 * COHESION_RADIUS_FRACTION,
             pressure,
-            motion: motion.to_array(),
+            _padding: [0.0; 2],
         }
     }
 }
@@ -58,7 +58,6 @@ pub struct Brush {
     pub uniform: wgpu::Buffer,
     pub positions: wgpu::Buffer,
     pub curves: wgpu::Buffer,
-    pub previous_curves: wgpu::Buffer,
     pub sample_load: wgpu::Buffer,
     pub sample_absorption: wgpu::Buffer,
     pub sample_scattering: wgpu::Buffer,
@@ -78,7 +77,6 @@ impl Brush {
         let positions = gpu.storage_buffer("bristle positions", vertex_bytes);
         let tips = gpu.storage_buffer("bristle tips", bristles * 16);
         let curves = gpu.storage_buffer("bristle curves", bristles * 64);
-        let previous_curves = gpu.storage_buffer("bristle previous curves", bristles * 64);
         let sample_load = gpu.storage_buffer("sample load", samples * 4);
         let sample_absorption = gpu.storage_buffer("sample absorption", samples * 16);
         let sample_scattering = gpu.storage_buffer("sample scattering", samples * 16);
@@ -147,7 +145,6 @@ impl Brush {
             uniform,
             positions,
             curves,
-            previous_curves,
             sample_load,
             sample_absorption,
             sample_scattering,
@@ -193,10 +190,9 @@ impl Brush {
         gpu.queue.write_buffer(&self.tips, 0, bytemuck::cast_slice(&tips));
     }
 
-    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, motion: Vec2, canvas: [f32; 2]) {
-        let uniform = BrushUniform::new(&self.preset, pose, pressure, motion, canvas);
+    pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, canvas: [f32; 2]) {
+        let uniform = BrushUniform::new(&self.preset, pose, pressure, canvas);
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
-        encoder.copy_buffer_to_buffer(&self.curves, 0, &self.previous_curves, 0, self.curves.size());
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("bristles"),
             timestamp_writes: None,

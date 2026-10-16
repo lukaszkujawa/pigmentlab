@@ -11,7 +11,10 @@ use glam::{Quat, Vec2, Vec3};
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
 const SUBSTEPS_PER_LEVELLING: u64 = 8;
+const SUBSTEPS_PER_DEPOSIT: u64 = 2;
+const DEPOSIT_DT: f32 = SIMULATION_DT * SUBSTEPS_PER_DEPOSIT as f32;
 const UNDO_DEPTH: usize = 6;
+const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
@@ -31,8 +34,10 @@ pub struct Engine {
     display: wgpu::Texture,
     pointer: PointerTrack,
     pose: BrushPose,
-    previous_position: Vec3,
+    position_at_last_deposit: Vec3,
     pressure: f32,
+    pressed: bool,
+    levelling_active_until: f64,
     show_bristles: bool,
     time: f64,
     substeps: u64,
@@ -65,7 +70,7 @@ impl Engine {
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
-        let deposit = Deposit::new(&gpu, &brush, &window, &stroke_base);
+        let deposit = Deposit::new(&gpu, &brush, &window, &stroke_base, DEPOSIT_DT);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
@@ -97,8 +102,10 @@ impl Engine {
             display,
             pointer: PointerTrack::default(),
             pose: BrushPose::upright(lifted),
-            previous_position: lifted,
+            position_at_last_deposit: lifted,
             pressure: 0.0,
+            pressed: false,
+            levelling_active_until: 0.0,
             show_bristles: false,
             time: 0.0,
             substeps: 0,
@@ -168,7 +175,7 @@ impl Engine {
 
     pub fn set_brush(&mut self, preset: BrushPreset) {
         self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.stroke_base);
-        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.stroke_base);
+        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.stroke_base, DEPOSIT_DT);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
         self.brush.teleport(&self.gpu, &self.pose);
     }
@@ -280,9 +287,13 @@ impl Engine {
             if let Some(state) = self.pointer.state_at(self.time) {
                 self.pose = self.pose_for(state);
                 self.pressure = if state.pressed { state.pressure.clamp(0.0, 1.0) } else { 0.0 };
+                self.pressed = state.pressed;
+                if state.pressed {
+                    self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS;
+                }
                 if state.fresh_press {
                     self.tuft_centre = self.handle_position();
-                    self.previous_position = self.pose.position;
+                    self.position_at_last_deposit = self.pose.position;
                     self.brush.teleport(&self.gpu, &self.pose);
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
@@ -302,12 +313,15 @@ impl Engine {
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
-            let motion = self.pose.position.truncate() - self.previous_position.truncate();
-            self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, motion, canvas);
-            self.deposit.encode(&self.gpu, &mut encoder, motion.length());
-            self.previous_position = self.pose.position;
+            self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, canvas);
+            if self.pressed && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
+                let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
+                self.deposit.encode(&self.gpu, &mut encoder, &self.brush, travel);
+                self.position_at_last_deposit = self.pose.position;
+            }
             self.substeps += 1;
-            if self.levelling_enabled && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING) {
+            let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;
+            if levelling_due && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING) {
                 self.height_map.encode(&mut encoder);
                 self.levelling.encode(&mut encoder);
             }

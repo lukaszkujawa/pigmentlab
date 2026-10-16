@@ -7,7 +7,6 @@ const MAX_REACH_FRACTION: f32 = 0.98;
 const LIFT_CLEARANCE: f32 = 0.1 * PIXELS_PER_CM;
 const PRESSURE_SINK: f32 = 0.75;
 const SPREAD_PER_COMPRESSION: f32 = 2.5;
-const BEND_SPEED: f32 = 0.5;
 
 struct BrushUniform {
     rotation_x: vec4<f32>,
@@ -24,7 +23,7 @@ struct BrushUniform {
     cohesion: f32,
     cohesion_radius: f32,
     pressure: f32,
-    motion: vec2<f32>,
+    padding: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> brush: BrushUniform;
@@ -43,7 +42,8 @@ struct Frame {
     previous_tip: vec3<f32>,
     lift: vec3<f32>,
     length: f32,
-    equilibrium: vec2<f32>,
+    rest: vec2<f32>,
+    drag_reach: f32,
     max_reach: f32,
     contact: bool,
 }
@@ -133,20 +133,17 @@ fn frame_of(bristle: u32) -> Frame {
     let bristle_length = distance(rest[base + VERTICES - 1u].xyz, rest[base + 1u].xyz);
     let rest_tip = root + root_tangent * bristle_length;
     let contact = rest_tip.z < 0.0 && root.z > 0.0;
-    var equilibrium = root.xy;
+    var rest = root.xy;
+    var drag_reach = 0.0;
     if (contact) {
         let angle_below_horizontal = atan2(-root_tangent.z, length(root_tangent.xy));
-        let reach = rod_reach(angle_below_horizontal, root.z, bristle_length);
+        drag_reach = rod_reach(angle_below_horizontal, root.z, bristle_length) * brush.splay;
         let radial_offset = root.xy - brush.translation.xy;
         let compression = clamp(1.0 - root.z / bristle_length, 0.0, 1.0);
-        let speed = length(brush.motion);
-        let moving = clamp(speed / BEND_SPEED, 0.0, 1.0);
-        let bend = -brush.motion / max(speed, 1e-6) * reach * brush.splay * moving;
-        let spread = radial_offset * brush.splay * compression * SPREAD_PER_COMPRESSION;
-        equilibrium = root.xy + spread + bend;
+        rest = root.xy + radial_offset * brush.splay * compression * SPREAD_PER_COMPRESSION;
     }
     let max_reach = sqrt(max(bristle_length * bristle_length - root.z * root.z, 0.0)) * MAX_REACH_FRACTION;
-    return Frame(root, root_tangent, rest_tip, tips[bristle].xyz - lift, lift, bristle_length, equilibrium, max_reach, contact);
+    return Frame(root, root_tangent, rest_tip, tips[bristle].xyz - lift, lift, bristle_length, rest, drag_reach, max_reach, contact);
 }
 
 @compute @workgroup_size(64)
@@ -156,17 +153,20 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let f = frame_of(bristle);
 
     if (f.contact) {
-        let equilibrium = f.equilibrium;
         let landing = tips[bristle].w == 0.0;
-        let stuck = select(f.previous_tip.xy, equilibrium, landing);
-        let pull = equilibrium - stuck;
+        let stuck = select(f.previous_tip.xy, f.rest, landing);
+        var offset = stuck - f.root.xy;
+        let distance_from_root = length(offset);
+        if (distance_from_root > f.drag_reach) { offset *= f.drag_reach / distance_from_root; }
+        let held = f.root.xy + offset;
+        let pull = f.rest - held;
         let pull_length = max(length(pull), 1e-6);
         let slip_limit = brush.friction * -f.rest_tip.z;
         let excess = max(pull_length - slip_limit, 0.0);
-        let compressed = length(stuck - f.root.xy) < length(equilibrium - f.root.xy);
+        let compressed = distance_from_root < length(f.rest - f.root.xy);
         let rate = select(RECOVER_RATE, SPLAY_RATE, compressed);
         let slide = min(excess * rate, pull_length);
-        proposals[bristle] = vec4<f32>(stuck + pull / pull_length * slide - equilibrium, 0.0, 1.0);
+        proposals[bristle] = vec4<f32>(held + pull / pull_length * slide - f.rest, 0.0, 1.0);
     } else {
         let clear_of_canvas = f.previous_tip.z > LIFT_CLEARANCE;
         let recovered = mix(f.previous_tip, f.rest_tip, brush.recovery);
@@ -203,7 +203,7 @@ fn cohere(@builtin(global_invocation_id) id: vec3<u32>) {
     var tip: vec3<f32>;
     var tip_tangent: vec3<f32>;
     if (f.contact) {
-        let natural = f.equilibrium - f.root.xy;
+        let natural = f.rest - f.root.xy;
         let natural_reach = length(natural);
         var planar = natural + slip.xy;
         let reach = length(planar);
