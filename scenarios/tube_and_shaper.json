@@ -1,0 +1,24 @@
+{
+  "seed": 1,
+  "canvas": { "width": 1024, "height": 768 },
+  "steps": [
+    { "t": 0.0, "action": "tool", "name": "Paint tube" },
+    { "t": 0.0, "action": "dip", "pigment": "cadmium_yellow" },
+    { "t": 0.0, "action": "press", "x": 200, "y": 250, "pressure": 1.0 },
+    { "t": 1.0, "action": "move", "x": 800, "y": 250, "pressure": 1.0 },
+    { "t": 1.0, "action": "release" },
+    { "t": 1.0, "action": "dip", "pigment": "french_ultramarine" },
+    { "t": 1.1, "action": "press", "x": 500, "y": 450, "pressure": 1.0 },
+    { "t": 1.7, "action": "release" },
+    { "t": 1.8, "action": "checkpoint", "name": "squeezed" },
+    { "t": 3.3, "action": "checkpoint", "name": "levelled" },
+    { "t": 3.3, "action": "tool", "name": "Colour shaper" },
+    { "t": 3.3, "action": "press", "x": 400, "y": 150, "pressure": 0.9 },
+    { "t": 4.1, "action": "move", "x": 400, "y": 600, "pressure": 0.9 },
+    { "t": 4.1, "action": "release" },
+    { "t": 4.1, "action": "press", "x": 300, "y": 450, "pressure": 0.9 },
+    { "t": 4.7, "action": "move", "x": 750, "y": 450, "pressure": 0.9 },
+    { "t": 4.7, "action": "release" },
+    { "t": 5.3, "action": "checkpoint", "name": "shaped" }
+  ]
+}

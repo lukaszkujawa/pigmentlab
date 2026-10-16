@@ -7,7 +7,7 @@ const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 1;
 const PUSH_DISTANCE: f32 = 2.5;
 const PUSH_PACE: f32 = 1.25;
-const MAX_PUSH_REACH: f32 = 4.0 * PUSH_DISTANCE;
+const MAX_PUSH_REACH: f32 = 16.0;
 const MAX_PUSH_TARGETS: u32 = 6u;
 const FORWARD_SHARE: f32 = 0.8;
 const PUSH_RADIUS: f32 = 3.0;
@@ -29,6 +29,10 @@ struct DepositUniform {
     contact_height: f32,
     dt: f32,
     brush_travel: f32,
+    rigidity: f32,
+    padding_0: f32,
+    padding_1: f32,
+    padding_2: f32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -260,7 +264,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     var absorption = sample_absorption[sample].xyz;
     var scattering = sample_scattering[sample].xyz;
     var request = vec2<f32>(NO_COLUMN, 0.0);
-    let fill_now = clamp(load / deposit.sample_capacity, 0.0, 1.0);
+    let carries_film = 1.0 - deposit.rigidity;
+    let fill_now = clamp(load / deposit.sample_capacity, 0.0, 1.0) * carries_film;
     let stride = max(u32(round(film_radius(fill_now) * 0.75)), 1u);
     let depositing = (sample % deposit.samples_per_bristle) % stride == 0u;
     let travelled = distance(start.xy, end.xy);
@@ -275,7 +280,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let pixel = vec2<i32>(floor(point.xy));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
         let local = vec2<u32>(pixel - window.origin);
-        let film = mix(0.015 * PIXELS_PER_CM, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
+        let film = mix(FILM_MIN_RADIUS, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0) * carries_film);
         let height = snapshot_height(local);
         if (point.z > height + film) { continue; }
         if (brush_moving && travelled > 1e-3 && height > point.z) {
@@ -283,7 +288,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         if (height > point.z + film) { continue; }
         let buried = clamp(min(height, base_height(pixel)) - point.z, 0.0, film);
-        let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) * share * min(motion, brush_motion);
+        let pickup_share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) * share * min(motion, brush_motion) * carries_film;
         let deposit_share = select(0.0, deposit.deposit_rate * share * max(motion, CONTACT_RATE) * f32(stride), depositing);
         exchange(pixel, point.xy, height, deposit_share, pickup_share, &load, &absorption, &scattering, &request);
     }
@@ -380,8 +385,8 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     if (excess <= 1e-4 || length(push) <= 1e-3) { return; }
     let forward = normalize(push);
     let side = vec2<f32>(-forward.y, forward.x);
-    let reach = clamp(deposit.brush_travel * PUSH_PACE, PUSH_DISTANCE, MAX_PUSH_REACH);
-    let nearest = max(reach / PUSH_PACE, PUSH_DISTANCE);
+    let nearest = min(max(deposit.brush_travel + PUSH_RADIUS * deposit.rigidity, PUSH_DISTANCE), MAX_PUSH_REACH);
+    let reach = clamp(deposit.brush_travel * PUSH_PACE, nearest, MAX_PUSH_REACH);
     let hops = max(u32(ceil((reach - nearest) / PUSH_RADIUS)) + 1u, 1u);
     var offsets: array<vec2<f32>, MAX_PUSH_TARGETS>;
     var shares: array<f32, MAX_PUSH_TARGETS>;

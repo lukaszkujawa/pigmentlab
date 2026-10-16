@@ -18,6 +18,8 @@ struct DepositUniform {
     contact_height: f32,
     dt: f32,
     brush_travel: f32,
+    rigidity: f32,
+    _padding: [f32; 3],
 }
 
 pub struct Deposit {
@@ -56,6 +58,8 @@ impl Deposit {
             contact_height: CONTACT_HEIGHT,
             dt,
             brush_travel: 0.0,
+            rigidity: if preset.is_rigid() { 1.0 } else { 0.0 },
+            _padding: [0.0; 3],
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);

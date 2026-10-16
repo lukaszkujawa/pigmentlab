@@ -1,9 +1,9 @@
-use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, preset_by_name};
+use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, MAX_COMPRESSION, PRESETS, preset_by_name};
 use crate::canvas::{Canvas, CanvasSize, PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::{Gpu, read_buffer, read_rgba8};
 use crate::history::History;
 use crate::input::{PointerSample, PointerState, PointerTrack};
-use crate::paint::{ActiveWindow, Deposit, Levelling};
+use crate::paint::{ActiveWindow, Deposit, Levelling, NOZZLE_RADIUS, Tube};
 use crate::pigment::{Coefficients, Pigment};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
 use glam::{Quat, Vec2, Vec3};
@@ -18,6 +18,17 @@ const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
 const LIFTED_HEIGHT: f32 = 1.25;
 const MAX_TILT: f32 = 0.8;
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
+pub const TUBE_TOOL: &str = "Paint tube";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tool {
+    Brush,
+    Tube,
+}
+
+pub fn tool_names() -> Vec<&'static str> {
+    PRESETS.iter().map(|named| named.name).chain(std::iter::once(TUBE_TOOL)).collect()
+}
 const DILUTION_PER_MEDIUM: f32 = 0.9;
 
 pub struct Engine {
@@ -27,6 +38,9 @@ pub struct Engine {
     window: ActiveWindow,
     stroke_base: wgpu::Buffer,
     deposit: Deposit,
+    tube: Tube,
+    tool: Tool,
+    paint_on_tool: Coefficients,
     height_map: HeightMap,
     levelling: Levelling,
     composite: Composite,
@@ -71,6 +85,7 @@ impl Engine {
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
         let deposit = Deposit::new(&gpu, &brush, &window, &stroke_base, DEPOSIT_DT);
+        let tube = Tube::new(&gpu, &window);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
@@ -95,6 +110,9 @@ impl Engine {
             window,
             stroke_base,
             deposit,
+            tube,
+            tool: Tool::Brush,
+            paint_on_tool: Coefficients { absorption: Vec3::ZERO, scattering: Vec3::ZERO },
             height_map,
             levelling,
             composite,
@@ -129,6 +147,11 @@ impl Engine {
     }
 
     pub fn select_brush(&mut self, name: &str) -> bool {
+        if name.eq_ignore_ascii_case(TUBE_TOOL) {
+            self.tool = Tool::Tube;
+            return true;
+        }
+        self.tool = Tool::Brush;
         match preset_by_name(name) {
             Some(preset) => {
                 self.base_preset = preset;
@@ -228,7 +251,7 @@ impl Engine {
         self.show_bristles = show;
     }
 
-    pub fn dip(&self, pigment: Pigment) {
+    pub fn dip(&mut self, pigment: Pigment) {
         let dilution = 1.0 - DILUTION_PER_MEDIUM * self.paint.medium.clamp(0.0, 1.0);
         let thinned = Pigment {
             name: pigment.name,
@@ -237,6 +260,7 @@ impl Engine {
                 scattering: pigment.coefficients.scattering * dilution,
             },
         };
+        self.paint_on_tool = thinned.coefficients;
         self.brush.dip(&self.gpu, thinned, self.paint.load.clamp(0.0, 1.0));
     }
 
@@ -308,16 +332,29 @@ impl Engine {
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("substep") });
             let preset = *self.brush.preset();
-            let focus = self.tow_tuft_centre(preset.bend_reach());
-            let footprint_radius = preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK;
+            let (focus, footprint_radius) = match self.tool {
+                Tool::Brush => (self.tow_tuft_centre(preset.bend_reach()), preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK),
+                Tool::Tube => (self.handle_position(), NOZZLE_RADIUS + FOOTPRINT_SLACK),
+            };
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
-            self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, canvas);
-            if self.pressed && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
-                let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
-                self.deposit.encode(&self.gpu, &mut encoder, &self.brush, travel);
-                self.position_at_last_deposit = self.pose.position;
+            match self.tool {
+                Tool::Brush => {
+                    self.brush.encode_step(&self.gpu, &mut encoder, &self.pose, self.pressure, canvas);
+                    if self.pressed && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
+                        let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
+                        self.deposit.encode(&self.gpu, &mut encoder, &self.brush, travel);
+                        self.position_at_last_deposit = self.pose.position;
+                    }
+                }
+                Tool::Tube => {
+                    if self.pressed {
+                        let from = self.position_at_last_deposit.truncate();
+                        self.tube.encode_squeeze(&self.gpu, &mut encoder, from, self.handle_position(), self.pressure, SIMULATION_DT, self.paint_on_tool);
+                    }
+                    self.position_at_last_deposit = self.pose.position;
+                }
             }
             self.substeps += 1;
             let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;
@@ -368,7 +405,7 @@ impl Engine {
         let view = self.display.create_view(&wgpu::TextureViewDescriptor::default());
         self.height_map.encode(&mut encoder);
         self.composite.encode(&mut encoder, &view);
-        if self.show_bristles {
+        if self.show_bristles && self.tool == Tool::Brush {
             self.brush_lines.encode(&mut encoder, &view);
         }
         self.gpu.queue.submit(Some(encoder.finish()));

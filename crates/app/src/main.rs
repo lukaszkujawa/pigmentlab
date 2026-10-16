@@ -2,8 +2,8 @@ slint::include_modules!();
 
 mod tablet;
 
-use simpaint_core::brush::{BrushAdjustments, PRESETS};
-use simpaint_core::engine::PaintSettings;
+use simpaint_core::brush::BrushAdjustments;
+use simpaint_core::engine::{PaintSettings, tool_names};
 use simpaint_core::scenario::Recorder;
 use simpaint_core::pigment::{PALETTE, linear_to_srgb};
 use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
@@ -42,7 +42,7 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_canvas_scale(scale);
     app.set_swatches(swatches());
     app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(
-        PRESETS.iter().map(|named| slint::SharedString::from(named.name)).collect::<Vec<_>>(),
+        tool_names().into_iter().map(slint::SharedString::from).collect::<Vec<_>>(),
     )));
 
     let requests: Rc<RefCell<Requests>> = Rc::default();
@@ -111,7 +111,7 @@ fn main() -> Result<(), slint::PlatformError> {
         .set_rendering_notifier(move |state, graphics_api| match state {
             slint::RenderingState::RenderingSetup => {
                 if let slint::GraphicsAPI::WGPU30 { device, queue, .. } = graphics_api {
-                    let created = Engine::new(Gpu::shared(device, queue), CANVAS, SEED);
+                    let mut created = Engine::new(Gpu::shared(device, queue), CANVAS, SEED);
                     created.dip(PALETTE[2]);
                     engine = Some(created);
                 }
@@ -165,7 +165,7 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
             active.dip(now, PALETTE[index].name);
         }
         if let Some((index, adjustments)) = requests.brush {
-            active.tool(now, PRESETS[index.min(PRESETS.len() - 1)].name);
+            active.tool(now, tool_name(index));
             active.param(now, "size", adjustments.scale);
             active.param(now, "bristles", adjustments.bristle_count.unwrap_or(0) as f32);
             active.param(now, "stiffness", adjustments.stiffness);
@@ -200,7 +200,7 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests)
         engine.dip(PALETTE[index]);
     }
     if let Some((index, adjustments)) = requests.brush.take() {
-        engine.select_brush(PRESETS[index.min(PRESETS.len() - 1)].name);
+        engine.select_brush(tool_name(index));
         engine.set_brush_adjustments(adjustments);
     }
     if let Some(paint) = requests.paint.take() {
@@ -254,4 +254,9 @@ fn phase(kind: i32) -> PointerPhase {
         2 => PointerPhase::Up,
         _ => PointerPhase::Move,
     }
+}
+
+fn tool_name(index: usize) -> &'static str {
+    let names = tool_names();
+    names[index.min(names.len() - 1)]
 }

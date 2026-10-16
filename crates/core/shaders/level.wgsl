@@ -1,6 +1,7 @@
 const LEVEL_RATE: f32 = 0.3;
 const LEVEL_YIELD_SLOPE: f32 = 0.4;
 const LEVEL_MIN_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
+const SPREAD_MIN_HEIGHT: f32 = 0.08 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
 @group(0) @binding(1) var<storage, read_write> volume: array<i32>;
@@ -61,10 +62,16 @@ fn neighbour_pigment(local: vec2<i32>) -> array<f32, 6> {
     return pigment;
 }
 
+fn pair_flow(height: f32, other: f32) -> f32 {
+    let both_wet = height > 0.0 && other > 0.0;
+    if (!both_wet && max(height, other) <= SPREAD_MIN_HEIGHT) { return 0.0; }
+    return flow_between(height, other);
+}
+
 fn column_flow(height: f32, local: vec2<i32>) -> f32 {
     let other = height_of(local + window.origin);
-    if (other <= 0.0 || neighbour_dry(local)) { return 0.0; }
-    return flow_between(height, other);
+    if (other < 0.0 || neighbour_dry(local)) { return 0.0; }
+    return pair_flow(height, other);
 }
 
 fn take_from_top(local: vec2<u32>, amount: f32) {
@@ -126,7 +133,7 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
     let local = vec2<i32>(id.xy);
     let own = columns[column_slot(id.xy)];
     let height = height_of(local + window.origin);
-    if (height <= 0.0 || own.y > 0.0) { return; }
+    if (own.y > 0.0) { return; }
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;
     var incoming = 0.0;
@@ -149,15 +156,13 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
 
 fn store_flow(height: f32, neighbour: vec2<i32>) -> f32 {
     if (!on_canvas(neighbour) || store_is_dry(neighbour)) { return 0.0; }
-    let other = heights[pixel_index(neighbour)];
-    if (other <= 0.0) { return 0.0; }
-    return flow_between(height, other);
+    return pair_flow(height, heights[pixel_index(neighbour)]);
 }
 
 fn level_store_pixel(pixel: vec2<i32>) {
     if (!on_canvas(pixel) || window_contains(pixel)) { return; }
     let height = heights[pixel_index(pixel)];
-    if (height <= 0.0 || store_is_dry(pixel)) { return; }
+    if (store_is_dry(pixel)) { return; }
     let cell = store_cell(vec2<u32>(pixel));
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;

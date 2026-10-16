@@ -9,6 +9,7 @@ pub enum BrushShape {
     Round,
     Flat,
     Filbert,
+    Shaper,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -84,6 +85,26 @@ impl BrushPreset {
         Self { shape: BrushShape::Filbert, ..Self::flat(bristle_count, width, thickness, length) }
     }
 
+    pub const fn shaper(width: f32, thickness: f32, length: f32) -> Self {
+        Self {
+            shape: BrushShape::Shaper,
+            flare: 0.0,
+            friction: 1.0,
+            recovery: 1.0,
+            splay: 0.02,
+            cohesion: 1.0,
+            sink: 0.0,
+            sample_capacity: cm(0.0005),
+            deposit_rate: 0.0,
+            pickup_rate: 0.0,
+            ..Self::flat(160, width, thickness, length)
+        }
+    }
+
+    pub fn is_rigid(&self) -> bool {
+        self.shape == BrushShape::Shaper
+    }
+
     pub fn default_round() -> Self {
         Self::round(200, cm(0.35), cm(2.2))
     }
@@ -99,26 +120,28 @@ impl BrushPreset {
             .unwrap_or_else(|| (self.bristle_count as f32 * scale * scale).round() as u32)
             .clamp(20, 600);
         let stiffness = adjustments.stiffness.clamp(0.0, 1.0);
+        let scaled = Self { length: self.length * scale.sqrt(), width: self.width * scale, thickness: self.thickness * scale, ..self };
+        if self.is_rigid() {
+            return Self { bristle_count: (self.bristle_count as f32 * scale * scale).round() as u32, ..scaled };
+        }
         Self {
             bristle_count,
-            length: self.length * scale.sqrt(),
-            width: self.width * scale,
-            thickness: self.thickness * scale,
             splay: 0.3 + 0.5 * (1.0 - stiffness),
             sink: 0.3 + 0.4 * (1.0 - stiffness),
             friction: 0.4 + 0.4 * stiffness,
-            ..self
+            ..scaled
         }
     }
 }
 
-pub const PRESETS: [NamedPreset; 6] = [
+pub const PRESETS: [NamedPreset; 7] = [
     NamedPreset { name: "Round small", preset: BrushPreset::round(70, cm(0.15), cm(1.6)) },
     NamedPreset { name: "Round medium", preset: BrushPreset::round(200, cm(0.35), cm(2.2)) },
     NamedPreset { name: "Round large", preset: BrushPreset::round(450, cm(0.6), cm(2.8)) },
     NamedPreset { name: "Flat", preset: BrushPreset::flat(400, cm(1.2), cm(0.3), cm(2.0)) },
     NamedPreset { name: "Filbert", preset: BrushPreset::filbert(350, cm(1.0), cm(0.3), cm(2.2)) },
     NamedPreset { name: "Rigger", preset: BrushPreset::round(40, cm(0.12), cm(3.0)) },
+    NamedPreset { name: "Colour shaper", preset: BrushPreset::shaper(cm(1.0), cm(0.12), cm(1.3)) },
 ];
 
 pub fn preset_by_name(name: &str) -> Option<BrushPreset> {
