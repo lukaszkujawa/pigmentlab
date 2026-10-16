@@ -184,3 +184,20 @@ fn granulating_pigment_settles_into_paper_hollows() {
     let (hollow_mean, peak_mean) = (hollows.0 / hollows.1 as f32, peaks.0 / peaks.1 as f32);
     assert!(hollow_mean > peak_mean * 1.1, "ultramarine should sit in the hollows: hollows {hollow_mean:.3} vs peaks {peak_mean:.3}");
 }
+
+fn spread_of_a_stroke(surface: Surface) -> usize {
+    let mut engine = paper(surface);
+    let blank = engine.dry_layer();
+    engine.dip(by_name("quinacridone_rose").unwrap());
+    let end = stroke(&mut engine, (200.0, 160.0), (440.0, 160.0), 0.6, 0.0, 0.5);
+    engine.advance_exact(end + 6.0);
+    engine.dry();
+    darkness(&engine, &blank).iter().filter(|d| **d > 0.02).count()
+}
+
+#[test]
+fn unsized_rice_paper_feathers_beyond_the_brush() {
+    let sized = spread_of_a_stroke(Surface::ColdPressed);
+    let rice = spread_of_a_stroke(Surface::Rice);
+    assert!(rice > sized * 6 / 5, "rice paper should wick paint past the stroke: {sized} px sized vs {rice} px rice");
+}

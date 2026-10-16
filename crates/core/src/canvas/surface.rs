@@ -75,7 +75,7 @@ impl Surface {
             Surface::HotPressed => PaperProperties { absorbency: 0.1, capacity: (0.25, 0.45), granulation: 0.2 },
             Surface::ColdPressed => PaperProperties { absorbency: 0.15, capacity: (0.3, 0.6), granulation: 0.5 },
             Surface::Rough => PaperProperties { absorbency: 0.18, capacity: (0.35, 0.7), granulation: 0.8 },
-            Surface::Rice => PaperProperties { absorbency: 0.6, capacity: (0.5, 0.9), granulation: 0.15 },
+            Surface::Rice => PaperProperties { absorbency: 0.9, capacity: (0.12, 0.25), granulation: 0.15 },
         }
     }
 

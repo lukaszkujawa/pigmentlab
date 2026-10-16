@@ -19,6 +19,10 @@ const CAPILLARY_SOURCE: f32 = 0.3;
 const CAPILLARY_RECEIVER: f32 = 0.05;
 const CAPILLARY_WETTING: f32 = 0.35;
 const DRY_PAPER: f32 = 0.02;
+const SIZED_ABSORBENCY: f32 = 0.3;
+const UNSIZED_STAINING: f32 = 40.0;
+const UNSIZED_WICKING: f32 = 3.0;
+const MAX_SCRUB: f32 = 0.2;
 const ACCUMULATOR_SCALE: f32 = 65536.0;
 const ACCUMULATORS: u32 = 13u;
 const MASK_RADIUS: i32 = 3;
@@ -148,14 +152,20 @@ fn apply_brush(@builtin(global_invocation_id) id: vec3<u32>) {
         if (added_water > 0.0) { state.z = 1.0; }
         suspended[index] = clamped(added(suspended[index], pigment));
     }
-    let scrub = min(length(push) * sim.scrub, 1.0);
+    let settled = deposited[index];
+    let staining = max(settled.behaviour.y / max(mass(settled), 1e-9), 0.1) * (1.0 + unsized_share() * UNSIZED_STAINING);
+    let scrub = min(length(push) * sim.scrub / staining, MAX_SCRUB);
     if (scrub > 0.0 && state.z > 0.5) {
-        let lifted = scaled(deposited[index], scrub);
+        let lifted = scaled(settled, scrub);
         deposited[index] = added(deposited[index], scaled(lifted, -1.0));
         suspended[index] = added(suspended[index], lifted);
     }
     water[index] = state;
     impulse[index] = vec4<f32>(push * IMPULSE_GAIN / max(state.x, THIN_WATER), 0.0, 0.0);
+}
+
+fn unsized_share() -> f32 {
+    return clamp((sim.absorbency - SIZED_ABSORBENCY) / (1.0 - SIZED_ABSORBENCY), 0.0, 1.0);
 }
 
 fn face_drag(depth: f32) -> f32 {
@@ -254,8 +264,24 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
         depth += water[other_index].x * share;
         pigment = added(pigment, scaled(suspended[other_index], share));
     }
+    let fibres = unsized_share();
+    if (fibres > 0.0) {
+        let capacity = paper[index].y;
+        let own = suspended[index];
+        let own_concentration = 1.0 / max(state.x + state.y, 1e-6);
+        for (var n = 0u; n < 4u; n++) {
+            let other = cell + neighbours[n];
+            if (!on_grid(other) || !in_region(other)) { continue; }
+            let other_index = cell_index(other);
+            let other_state = water[other_index];
+            let other_capacity = paper[other_index].y;
+            let incoming = capillary_flow(other_state, other_capacity, state, capacity) * fibres / max(other_state.x + other_state.y, 1e-6);
+            let outgoing = capillary_flow(state, capacity, other_state, other_capacity) * fibres * own_concentration;
+            pigment = added(pigment, added(scaled(suspended[other_index], min(incoming, 0.25)), scaled(own, -min(outgoing, 0.25))));
+        }
+    }
     water_next[index] = vec4<f32>(depth, state.yzw);
-    suspended_next[index] = pigment;
+    suspended_next[index] = clamped(pigment);
 }
 
 @compute @workgroup_size(16, 16)
@@ -276,8 +302,9 @@ fn transfer(@builtin(global_invocation_id) id: vec3<u32>) {
         let staining = max(settled.behaviour.y / settled_mass, 0.1);
         let settled_granulation = settled.scattering.w / settled_mass * sim.granulation;
         let film = clamp(1.0 - state.x / FILM_WATER, 0.0, 1.0);
-        let down = clamp((max(1.0 - height * granulation, 0.0) * density * ADSORPTION_RATE + film * FILM_DEPOSITION) * sim.dt, 0.0, 1.0);
-        let up = clamp(max(1.0 + (height - 1.0) * settled_granulation, 0.0) * settled_density / staining * DESORPTION_RATE * sim.dt * (1.0 - film), 0.0, 1.0);
+        let soak = 1.0 + unsized_share() * UNSIZED_STAINING;
+        let down = clamp((max(1.0 - height * granulation, 0.0) * density * ADSORPTION_RATE * soak + film * FILM_DEPOSITION) * sim.dt, 0.0, 1.0);
+        let up = clamp(max(1.0 + (height - 1.0) * settled_granulation, 0.0) * settled_density / (staining * soak) * DESORPTION_RATE * sim.dt * (1.0 - film), 0.0, 1.0);
         let landing = scaled(floating, down);
         let rising = scaled(settled, up);
         floating = added(added(floating, scaled(landing, -1.0)), rising);
@@ -288,8 +315,9 @@ fn transfer(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 fn capillary_flow(source: vec4<f32>, source_capacity: f32, receiver: vec4<f32>, receiver_capacity: f32) -> f32 {
-    if (source.y <= CAPILLARY_SOURCE * source_capacity || source.y <= receiver.y || receiver.y <= CAPILLARY_RECEIVER * receiver_capacity) { return 0.0; }
-    return max(min(source.y - receiver.y, receiver_capacity - receiver.y), 0.0) * 0.25 * min(CAPILLARY_RATE * sim.dt, 1.0);
+    let receiving = CAPILLARY_RECEIVER * max(1.0 - 2.0 * unsized_share(), 0.0) * receiver_capacity;
+    if (source.y <= CAPILLARY_SOURCE * source_capacity || source.y <= receiver.y || receiver.y < receiving || (receiving > 0.0 && receiver.y == receiving)) { return 0.0; }
+    return max(min(source.y - receiver.y, receiver_capacity - receiver.y), 0.0) * 0.25 * min(CAPILLARY_RATE * (1.0 + unsized_share() * UNSIZED_WICKING) * sim.dt, 1.0);
 }
 
 @compute @workgroup_size(16, 16)
