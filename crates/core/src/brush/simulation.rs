@@ -206,6 +206,10 @@ impl Brush {
         self.motion.get().tuft_centre
     }
 
+    pub fn centre_tuft(&self, position: Vec2) {
+        self.motion.set(Motion { tuft_centre: position, ..self.motion.get() });
+    }
+
     pub fn encode_step(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, pose: &BrushPose, pressure: f32, tooth: f32, canvas: [f32; 2]) {
         let motion = self.motion.get();
         let reach = self.preset.bend_reach();

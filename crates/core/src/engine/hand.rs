@@ -2,7 +2,8 @@ use super::{Engine, LIFTED_HEIGHT};
 use crate::brush::{BrushPose, MAX_COMPRESSION};
 use glam::{Quat, Vec2, Vec3};
 
-const MAX_TILT: f32 = 0.8;
+const PEN_TO_BRUSH_LEAN: f32 = 0.6;
+const MAX_LEAN: f32 = 0.5;
 
 impl Engine {
     pub(super) fn handle_position(&self) -> Vec2 {
@@ -36,7 +37,7 @@ impl Engine {
 }
 
 fn handle_direction(tilt: [f32; 2]) -> Vec3 {
-    let lean = Vec2::new(tilt[0], -tilt[1]).clamp_length_max(MAX_TILT);
+    let lean = (Vec2::new(tilt[0], -tilt[1]) * PEN_TO_BRUSH_LEAN).clamp_length_max(MAX_LEAN);
     Vec3::new(lean.x, lean.y, (1.0 - lean.length_squared()).max(0.05).sqrt()).normalize()
 }
 

@@ -237,3 +237,30 @@ fn the_eyedropper_reads_the_colour_on_the_canvas() {
     assert!(picked[2] > picked[0] + 60 && picked[2] > picked[1] + 40, "the bead should read blue, got {picked:?}");
     assert!(canvas.iter().all(|c| *c > 180), "bare canvas should read pale, got {canvas:?}");
 }
+
+#[test]
+fn a_steeply_tilted_pen_still_paints_under_the_pointer() {
+    for tilt in [-1.0, 1.0] {
+        let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: 512, height: 512 }, 1);
+        engine.set_levelling_enabled(false);
+        engine.select_brush("Round medium");
+        engine.dip(by_name("cadmium_red").unwrap());
+        let at = |phase, pressure, time| PointerSample { phase, x: 256.0, y: 256.0, pressure, tilt: [0.0, tilt], rotation: 0.0, time };
+        engine.pointer(at(PointerPhase::Down, 0.002, 0.0));
+        for i in 1..=20 {
+            engine.pointer(at(PointerPhase::Move, 0.8 * i as f32 / 20.0, i as f64 * 0.015));
+        }
+        engine.advance_exact(0.6);
+        let heights = engine.paint_heights();
+        let (mut mass, mut moment) = (0.0, 0.0);
+        for y in 0..512 {
+            for x in 0..512 {
+                mass += heights[y * 512 + x];
+                moment += heights[y * 512 + x] * y as f32;
+            }
+        }
+        let offset = moment / mass - 256.0;
+        assert!(heights[256 * 512 + 256] > 0.0, "tilt {tilt}: the dab should cover the pointer");
+        assert!(offset.abs() < 25.0, "tilt {tilt}: the dab centre drifted {offset:.0} px from the pointer");
+    }
+}
