@@ -496,6 +496,7 @@ export component AppWindow inherits Window {
     callback dry();
 
     property <float> zoom: 1.0;
+    property <length> shadow-margin: 48px;
     property <length> pan-x: 0;
     property <length> pan-y: 0;
     property <bool> panning: false;
@@ -527,10 +528,10 @@ export component AppWindow inherits Window {
                     horizontal-stretch: 1;
 
                     Rectangle {
-                        x: canvas-image.x;
-                        y: canvas-image.y;
-                        width: canvas-image.width;
-                        height: canvas-image.height;
+                        x: max(canvas-image.x, -root.shadow-margin);
+                        y: max(canvas-image.y, -root.shadow-margin);
+                        width: min(canvas-image.x + canvas-image.width, viewport.width + root.shadow-margin) - self.x;
+                        height: min(canvas-image.y + canvas-image.height, viewport.height + root.shadow-margin) - self.y;
                         background: white;
                         drop-shadow-blur: 24px;
                         drop-shadow-color: #00000099;
@@ -548,7 +549,7 @@ export component AppWindow inherits Window {
                         function zoom-around(factor: float) {
                             let anchor-x = (self.mouse-x - canvas-image.x) / root.zoom;
                             let anchor-y = (self.mouse-y - canvas-image.y) / root.zoom;
-                            root.zoom = clamp(root.zoom * factor, 0.1, 16.0);
+                            root.zoom = clamp(root.zoom * factor, 0.1, 5.0);
                             root.pan-x = self.mouse-x - anchor-x * root.zoom - (viewport.width - root.canvas-width * root.zoom) / 2;
                             root.pan-y = self.mouse-y - anchor-y * root.zoom - (viewport.height - root.canvas-height * root.zoom) / 2;
                         }
