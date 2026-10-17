@@ -131,7 +131,7 @@ impl BrushPreset {
     }
 
     pub fn adjusted(self, adjustments: BrushAdjustments) -> Self {
-        let scale = adjustments.scale.clamp(0.3, 3.0);
+        let scale = adjustments.scale.clamp(0.1, 3.0);
         let natural_count = (self.bristle_count as f32 * scale * scale).round() as u32;
         let bristle_count = adjustments.bristle_count.unwrap_or(natural_count).clamp(20, 600);
         let share_per_hair = natural_count as f32 / bristle_count as f32;
