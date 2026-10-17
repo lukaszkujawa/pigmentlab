@@ -238,6 +238,9 @@ fn main() -> Result<(), slint::PlatformError> {
     app.window()
         .set_rendering_notifier(move |state, graphics_api| match state {
             slint::RenderingState::RenderingSetup => {
+                if let Some(app) = app_weak.upgrade() {
+                    tablet.attach(app.window());
+                }
                 if let slint::GraphicsAPI::WGPU30 { device, queue, .. } = graphics_api {
                     let mut created = Engine::new(Gpu::shared(device, queue), CANVAS, SEED);
                     created.dip(PALETTE[2]);

@@ -13,5 +13,10 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSEvent", "NSIm
 objc2-foundation = { version = "0.3", features = ["NSData", "NSGeometry"] }
 block2 = "0.6"
 
+[target.'cfg(windows)'.dependencies]
+slint = { version = "1.18", features = ["raw-window-handle-06"] }
+raw-window-handle = "0.6"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Controls", "Win32_UI_Input_Pointer", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
 [build-dependencies]
 slint-build = "1.18"
