@@ -81,7 +81,7 @@ impl Deposit {
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
         let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
-        let pickup_demand = gpu.storage_buffer("pickup demand", (2 * columns + 1 + GAUGE_CHANNELS as u64) * 4);
+        let pickup_demand = gpu.storage_buffer("pickup demand", (3 * columns + 1 + GAUGE_CHANNELS as u64) * 4);
         let pickup_grant = gpu.storage_buffer("pickup grant", columns * 32);
         let stir_depth = gpu.storage_buffer("stir depth", columns * 4);
         let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
@@ -193,7 +193,7 @@ impl Deposit {
             wet_floor_keep: brush.preset().wet_floor_keep(stroke.pressure),
             contact: stroke.contact,
             lifting: u32::from(stroke.lifting),
-            film_height: CONTACT_HEIGHT * (LIGHT_TOUCH_FILM + (1.0 - LIGHT_TOUCH_FILM) * stroke.pressure.clamp(0.0, 1.0)),
+            film_height: CONTACT_HEIGHT * (LIGHT_TOUCH_FILM + (1.0 - LIGHT_TOUCH_FILM) * stroke.pressure.clamp(0.0, 1.0)) * stroke.contact,
             ..self.base
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));

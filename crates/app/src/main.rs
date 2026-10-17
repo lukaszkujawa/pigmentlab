@@ -19,6 +19,7 @@ const CANVAS: CanvasSize = CanvasSize { width: 2048, height: 1536 };
 const SEED: u64 = 1;
 
 const MAX_CUSTOM_COLOURS: usize = 12;
+const HOVER: i32 = 3;
 
 #[derive(Clone, Copy, Debug)]
 enum Dip {
@@ -30,6 +31,7 @@ enum Dip {
 #[derive(Default)]
 struct Requests {
     pointer: Vec<PointerSample>,
+    hover: Option<(f32, f32)>,
     last_pointer: Option<PointerSample>,
     dip: Option<Dip>,
     clean: bool,
@@ -94,13 +96,17 @@ fn main() -> Result<(), slint::PlatformError> {
     let pen = tablet.clone();
     app.on_pointer(move |kind, x, y| {
         let app = app_weak.unwrap();
+        let scale = app.get_canvas_scale();
+        if kind == HOVER {
+            shared.borrow_mut().hover = Some((x * scale, y * scale));
+            return;
+        }
         let pen = pen.state();
         let (pressure, tilt, rotation) = if pen.present {
             (pen.brush_pressure(app.get_pen_firmness()), pen.tilt, pen.rotation)
         } else {
             (app.get_pressure(), [0.0; 2], 0.0)
         };
-        let scale = app.get_canvas_scale();
         shared.borrow_mut().push_pointer(PointerSample {
             phase: phase(kind),
             x: x * scale,
@@ -366,6 +372,9 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     }
     for sample in requests.pointer.drain(..) {
         engine.pointer(sample);
+    }
+    if let Some((x, y)) = requests.hover.take() {
+        engine.hover(x, y);
     }
 }
 

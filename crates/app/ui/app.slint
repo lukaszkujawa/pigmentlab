@@ -541,6 +541,10 @@ export component AppWindow inherits Window {
 
                     TouchArea {
                         pointer-event(event) => {
+                            if (event.kind == PointerEventKind.move) {
+                                if (!self.pressed) { root.pointer(3, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px); }
+                                return;
+                            }
                             if (event.button != PointerEventButton.left) { return; }
                             if (event.kind == PointerEventKind.down && root.eyedropper) {
                                 root.eyedropper = false;

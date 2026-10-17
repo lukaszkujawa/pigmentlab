@@ -50,6 +50,7 @@ pub struct Engine {
     brush_lines: BrushLines,
     display: wgpu::Texture,
     pointer: PointerTrack,
+    hover: Option<glam::Vec2>,
     pose: BrushPose,
     position_at_last_deposit: Vec3,
     touch: Touch,
@@ -134,6 +135,7 @@ impl Engine {
             brush_lines,
             display,
             pointer: PointerTrack::default(),
+            hover: None,
             pose: BrushPose::upright(lifted),
             position_at_last_deposit: lifted,
             touch: Touch::default(),
@@ -202,6 +204,10 @@ impl Engine {
 
     pub fn pointer(&mut self, sample: PointerSample) {
         self.pointer.push(sample);
+    }
+
+    pub fn hover(&mut self, x: f32, y: f32) {
+        self.hover = Some(glam::Vec2::new(x, y));
     }
 
     pub fn time(&self) -> f64 {

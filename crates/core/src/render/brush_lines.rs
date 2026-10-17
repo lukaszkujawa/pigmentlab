@@ -62,7 +62,7 @@ impl BrushLines {
             multiview_mask: None,
             cache: None,
         });
-        let vertex_count = brush.preset().bristle_count * (VERTICES_PER_BRISTLE - 1) * 2;
+        let vertex_count = brush.preset().bristle_count * (VERTICES_PER_BRISTLE - 2) * 2;
         Self { pipeline, bind_group, vertex_count }
     }
 

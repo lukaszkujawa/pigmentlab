@@ -76,6 +76,9 @@ impl BrushPreset {
 
     pub fn wet_floor_keep(&self, pressure: f32) -> f32 {
         let light_touch = 1.0 - pressure.clamp(0.0, 1.0);
+        if self.is_rigid() {
+            return light_touch.powi(3);
+        }
         let press = 1.0 - light_touch * light_touch;
         1.0 - press * (SINK_AT_LIGHT + (SINK_AT_FULL - SINK_AT_LIGHT) * self.sink)
     }
@@ -108,9 +111,9 @@ impl BrushPreset {
             splay: 0.0,
             cohesion: 0.0,
             sink: 1.0,
-            sample_capacity: cm(0.0005),
+            sample_capacity: cm(0.003),
             deposit_rate: 0.0,
-            pickup_rate: 0.0,
+            pickup_rate: cm(0.0002),
             ..Self::flat(160, width, thickness, length)
         }
     }
@@ -129,10 +132,9 @@ impl BrushPreset {
 
     pub fn adjusted(self, adjustments: BrushAdjustments) -> Self {
         let scale = adjustments.scale.clamp(0.3, 3.0);
-        let bristle_count = adjustments
-            .bristle_count
-            .unwrap_or_else(|| (self.bristle_count as f32 * scale * scale).round() as u32)
-            .clamp(20, 600);
+        let natural_count = (self.bristle_count as f32 * scale * scale).round() as u32;
+        let bristle_count = adjustments.bristle_count.unwrap_or(natural_count).clamp(20, 600);
+        let share_per_hair = natural_count as f32 / bristle_count as f32;
         let stiffness = adjustments.stiffness.clamp(0.0, 1.0);
         let scaled = Self { length: self.length * scale.sqrt(), width: self.width * scale, thickness: self.thickness * scale, ..self };
         if self.is_rigid() {
@@ -140,6 +142,9 @@ impl BrushPreset {
         }
         Self {
             bristle_count,
+            sample_capacity: self.sample_capacity * share_per_hair,
+            deposit_rate: self.deposit_rate * share_per_hair,
+            pickup_rate: self.pickup_rate * share_per_hair,
             splay: 0.3 + 0.5 * (1.0 - stiffness),
             sink: 0.3 + 0.4 * (1.0 - stiffness),
             friction: 0.4 + 0.4 * stiffness,
@@ -182,6 +187,17 @@ mod tests {
         assert!((bigger.width - base.width * 2.0).abs() < 1e-4);
         assert!(bigger.bristle_count >= base.bristle_count * 2);
         assert!(bigger.bristle_count <= 600);
+    }
+
+    #[test]
+    fn bristle_count_changes_density_not_paint_flow() {
+        let base = BrushPreset::default_round();
+        let sparse = base.adjusted(BrushAdjustments { bristle_count: Some(100), ..Default::default() });
+        let dense = base.adjusted(BrushAdjustments { bristle_count: Some(400), ..Default::default() });
+        let flow = |preset: BrushPreset| preset.deposit_rate * preset.bristle_count as f32;
+        let capacity = |preset: BrushPreset| preset.sample_capacity * preset.bristle_count as f32;
+        assert!((flow(sparse) - flow(dense)).abs() < flow(dense) * 1e-4);
+        assert!((capacity(sparse) - capacity(dense)).abs() < capacity(dense) * 1e-4);
     }
 
     #[test]

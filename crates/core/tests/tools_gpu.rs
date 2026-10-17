@@ -142,7 +142,7 @@ fn tube_drawn_in_a_circle_leaves_an_even_ring() {
 }
 
 #[test]
-fn shaper_through_a_ring_leaves_a_thin_even_film_and_keeps_the_paint() {
+fn shaper_through_a_ring_scrapes_to_a_stain_and_carries_the_paint_on_its_blade() {
     let mut engine = fresh_engine();
     let released = squeeze_ring(&mut engine, 0.0, 400.0, 380.0, 150.0, "cadmium_yellow");
     let mass_before = engine.paint_mass();
@@ -156,11 +156,13 @@ fn shaper_through_a_ring_leaves_a_thin_even_film_and_keeps_the_paint() {
     let at = |x: usize, y: usize| heights[y * WIDTH as usize + x];
     for x in (465..=535).step_by(5) {
         let film = at(x, 560);
-        assert!((0.8..=1.6).contains(&film), "film behind the blade should be about one clearance thick, got {film:.2} px at x {x}");
+        assert!((0.05..=0.3).contains(&film), "a firmly pressed blade should leave only a stain, got {film:.2} px at x {x}");
     }
     assert!(at(450, 560) == 0.0 && at(550, 560) == 0.0, "no paint should appear beyond the blade's edges on bare canvas");
-    let drift = (engine.paint_mass() - mass_before).abs() / mass_before;
-    assert!(drift < 0.001, "scraping drifted mass by {:.3}%", drift * 100.0);
+    let carried = engine.brush_load();
+    assert!(carried > mass_before * 0.02, "the blade should carry scraped paint away, held {carried:.0} of {mass_before:.0}");
+    let drift = (engine.paint_mass() + carried - mass_before).abs() / mass_before;
+    assert!(drift < 0.001, "paint on canvas and blade together drifted by {:.3}%", drift * 100.0);
 }
 
 #[test]
@@ -192,4 +194,46 @@ fn a_brush_dragged_out_of_a_blob_loads_up_and_fades_gradually() {
         assert!(pair[1] > pair[0] * 0.55, "the trail should fade gradually, not step from {:.1} to {:.1} px within 20 px", pair[0], pair[1]);
     }
     assert!(centre[0] > 1.5 && *centre.last().unwrap() < centre[0] * 0.4, "the trail should start thick and end thin ({:.1} -> {:.1})", centre[0], centre.last().unwrap());
+}
+
+#[test]
+fn a_clean_brush_smears_stiff_paint_instead_of_wiping_it_away() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Flat");
+    for (k, y) in [300.0, 330.0, 360.0, 390.0].iter().enumerate() {
+        engine.dip(by_name("cadmium_red").unwrap());
+        let start = k as f64 * 1.5;
+        engine.pointer(sample(PointerPhase::Down, 380.0, *y, 0.8, start));
+        engine.pointer(sample(PointerPhase::Move, 730.0, *y, 0.8, start + 1.0));
+        engine.pointer(sample(PointerPhase::Up, 730.0, *y, 0.0, start + 1.0));
+    }
+    engine.advance_exact(6.5);
+    let band = |heights: &[f32]| (280..410).flat_map(|y| (550..570).map(move |x| (x, y))).map(|(x, y)| heights[y * WIDTH as usize + x]).collect::<Vec<f32>>();
+    let before = band(&engine.paint_heights());
+    engine.select_brush("Round medium");
+    engine.clean();
+    engine.pointer(sample(PointerPhase::Down, 560.0, 220.0, 0.7, 7.0));
+    engine.pointer(sample(PointerPhase::Move, 560.0, 480.0, 0.7, 8.0));
+    engine.pointer(sample(PointerPhase::Up, 560.0, 480.0, 0.0, 8.0));
+    engine.advance_exact(8.6);
+    let after = band(&engine.paint_heights());
+    let left = after.iter().sum::<f32>() / before.iter().sum::<f32>();
+    assert!(left > 0.2, "a dry brush should only pick up part of stiff paint, but {:.0}% of it was wiped away", (1.0 - left) * 100.0);
+    let bare = before.iter().zip(&after).filter(|(was, now)| **was > 1.0 && **now < 0.05).count();
+    assert!(bare < before.len() / 50, "a dry brush should not scrape the canvas bare ({bare} of {} pixels)", before.len());
+}
+
+#[test]
+fn a_lifted_brush_follows_the_hovering_pointer() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Round medium");
+    engine.pointer(sample(PointerPhase::Down, 300.0, 300.0, 0.5, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 400.0, 300.0, 0.5, 0.3));
+    engine.pointer(sample(PointerPhase::Up, 400.0, 300.0, 0.0, 0.3));
+    engine.advance_exact(0.6);
+    engine.hover(700.0, 500.0);
+    engine.advance_exact(1.2);
+    let centre = engine.brush().tuft_centre();
+    let reach = engine.brush().preset().bend_reach();
+    assert!(centre.distance(glam::Vec2::new(700.0, 500.0)) <= reach + 1.0, "the lifted brush should hang over the pointer, but its tuft is at {centre}");
 }

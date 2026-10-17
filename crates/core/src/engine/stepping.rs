@@ -54,6 +54,11 @@ impl Engine {
                 }
                 self.needs_render |= self.touch.engaged() || self.show_bristles;
             }
+            if let Some(hover) = self.hover.filter(|_| !self.pressed && !self.touch.engaged()) {
+                self.touch.position = hover;
+                self.pose = self.pose_for();
+                self.needs_render |= self.show_bristles;
+            }
             let mut encoder = self
                 .gpu
                 .device

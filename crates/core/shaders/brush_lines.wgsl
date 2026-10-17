@@ -1,4 +1,6 @@
 const VERTICES: u32 = 10u;
+const DRAWN_SEGMENTS: u32 = VERTICES - 2u;
+const OBLIQUE: f32 = 0.45;
 
 struct BrushUniform {
     rotation_x: vec4<f32>,
@@ -34,14 +36,17 @@ fn to_canvas(p: vec3<f32>) -> vec3<f32> {
 @vertex
 fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
     let segment = index / 2u;
-    let bristle = segment / (VERTICES - 1u);
-    let vertex = segment % (VERTICES - 1u) + (index & 1u);
+    let bristle = segment / DRAWN_SEGMENTS;
+    let vertex = segment % DRAWN_SEGMENTS + 1u + (index & 1u);
     let canvas = to_canvas(positions[bristle * VERTICES + vertex].xyz);
-    let ndc = vec2<f32>(canvas.x / brush.canvas_width * 2.0 - 1.0, 1.0 - canvas.y / brush.canvas_height * 2.0);
+    let seen = vec2<f32>(canvas.x, canvas.y - canvas.z * OBLIQUE);
+    let ndc = vec2<f32>(seen.x / brush.canvas_width * 2.0 - 1.0, 1.0 - seen.y / brush.canvas_height * 2.0);
     let contact = clamp(1.0 - canvas.z / 4.0, 0.0, 1.0);
+    let along = f32(vertex - 1u) / f32(DRAWN_SEGMENTS);
+    let hair = mix(vec3<f32>(0.42, 0.33, 0.22), vec3<f32>(0.93, 0.86, 0.70), along);
     var out: VertexOutput;
     out.position = vec4<f32>(ndc, 0.0, 1.0);
-    out.color = mix(vec4<f32>(0.15, 0.15, 0.18, 0.6), vec4<f32>(0.8, 0.1, 0.1, 0.9), contact);
+    out.color = vec4<f32>(mix(hair, vec3<f32>(0.1, 0.1, 0.12), contact * 0.6), 0.8);
     return out;
 }
 

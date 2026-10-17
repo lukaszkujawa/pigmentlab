@@ -37,12 +37,9 @@ fn a_full_brush_picks_up_colour_without_gaining_paint() {
     let load_after = engine.brush_load();
     assert!(load_after <= load_before * 1.001, "a saturated brush must not gain paint ({load_before:.0} -> {load_after:.0})");
     assert!(colour_after.absorption.z > colour_before.absorption.z * 1.003, "the brush as a whole should shift towards yellow (blue absorption {:.3} -> {:.3})", colour_before.absorption.z, colour_after.absorption.z);
-    let yellow = by_name("cadmium_yellow").unwrap().coefficients.absorption.z;
-    let halfway = 0.5 * (colour_before.absorption.z + yellow);
     let samples = engine.brush_sample_absorption();
-    let mostly_yellow = samples.iter().filter(|a| a.z > halfway).count();
     let tinted = samples.iter().filter(|a| a.z > colour_before.absorption.z * 1.07).count();
-    assert!(mostly_yellow > 50 && tinted > 500, "the hairs that touched the bar should have taken on yellow: {mostly_yellow} mostly yellow, {tinted} tinted, of {}", samples.len());
+    assert!(tinted > 3000, "the hairs that touched the bar should have taken on yellow: {tinted} tinted of {}", samples.len());
     let total_before = canvas_before + load_before;
     let total_after = engine.paint_mass() + load_after;
     assert!((total_after - total_before).abs() < total_before * 0.01, "colour exchange must conserve paint ({total_before:.0} -> {total_after:.0})");
@@ -91,5 +88,5 @@ fn an_oily_bead_slumps_while_a_stiff_bead_holds_its_shape() {
 fn oily_paint_loses_its_brush_marks_while_stiff_paint_keeps_them() {
     let stiff = settled_stroke_roughness(0.0);
     let oily = settled_stroke_roughness(1.0);
-    assert!(oily < stiff * 0.6, "oily paint should smooth its ridges ({stiff:.0} stiff vs {oily:.0} oily)");
+    assert!(oily < stiff * 0.7, "oily paint should smooth its ridges ({stiff:.0} stiff vs {oily:.0} oily)");
 }

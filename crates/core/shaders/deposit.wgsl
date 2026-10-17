@@ -1,28 +1,35 @@
 const MAX_SEGMENT_STEPS: u32 = 16u;
 const REFERENCE_SPEED: f32 = 3.0 * PIXELS_PER_CM;
-const FILM_MAX_RADIUS: f32 = 0.035 * PIXELS_PER_CM;
 const FILM_MIN_RADIUS: f32 = 0.015 * PIXELS_PER_CM;
+const DRY_HAIR_RADIUS: f32 = 0.3;
+const LOADED_HAIR_RADIUS: f32 = 0.9;
+const PIXEL_SPREAD_SQUARED: f32 = 0.5;
+const BLADE_CLEARANCE: f32 = 0.1;
 const VALLEY_SOFTNESS: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
-const GROOVE_RADIUS: i32 = 1;
-const PUSH_DISTANCE: f32 = 2.5;
+const GROOVE_RADIUS: i32 = 0;
+const PUSH_DISTANCE: f32 = 1.5;
 const PUSH_PACE: f32 = 1.25;
 const MAX_PUSH_REACH: f32 = 16.0;
 const MAX_PUSH_TARGETS: u32 = 6u;
 const FORWARD_SHARE: f32 = 0.8;
-const PUSH_RADIUS: f32 = 3.0;
+const PUSH_RADIUS: f32 = 2.0;
 const LIMIT_ENCODING: i32 = 0x7fffffff;
 const MIN_DISPLACING_SPEED: f32 = 48.0;
 const DRAG_RADIUS: i32 = 2;
 const DRAG_RATE_PER_SECOND: f32 = 24.0;
 const WIPE_RATE_PER_SECOND: f32 = 60.0;
+const STIFF_PAINT_ABSORBENCY: f32 = 0.4;
+const SOAK_RATE_PER_SECOND: f32 = 30.0;
+const SOAK_IMMERSION: f32 = 5.0;
 const PICKUP_FILM: f32 = 0.15;
 const BRUSH_CONTENTS_SCALE: f32 = 16.0;
 const SATURATED_BLEED: f32 = 0.5;
 const STIR_RATE_PER_SECOND: f32 = 30.0;
 const DISPLACEMENT_SLOTS: u32 = 5u;
 const COARSE_CELL: u32 = 16u;
+const BRUSH_CONTENTS_CHANNELS: u32 = 8u;
 
 struct DepositUniform {
     sample_count: u32,
@@ -75,7 +82,6 @@ struct Segment {
     motion: f32,
     film: f32,
     fill: f32,
-    carries_film: bool,
 }
 
 fn segment_of(sample: u32, load: f32) -> Segment {
@@ -85,9 +91,13 @@ fn segment_of(sample: u32, load: f32) -> Segment {
     var start = curve_point(true, bristle, t);
     if (distance(start.xy, end.xy) > JUMP_DISTANCE) { start = end; }
     let travelled = distance(start.xy, end.xy);
-    let carries_film = deposit.rigidity < 0.5;
-    let fill = clamp(load / deposit.sample_capacity, 0.0, 1.0) * select(0.0, 1.0, carries_film);
-    return Segment(start, end, clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS), min(travelled / (REFERENCE_SPEED * deposit.dt), 1.0), mix(FILM_MIN_RADIUS, deposit.film_height, fill), fill, carries_film);
+    let fill = clamp(load / deposit.sample_capacity, 0.0, 1.0) * select(1.0, 0.0, deposit.rigidity >= 0.5);
+    return Segment(start, end, clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS), min(travelled / (REFERENCE_SPEED * deposit.dt), 1.0), film_reach(load), fill);
+}
+
+fn film_reach(load: f32) -> f32 {
+    if (deposit.rigidity >= 0.5) { return BLADE_CLEARANCE; }
+    return mix(FILM_MIN_RADIUS, deposit.film_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
 }
 
 fn exchange_portion(segment: Segment) -> f32 {
@@ -104,7 +114,7 @@ fn buried_depth(point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>) -> f32 {
 
 fn pickup_wanted(segment: Segment, point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>, remaining: ptr<function, f32>) -> f32 {
     let height = state.x + state.w;
-    if (!segment.carries_film || state.x <= 0.0 || point.z > height + segment.film) { return 0.0; }
+    if (state.x <= 0.0 || point.z > height + segment.film) { return 0.0; }
     let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
     let buried = buried_depth(point, pixel, state);
     let share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) / f32(segment.steps) * min(segment.motion, brush_motion);
@@ -118,7 +128,8 @@ fn column_index(local: vec2<u32>) -> u32 {
 }
 
 fn film_radius(fill: f32) -> f32 {
-    return mix(FILM_MIN_RADIUS, FILM_MAX_RADIUS, smoothstep(0.2, 1.0, fill));
+    let hair = mix(DRY_HAIR_RADIUS, LOADED_HAIR_RADIUS, smoothstep(0.2, 1.0, fill));
+    return sqrt(hair * hair + PIXEL_SPREAD_SQUARED);
 }
 
 fn film_kernel(distance_to_centre: f32, radius: f32) -> f32 {
@@ -235,6 +246,7 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     atomicMax(&pickup_demand[max_surface_slot()], fixed(f32(height) / PAINT_SCALE + ground_here));
     atomicStore(&pickup_demand[column], 0);
     atomicStore(&pickup_demand[hair_floor_slot(column)], 0);
+    atomicStore(&pickup_demand[net_demand_slot(column)], 0);
     atomicStore(&stir_depth[column], 0);
     for (var channel = 0u; channel < CHANNELS; channel++) { atomicStore(&film[column * CHANNELS + channel], 0); }
     for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
@@ -338,7 +350,6 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let scattering = sample_scattering[sample].xyz;
     var remaining_capacity = deposit.sample_capacity - initial_load;
     var requested = 0.0;
-    let carries_film = select(0.0, 1.0, segment.carries_film);
     let stride = max(u32(round(film_radius(segment.fill) * 0.75)), 1u);
     let depositing = (sample % deposit.samples_per_bristle) % stride == 0u;
     let travelled = distance(segment.start.xy, segment.end.xy);
@@ -355,6 +366,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let wanted = pickup_wanted(segment, point, pixel, state, &remaining_capacity);
         if (wanted > 0.0) {
             atomicAdd(&pickup_demand[column_index(local)], fixed(wanted));
+            atomicAdd(&pickup_demand[net_demand_slot(column_index(local))], fixed(wanted * (1.0 - returned_portion(segment))));
             atomicMax(&pickup_demand[hair_floor_slot(column_index(local))], LIMIT_ENCODING - fixed(point.z));
             requested += wanted;
         }
@@ -362,7 +374,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
             let stirring = buried_depth(point, pixel, state) * min(segment.motion, brush_motion);
             if (stirring > 0.0) { atomicMax(&stir_depth[column_index(local)], fixed(stirring)); }
         }
-        let film = mix(FILM_MIN_RADIUS, deposit.film_height, clamp(load / deposit.sample_capacity, 0.0, 1.0) * carries_film);
+        let film = film_reach(load);
         let height = state.x + state.w;
         if (point.z > height + film) { continue; }
         if (brush_moving && travelled > 1e-3 && height > point.z) {
@@ -425,7 +437,10 @@ fn grant_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     let state = column_state[column];
     let lowest_hair = f32(LIMIT_ENCODING - atomicLoad(&pickup_demand[hair_floor_slot(column)])) / PAINT_SCALE;
     let above_hairs = max(state.x + state.w - lowest_hair, 0.0) + PICKUP_FILM;
-    let granted = min(min(demand, available), above_hairs);
+    let immersion = above_hairs / SOAK_IMMERSION;
+    let soak = 1.0 - exp(-SOAK_RATE_PER_SECOND * mix(STIFF_PAINT_ABSORBENCY, 1.0, state.z) * immersion * deposit.dt);
+    let net_share = f32(atomicLoad(&pickup_demand[net_demand_slot(column)])) / PAINT_SCALE / demand;
+    let granted = min(min(demand, available), min(above_hairs, above_hairs * soak / max(net_share, 1e-6)));
     if (granted <= 0.0) { return; }
     let absorption = load_vec3(cell, 1u) / available;
     let scattering = load_vec3(cell, 4u) / available;
@@ -583,6 +598,10 @@ fn apply_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
 
 fn brush_contents_slot() -> u32 {
     return 2u * window.width * window.height + 1u;
+}
+
+fn net_demand_slot(column: u32) -> u32 {
+    return brush_contents_slot() + BRUSH_CONTENTS_CHANNELS + column;
 }
 
 fn report_brush_contents(load: f32, absorption: vec3<f32>, scattering: vec3<f32>) {
