@@ -194,9 +194,11 @@ fn main() -> Result<(), slint::PlatformError> {
     let app_weak = app.as_weak();
     app.on_brush_selected(move |index| {
         let app = app_weak.unwrap();
-        if let Some(named) = PRESETS.get(index.max(0) as usize) {
-            app.set_brush_bristles(named.preset.adjusted(adjustments_of(&app, None)).bristle_count as f32);
+        let preset = PRESETS.get(index.max(0) as usize).map(|named| named.preset);
+        if let Some(preset) = preset {
+            app.set_brush_bristles(preset.adjusted(adjustments_of(&app, None)).bristle_count as f32);
         }
+        app.set_brush_has_thickness(preset.is_some_and(|preset| preset.has_thickness()));
         app.set_tube_selected(tool_name(index.max(0) as usize) == TUBE_TOOL);
         shared.borrow_mut().brush = Some((index.max(0) as usize, adjustments_of(&app, None)));
     });
@@ -314,6 +316,7 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
                 active.param(now, "bristles", count as f32);
             }
             active.param(now, "stiffness", adjustments.stiffness);
+            active.param(now, "thickness", adjustments.thickness);
         }
         if let Some(paint) = requests.paint {
             active.param(now, "load", paint.load);
@@ -462,7 +465,7 @@ fn tool_name(index: usize) -> &'static str {
 }
 
 fn adjustments_of(app: &AppWindow, bristle_count: Option<u32>) -> BrushAdjustments {
-    BrushAdjustments { scale: app.get_brush_scale(), bristle_count, stiffness: app.get_brush_stiffness() }
+    BrushAdjustments { scale: app.get_brush_scale(), bristle_count, stiffness: app.get_brush_stiffness(), thickness: app.get_brush_thickness() }
 }
 
 #[cfg(test)]

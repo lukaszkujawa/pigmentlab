@@ -48,11 +48,12 @@ pub struct BrushAdjustments {
     pub scale: f32,
     pub bristle_count: Option<u32>,
     pub stiffness: f32,
+    pub thickness: f32,
 }
 
 impl Default for BrushAdjustments {
     fn default() -> Self {
-        Self { scale: 1.0, bristle_count: None, stiffness: 0.5 }
+        Self { scale: 1.0, bristle_count: None, stiffness: 0.5, thickness: 1.0 }
     }
 }
 
@@ -149,6 +150,14 @@ impl BrushPreset {
         (self.blade_layer * (1.0 - pressure.clamp(0.0, 1.0))).max(BLADE_CLEARANCE)
     }
 
+    pub fn has_thickness(&self) -> bool {
+        matches!(self.shape, BrushShape::Flat | BrushShape::Filbert)
+    }
+
+    pub fn turns_with_tilt(&self) -> bool {
+        matches!(self.shape, BrushShape::Flat | BrushShape::Filbert | BrushShape::Blade)
+    }
+
     pub fn is_rigid(&self) -> bool {
         self.shape == BrushShape::Blade
     }
@@ -163,11 +172,12 @@ impl BrushPreset {
 
     pub fn adjusted(self, adjustments: BrushAdjustments) -> Self {
         let scale = adjustments.scale.clamp(0.1, 3.0);
-        let natural_count = (self.bristle_count as f32 * scale * scale).round() as u32;
+        let thickness = if self.has_thickness() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
+        let natural_count = (self.bristle_count as f32 * scale * scale * thickness).round() as u32;
         let bristle_count = adjustments.bristle_count.unwrap_or(natural_count).clamp(20, 600);
         let share_per_hair = natural_count as f32 / bristle_count as f32;
         let stiffness = adjustments.stiffness.clamp(0.0, 1.0);
-        let scaled = Self { length: self.length * scale.sqrt(), width: self.width * scale, thickness: self.thickness * scale, ..self };
+        let scaled = Self { length: self.length * scale.sqrt(), width: self.width * scale, thickness: self.thickness * scale * thickness, ..self };
         if self.is_rigid() {
             return Self { bristle_count: (self.bristle_count as f32 * scale * scale).round() as u32, ..scaled };
         }
@@ -185,10 +195,8 @@ impl BrushPreset {
     }
 }
 
-pub const PRESETS: [NamedPreset; 8] = [
-    NamedPreset { name: "Round small", preset: BrushPreset::round(70, cm(0.15), cm(1.6)) },
-    NamedPreset { name: "Round medium", preset: BrushPreset::round(200, cm(0.35), cm(2.2)) },
-    NamedPreset { name: "Round large", preset: BrushPreset::round(450, cm(0.6), cm(2.8)) },
+pub const PRESETS: [NamedPreset; 6] = [
+    NamedPreset { name: "Round", preset: BrushPreset::round(200, cm(0.35), cm(2.2)) },
     NamedPreset { name: "Flat", preset: BrushPreset::flat(400, cm(1.2), cm(0.3), cm(2.0)) },
     NamedPreset { name: "Filbert", preset: BrushPreset::filbert(350, cm(1.0), cm(0.3), cm(2.2)) },
     NamedPreset { name: "Rigger", preset: BrushPreset::round(40, cm(0.12), cm(3.0)) },
@@ -196,8 +204,14 @@ pub const PRESETS: [NamedPreset; 8] = [
     NamedPreset { name: "Painting knife", preset: BrushPreset::knife(cm(0.8), cm(2.4)) },
 ];
 
+const RECORDED_PRESETS: [NamedPreset; 3] = [
+    NamedPreset { name: "Round small", preset: BrushPreset::round(70, cm(0.15), cm(1.6)) },
+    NamedPreset { name: "Round medium", preset: BrushPreset::round(200, cm(0.35), cm(2.2)) },
+    NamedPreset { name: "Round large", preset: BrushPreset::round(450, cm(0.6), cm(2.8)) },
+];
+
 pub fn preset_by_name(name: &str) -> Option<BrushPreset> {
-    PRESETS.iter().find(|named| named.name.eq_ignore_ascii_case(name)).map(|named| named.preset)
+    PRESETS.iter().chain(&RECORDED_PRESETS).find(|named| named.name.eq_ignore_ascii_case(name)).map(|named| named.preset)
 }
 
 #[cfg(test)]
@@ -230,6 +244,15 @@ mod tests {
         let capacity = |preset: BrushPreset| preset.sample_capacity * preset.bristle_count as f32;
         assert!((flow(sparse) - flow(dense)).abs() < flow(dense) * 1e-4);
         assert!((capacity(sparse) - capacity(dense)).abs() < capacity(dense) * 1e-4);
+    }
+
+    #[test]
+    fn flat_brushes_take_a_thickness_and_round_ones_ignore_it() {
+        let flat = preset_by_name("Flat").unwrap();
+        let thicker = flat.adjusted(BrushAdjustments { thickness: 2.0, ..Default::default() });
+        assert!((thicker.thickness - flat.thickness * 2.0).abs() < 1e-4 && thicker.width == flat.width);
+        let round = BrushPreset::default_round();
+        assert_eq!(round.adjusted(BrushAdjustments { thickness: 2.0, ..Default::default() }), round.adjusted(BrushAdjustments::default()));
     }
 
     #[test]

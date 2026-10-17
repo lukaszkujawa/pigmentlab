@@ -458,7 +458,9 @@ export component AppWindow inherits Window {
     in property <bool> tube-selected: false;
     in property <float> nozzle-radius: 16;
     out property <float> pressure <=> pressure-slider.value;
-    out property <int> brush-index: 1;
+    out property <int> brush-index: 0;
+    in property <bool> brush-has-thickness: false;
+    out property <float> brush-thickness <=> thickness-slider.value;
     out property <float> brush-scale <=> size-slider.value;
     in-out property <float> brush-bristles <=> bristles-slider.value;
     out property <float> brush-stiffness <=> stiffness-slider.value;
@@ -663,7 +665,8 @@ export component AppWindow inherits Window {
                                     }
                                 }
                                 Rectangle { height: 1px; background: Theme.line; }
-                                size-slider := ParamSlider { label: "Size"; minimum: 0.13; maximum: 2.5; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
+                                size-slider := ParamSlider { label: root.brush-has-thickness ? "Width" : "Size"; minimum: 0.13; maximum: 2.5; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
+                                thickness-slider := ParamSlider { visible: root.brush-has-thickness; height: root.brush-has-thickness ? self.preferred-height : 0; label: "Thickness"; minimum: 0.25; maximum: 3; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
                                 bristles-slider := ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value: 200; value-text: round(self.value); released => { root.brush-adjusted(); } }
                                 stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
                                 angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 180; value: 0; value-text: round(self.value) + "°"; }

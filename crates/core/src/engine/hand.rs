@@ -5,7 +5,6 @@ use glam::{Quat, Vec2, Vec3};
 
 const PEN_TO_BRUSH_LEAN: f32 = 0.6;
 const MAX_LEAN: f32 = 0.5;
-const MIN_PEN_LEAN: f32 = 0.05;
 const BLADE_FLEX: f32 = 0.75;
 
 impl Engine {
@@ -43,14 +42,13 @@ impl Engine {
     pub(super) fn pose_for(&self) -> BrushPose {
         let (lifted, pressed) = self.handle_heights();
         let mut spin_radians = (self.brush_angle_degrees + self.touch.rotation).to_radians();
-        let held_lean = self.brush.preset().handle_lean;
-        let lean = if held_lean > 0.0 {
-            let towards = Some(pen_lean(self.touch.tilt)).filter(|lean| lean.length() > MIN_PEN_LEAN).map_or(Vec2::Y, |lean| lean.normalize());
-            spin_radians += towards.y.atan2(towards.x) - std::f32::consts::FRAC_PI_2;
-            towards * held_lean
-        } else {
-            pen_lean(self.touch.tilt)
-        };
+        let preset = self.brush.preset();
+        let held_lean = preset.handle_lean;
+        let heading = self.touch.heading();
+        if preset.turns_with_tilt() && heading != Vec2::Y {
+            spin_radians += heading.y.atan2(heading.x) - std::f32::consts::FRAC_PI_2;
+        }
+        let lean = if held_lean > 0.0 { heading * held_lean } else { pen_lean(self.touch.tilt) };
         let handle = handle_direction(lean);
         let spin = Quat::from_rotation_z(spin_radians);
         let mut pose = BrushPose {

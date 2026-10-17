@@ -26,7 +26,7 @@ fn blob_around(engine: &mut Engine, centre: (usize, usize)) -> (f32, f32, f32) {
 fn paint_at_the_stroke_start_stays_put_once_the_brush_has_left() {
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
     engine.set_levelling_enabled(false);
-    engine.configure_brush("Round small", BrushAdjustments { scale: 0.4, bristle_count: Some(600), stiffness: 0.5 });
+    engine.configure_brush("Round small", BrushAdjustments { scale: 0.4, bristle_count: Some(600), ..Default::default() });
     engine.dip(by_name("cadmium_red").unwrap());
     let start = (500.0f32, 256.0f32);
     engine.pointer(sample(PointerPhase::Down, start.0, start.1, 0.0, 0.0));
@@ -263,4 +263,26 @@ fn a_steeply_tilted_pen_still_paints_under_the_pointer() {
         assert!(heights[256 * 512 + 256] > 0.0, "tilt {tilt}: the dab should cover the pointer");
         assert!(offset.abs() < 25.0, "tilt {tilt}: the dab centre drifted {offset:.0} px from the pointer");
     }
+}
+
+fn flat_stroke_width(tilt: [f32; 2]) -> usize {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: 1024, height: 512 }, 1);
+    engine.set_levelling_enabled(false);
+    engine.select_brush("Flat");
+    engine.dip(by_name("cadmium_red").unwrap());
+    let at = |phase, x, pressure, time| PointerSample { phase, x, y: 256.0, pressure, tilt, rotation: 0.0, time };
+    engine.pointer(at(PointerPhase::Down, 300.0, 0.5, 0.0));
+    engine.pointer(at(PointerPhase::Move, 700.0, 0.5, 1.0));
+    engine.pointer(at(PointerPhase::Up, 700.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    let heights = engine.paint_heights();
+    (56..456).filter(|y| heights[y * 1024 + 500] > 0.05).count()
+}
+
+#[test]
+fn a_flat_brush_turns_with_the_pen_tilt() {
+    let broadside = flat_stroke_width([0.5, 0.0]);
+    let edge_on = flat_stroke_width([0.0, 0.5]);
+    let (wide, narrow) = (broadside.max(edge_on), broadside.min(edge_on));
+    assert!(wide > narrow * 2, "turning the pen should turn the flat: {broadside} px vs {edge_on} px");
 }

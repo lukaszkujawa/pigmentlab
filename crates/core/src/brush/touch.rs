@@ -6,6 +6,7 @@ const LIFT_SECONDS: f32 = 0.1;
 const VELOCITY_SMOOTHING: f32 = 0.2;
 const LIFT_DRIFT_KEPT_PER_SECOND: f32 = 0.02;
 const TILT_SMOOTHING_SECONDS: f32 = 0.05;
+const MIN_TILT_FOR_HEADING: f32 = 0.08;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Touch {
@@ -15,6 +16,7 @@ pub struct Touch {
     pub pressure: f32,
     pub tilt: [f32; 2],
     pub rotation: f32,
+    heading: Vec2,
 }
 
 impl Touch {
@@ -22,7 +24,8 @@ impl Touch {
         if state.pressed {
             let position = Vec2::new(state.x, state.y);
             if state.fresh_press {
-                *self = Self { position, tilt: state.tilt, ..Self::default() };
+                *self = Self { position, tilt: state.tilt, heading: self.heading, ..Self::default() };
+                self.follow_tilt(state.tilt, 0.0);
             }
             self.velocity = self.velocity.lerp((position - self.position) / dt, VELOCITY_SMOOTHING);
             self.position = position;
@@ -40,6 +43,14 @@ impl Touch {
     pub fn follow_tilt(&mut self, tilt: [f32; 2], dt: f32) {
         let follow = 1.0 - (-dt / TILT_SMOOTHING_SECONDS).exp();
         self.tilt = [self.tilt[0] + (tilt[0] - self.tilt[0]) * follow, self.tilt[1] + (tilt[1] - self.tilt[1]) * follow];
+        let lean = Vec2::new(self.tilt[0], -self.tilt[1]);
+        if lean.length() > MIN_TILT_FOR_HEADING {
+            self.heading = lean.normalize();
+        }
+    }
+
+    pub fn heading(&self) -> Vec2 {
+        if self.heading == Vec2::ZERO { Vec2::Y } else { self.heading }
     }
 
     pub fn engaged(&self) -> bool {
