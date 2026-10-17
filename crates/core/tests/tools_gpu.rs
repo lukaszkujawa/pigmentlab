@@ -237,3 +237,32 @@ fn a_lifted_brush_follows_the_hovering_pointer() {
     let reach = engine.brush().preset().bend_reach();
     assert!(centre.distance(glam::Vec2::new(700.0, 500.0)) <= reach + 1.0, "the lifted brush should hang over the pointer, but its tuft is at {centre}");
 }
+
+#[test]
+fn wiping_leaves_a_little_paint_of_the_same_colour() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    let (full, colour) = (engine.brush_load(), engine.brush_pigment());
+    engine.wipe();
+    let kept = engine.brush_load() / full;
+    assert!((kept - 0.15).abs() < 0.01, "wiping should keep about 15% of the paint, kept {:.0}%", kept * 100.0);
+    let after = engine.brush_pigment();
+    assert!((after.absorption - colour.absorption).length() < colour.absorption.length() * 0.01, "wiping must not change the colour: {:?} -> {:?}", colour.absorption, after.absorption);
+}
+
+#[test]
+fn a_tilted_tube_squeezes_under_the_pointer() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_red").unwrap());
+    let at = |phase, x: f32, time| PointerSample { phase, x, y: 400.0, pressure: 0.8, tilt: [0.0, 0.8], rotation: 0.0, time };
+    engine.pointer(at(PointerPhase::Down, 300.0, 0.0));
+    engine.pointer(at(PointerPhase::Move, 700.0, 1.0));
+    engine.pointer(at(PointerPhase::Up, 700.0, 1.0));
+    engine.advance_exact(1.05);
+    let heights = engine.paint_heights();
+    let section = cross_section(&heights, 500);
+    let peak = section.iter().enumerate().fold((0, 0.0f32), |best, (i, h)| if *h > best.1 { (i, *h) } else { best }).0 + 340;
+    assert!((peak as i32 - 400).abs() <= 2, "the bead should run under the pointer at y 400, but peaks at y {peak}");
+}

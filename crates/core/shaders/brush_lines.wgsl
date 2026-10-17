@@ -22,6 +22,7 @@ struct BrushUniform {
 
 @group(0) @binding(0) var<uniform> brush: BrushUniform;
 @group(0) @binding(1) var<storage, read> positions: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read> sheet: array<u32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -47,6 +48,21 @@ fn vs_main(@builtin(vertex_index) index: u32) -> VertexOutput {
     var out: VertexOutput;
     out.position = vec4<f32>(ndc, 0.0, 1.0);
     out.color = vec4<f32>(mix(hair, vec3<f32>(0.1, 0.1, 0.12), contact * 0.6), 0.8);
+    return out;
+}
+
+fn seen_from_above(canvas: vec3<f32>) -> vec4<f32> {
+    let seen = vec2<f32>(canvas.x, canvas.y - canvas.z * OBLIQUE);
+    return vec4<f32>(seen.x / brush.canvas_width * 2.0 - 1.0, 1.0 - seen.y / brush.canvas_height * 2.0, 0.0, 1.0);
+}
+
+@vertex
+fn vs_blade(@builtin(vertex_index) index: u32) -> VertexOutput {
+    let id = sheet[index];
+    let level = f32(id % VERTICES - 1u) / f32(DRAWN_SEGMENTS);
+    var out: VertexOutput;
+    out.position = seen_from_above(to_canvas(positions[id].xyz));
+    out.color = vec4<f32>(mix(vec3<f32>(0.22, 0.24, 0.27), vec3<f32>(0.52, 0.56, 0.6), level), 0.85);
     return out;
 }
 

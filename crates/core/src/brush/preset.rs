@@ -4,13 +4,14 @@ pub const MAX_COMPRESSION: f32 = 0.4;
 const BEND_REACH_FRACTION: f32 = 0.66;
 const SINK_AT_LIGHT: f32 = 0.75;
 const SINK_AT_FULL: f32 = 1.0;
+const BLADE_CLEARANCE: f32 = 0.1;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BrushShape {
     Round,
     Flat,
     Filbert,
-    Shaper,
+    Blade,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,6 +30,7 @@ pub struct BrushPreset {
     pub sample_capacity: f32,
     pub deposit_rate: f32,
     pub pickup_rate: f32,
+    pub blade_layer: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -67,6 +69,7 @@ impl BrushPreset {
             sample_capacity: cm(0.1),
             deposit_rate: cm(0.0022),
             pickup_rate: cm(0.00005),
+            blade_layer: 0.0,
         }
     }
 
@@ -86,7 +89,7 @@ impl BrushPreset {
     pub fn ferrule_area(&self) -> f32 {
         match self.shape {
             BrushShape::Round => std::f32::consts::PI * self.width * self.thickness * 0.25,
-            BrushShape::Flat | BrushShape::Filbert | BrushShape::Shaper => self.width * self.thickness,
+            BrushShape::Flat | BrushShape::Filbert | BrushShape::Blade => self.width * self.thickness,
         }
     }
 
@@ -104,7 +107,7 @@ impl BrushPreset {
 
     pub const fn shaper(width: f32, thickness: f32, length: f32) -> Self {
         Self {
-            shape: BrushShape::Shaper,
+            shape: BrushShape::Blade,
             friction: 1.0,
             stiffness: 0.9,
             inertia: 0.0,
@@ -118,8 +121,22 @@ impl BrushPreset {
         }
     }
 
+    pub const fn knife(width: f32, thickness: f32, length: f32) -> Self {
+        Self {
+            sample_capacity: cm(0.02),
+            deposit_rate: cm(0.006),
+            pickup_rate: cm(0.0005),
+            blade_layer: cm(0.08),
+            ..Self::shaper(width, thickness, length)
+        }
+    }
+
+    pub fn blade_film(&self, pressure: f32) -> f32 {
+        (self.blade_layer * (1.0 - pressure.clamp(0.0, 1.0))).max(BLADE_CLEARANCE)
+    }
+
     pub fn is_rigid(&self) -> bool {
-        self.shape == BrushShape::Shaper
+        self.shape == BrushShape::Blade
     }
 
     pub fn default_round() -> Self {
@@ -154,7 +171,7 @@ impl BrushPreset {
     }
 }
 
-pub const PRESETS: [NamedPreset; 7] = [
+pub const PRESETS: [NamedPreset; 8] = [
     NamedPreset { name: "Round small", preset: BrushPreset::round(70, cm(0.15), cm(1.6)) },
     NamedPreset { name: "Round medium", preset: BrushPreset::round(200, cm(0.35), cm(2.2)) },
     NamedPreset { name: "Round large", preset: BrushPreset::round(450, cm(0.6), cm(2.8)) },
@@ -162,6 +179,7 @@ pub const PRESETS: [NamedPreset; 7] = [
     NamedPreset { name: "Filbert", preset: BrushPreset::filbert(350, cm(1.0), cm(0.3), cm(2.2)) },
     NamedPreset { name: "Rigger", preset: BrushPreset::round(40, cm(0.12), cm(3.0)) },
     NamedPreset { name: "Colour shaper", preset: BrushPreset::shaper(cm(1.0), cm(0.12), cm(1.3)) },
+    NamedPreset { name: "Painting knife", preset: BrushPreset::knife(cm(1.2), cm(0.35), cm(1.0)) },
 ];
 
 pub fn preset_by_name(name: &str) -> Option<BrushPreset> {

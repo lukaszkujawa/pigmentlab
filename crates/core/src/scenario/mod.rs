@@ -58,6 +58,7 @@ pub enum Action {
     DipColour { colour: [u8; 3] },
     DipWater,
     Clean,
+    Wipe,
     Undo,
     Clear,
     Checkpoint { name: String },

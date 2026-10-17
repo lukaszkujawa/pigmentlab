@@ -455,6 +455,8 @@ export component AppWindow inherits Window {
     in property <[string]> surface-names: [];
     in-out property <int> surface-index: 0;
     in property <bool> watercolour: false;
+    in property <bool> tube-selected: false;
+    in property <float> nozzle-radius: 16;
     out property <float> pressure <=> pressure-slider.value;
     out property <int> brush-index: 1;
     out property <float> brush-scale <=> size-slider.value;
@@ -474,6 +476,7 @@ export component AppWindow inherits Window {
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
     callback clean();
+    callback wipe();
     callback dip-water();
     callback surface-selected(int);
     callback use-colour(color);
@@ -543,7 +546,7 @@ export component AppWindow inherits Window {
                         height: root.canvas-height * root.zoom;
                     }
 
-                    TouchArea {
+                    canvas-area := TouchArea {
                         mouse-cursor: root.panning ? MouseCursor.grabbing : MouseCursor.default;
 
                         function zoom-around(factor: float) {
@@ -594,6 +597,26 @@ export component AppWindow inherits Window {
                         scroll-event(event) => {
                             self.zoom-around(pow(2, event.delta-y / 300px));
                             return accept;
+                        }
+                    }
+
+                    if root.show-bristles && root.tube-selected && canvas-area.has-hover: Rectangle {
+                        property <length> radius: root.nozzle-radius / root.canvas-scale * root.zoom * 1px;
+                        x: canvas-area.mouse-x - self.radius;
+                        y: canvas-area.mouse-y - self.radius;
+                        width: self.radius * 2;
+                        height: self.radius * 2;
+                        border-radius: self.radius;
+                        border-width: 1.5px;
+                        border-color: #ffffffd0;
+                        Rectangle {
+                            x: 1.5px;
+                            y: 1.5px;
+                            width: parent.width - 3px;
+                            height: parent.height - 3px;
+                            border-radius: self.width / 2;
+                            border-width: 1px;
+                            border-color: #00000080;
                         }
                     }
 
@@ -662,7 +685,11 @@ export component AppWindow inherits Window {
                                     }
                                     VerticalLayout {
                                         alignment: center;
-                                        ToolButton { label: "Clean"; clicked => { root.clean(); } }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            ToolButton { label: "Wipe"; clicked => { root.wipe(); } }
+                                            ToolButton { label: "Clean"; clicked => { root.clean(); } }
+                                        }
                                     }
                                 }
                                 Rectangle {

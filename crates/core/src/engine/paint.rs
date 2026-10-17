@@ -9,6 +9,7 @@ const DILUTION_PER_MEDIUM: f32 = 0.9;
 const WATERCOLOUR_DILUTION: f32 = 0.95;
 const WATERCOLOUR_DRIEST_LOAD: f32 = 0.2;
 const WATERCOLOUR_PIGMENT: f32 = 0.08;
+const LOAD_KEPT_AFTER_WIPE: f32 = 0.15;
 
 impl Engine {
     pub fn dip(&mut self, paint: impl Into<Paint>) {
@@ -69,6 +70,13 @@ impl Engine {
         self.brush.clean(&self.gpu);
         self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: 0.0, ..self.brush_contents };
+    }
+
+    pub fn wipe(&mut self) {
+        let wiped: Vec<f32> = read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| load * LOAD_KEPT_AFTER_WIPE).collect();
+        self.gpu.queue.write_buffer(&self.brush.sample_load, 0, bytemuck::cast_slice(&wiped));
+        self.gauge().invalidate();
+        self.brush_contents = BrushContents { fill: self.brush_contents.fill * LOAD_KEPT_AFTER_WIPE, ..self.brush_contents };
     }
 
     pub fn brush_load(&self) -> f32 {

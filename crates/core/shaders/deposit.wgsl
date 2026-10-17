@@ -4,7 +4,8 @@ const FILM_MIN_RADIUS: f32 = 0.015 * PIXELS_PER_CM;
 const DRY_HAIR_RADIUS: f32 = 0.3;
 const LOADED_HAIR_RADIUS: f32 = 0.9;
 const PIXEL_SPREAD_SQUARED: f32 = 0.5;
-const BLADE_CLEARANCE: f32 = 0.1;
+const BLADE_SPLAT_RADIUS: f32 = 2.5;
+override BLADE: bool = false;
 const VALLEY_SOFTNESS: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
@@ -96,7 +97,7 @@ fn segment_of(sample: u32, load: f32) -> Segment {
 }
 
 fn film_reach(load: f32) -> f32 {
-    if (deposit.rigidity >= 0.5) { return BLADE_CLEARANCE; }
+    if (deposit.rigidity >= 0.5) { return deposit.film_height; }
     return mix(FILM_MIN_RADIUS, deposit.film_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
 }
 
@@ -128,6 +129,7 @@ fn column_index(local: vec2<u32>) -> u32 {
 }
 
 fn film_radius(fill: f32) -> f32 {
+    if (BLADE) { return BLADE_SPLAT_RADIUS; }
     let hair = mix(DRY_HAIR_RADIUS, LOADED_HAIR_RADIUS, smoothstep(0.2, 1.0, fill));
     return sqrt(hair * hair + PIXEL_SPREAD_SQUARED);
 }

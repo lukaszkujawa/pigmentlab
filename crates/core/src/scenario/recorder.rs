@@ -52,6 +52,10 @@ impl Recorder {
         self.push(time, Action::Clean);
     }
 
+    pub fn wipe(&mut self, time: f64) {
+        self.push(time, Action::Wipe);
+    }
+
     pub fn dry(&mut self, time: f64) {
         self.push(time, Action::Dry);
     }

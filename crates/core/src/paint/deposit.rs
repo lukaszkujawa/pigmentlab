@@ -152,13 +152,14 @@ impl Deposit {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
+        let blade = [("BLADE", if preset.is_rigid() { 1.0 } else { 0.0 })];
         let compute_pipeline = |entry: &str| {
             gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
                 layout: Some(&pipeline_layout),
                 module: &shader,
                 entry_point: Some(entry),
-                compilation_options: Default::default(),
+                compilation_options: wgpu::PipelineCompilationOptions { constants: &blade, ..Default::default() },
                 cache: None,
             })
         };
@@ -193,7 +194,11 @@ impl Deposit {
             wet_floor_keep: brush.preset().wet_floor_keep(stroke.pressure),
             contact: stroke.contact,
             lifting: u32::from(stroke.lifting),
-            film_height: CONTACT_HEIGHT * (LIGHT_TOUCH_FILM + (1.0 - LIGHT_TOUCH_FILM) * stroke.pressure.clamp(0.0, 1.0)) * stroke.contact,
+            film_height: if brush.preset().is_rigid() {
+                brush.preset().blade_film(stroke.pressure)
+            } else {
+                CONTACT_HEIGHT * (LIGHT_TOUCH_FILM + (1.0 - LIGHT_TOUCH_FILM) * stroke.pressure.clamp(0.0, 1.0)) * stroke.contact
+            },
             ..self.base
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));

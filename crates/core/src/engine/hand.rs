@@ -1,4 +1,4 @@
-use super::{Engine, LIFTED_HEIGHT};
+use super::{Engine, LIFTED_HEIGHT, Tool};
 use crate::brush::{BrushPose, MAX_COMPRESSION};
 use glam::{Quat, Vec2, Vec3};
 
@@ -8,6 +8,13 @@ const MAX_LEAN: f32 = 0.5;
 impl Engine {
     pub(super) fn handle_position(&self) -> Vec2 {
         Vec2::new(self.pose.position.x, self.pose.position.y)
+    }
+
+    pub(super) fn tool_tip(&self) -> Vec3 {
+        match self.tool {
+            Tool::Brush => self.pose.position,
+            Tool::Tube => self.touch.position.extend(0.0),
+        }
     }
 
     pub(super) fn handle_heights(&self) -> (f32, f32) {

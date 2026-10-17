@@ -4,7 +4,8 @@ mod dock_icon;
 mod tablet;
 
 use pigmentlab_core::brush::{BrushAdjustments, PRESETS};
-use pigmentlab_core::engine::{PaintSettings, tool_names};
+use pigmentlab_core::engine::{PaintSettings, TUBE_TOOL, tool_names};
+use pigmentlab_core::paint::NOZZLE_RADIUS;
 use pigmentlab_core::scenario::Recorder;
 use pigmentlab_core::canvas::{Medium, Surface};
 use pigmentlab_core::pigment::{Coefficients, PALETTE};
@@ -36,6 +37,7 @@ struct Requests {
     last_pointer: Option<PointerSample>,
     dip: Option<Dip>,
     clean: bool,
+    wipe: bool,
     pick: Option<(f32, f32)>,
     surface: Option<Surface>,
     brush: Option<(usize, BrushAdjustments)>,
@@ -82,6 +84,7 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_canvas_width(CANVAS.width as f32 / scale);
     app.set_canvas_height(CANVAS.height as f32 / scale);
     app.set_canvas_scale(scale);
+    app.set_nozzle_radius(NOZZLE_RADIUS);
     let custom: Rc<RefCell<Vec<[u8; 3]>>> = Rc::default();
     app.set_swatches(swatches(&custom.borrow()));
     app.set_surface_names(slint::ModelRc::new(slint::VecModel::from(
@@ -139,6 +142,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let shared = requests.clone();
     app.on_clean(move || shared.borrow_mut().clean = true);
     let shared = requests.clone();
+    app.on_wipe(move || shared.borrow_mut().wipe = true);
+    let shared = requests.clone();
     app.on_dip_water(move || shared.borrow_mut().dip = Some(Dip::Water));
     let shared = requests.clone();
     let app_weak = app.as_weak();
@@ -192,6 +197,7 @@ fn main() -> Result<(), slint::PlatformError> {
         if let Some(named) = PRESETS.get(index.max(0) as usize) {
             app.set_brush_bristles(named.preset.adjusted(adjustments_of(&app, None)).bristle_count as f32);
         }
+        app.set_tube_selected(tool_name(index.max(0) as usize) == TUBE_TOOL);
         shared.borrow_mut().brush = Some((index.max(0) as usize, adjustments_of(&app, None)));
     });
     let shared = requests.clone();
@@ -298,6 +304,9 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
         if requests.clean {
             active.clean(now);
         }
+        if requests.wipe {
+            active.wipe(now);
+        }
         if let Some((index, adjustments)) = requests.brush {
             active.tool(now, tool_name(index));
             active.param(now, "size", adjustments.scale);
@@ -352,6 +361,9 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     }
     if std::mem::take(&mut requests.clean) {
         engine.clean();
+    }
+    if std::mem::take(&mut requests.wipe) {
+        engine.wipe();
     }
     if let Some((index, adjustments)) = requests.brush.take() {
         engine.configure_brush(tool_name(index), adjustments);

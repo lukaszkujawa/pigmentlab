@@ -21,7 +21,7 @@ pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
     for index in 0..preset.bristle_count {
         let clump = clumps[(index % clump_count) as usize];
         let root = match preset.shape {
-            BrushShape::Shaper => grid_root(preset, index),
+            BrushShape::Blade => grid_root(preset, index),
             _ => clamp_to_ferrule(preset, clump + jitter(rng, clump_radius)),
         };
         let length = bristle_length(preset, root) * (1.0 + rng.range(-LENGTH_JITTER, LENGTH_JITTER));
@@ -48,7 +48,7 @@ fn curl_direction(preset: &BrushPreset, root: Vec2, random: Vec2) -> Vec2 {
     let outward = match preset.shape {
         BrushShape::Round => root / half.x,
         BrushShape::Flat | BrushShape::Filbert => Vec2::new(0.0, root.y / half.y),
-        BrushShape::Shaper => return Vec2::ZERO,
+        BrushShape::Blade => return Vec2::ZERO,
     };
     (outward + random * CURL_RANDOMNESS).normalize_or_zero()
 }
@@ -63,7 +63,7 @@ fn profile(preset: &BrushPreset, root: Vec2, along: f32) -> Vec2 {
     match preset.shape {
         BrushShape::Round => root * belly * taper(TIP_RADIUS_FRACTION),
         BrushShape::Flat | BrushShape::Filbert => Vec2::new(root.x, root.y * belly * taper(TIP_RADIUS_FRACTION)),
-        BrushShape::Shaper => root,
+        BrushShape::Blade => root,
     }
 }
 
@@ -71,15 +71,19 @@ fn root_position(preset: &BrushPreset, index: u32, count: u32, rng: &mut SplitMi
     let half = Vec2::new(preset.width, preset.thickness) * 0.5;
     match preset.shape {
         BrushShape::Round => sunflower(index, count, half.x) + jitter(rng, half.x * 0.05),
-        BrushShape::Flat | BrushShape::Filbert | BrushShape::Shaper => {
+        BrushShape::Flat | BrushShape::Filbert | BrushShape::Blade => {
             Vec2::new(rng.range(-half.x, half.x), rng.range(-half.y, half.y))
         }
     }
 }
 
-fn grid_root(preset: &BrushPreset, index: u32) -> Vec2 {
+pub fn blade_grid(preset: &BrushPreset) -> (u32, u32) {
     let rows = (preset.bristle_count as f32 * preset.thickness / preset.width).sqrt().round().max(1.0) as u32;
-    let columns = preset.bristle_count.div_ceil(rows);
+    (rows, preset.bristle_count.div_ceil(rows))
+}
+
+fn grid_root(preset: &BrushPreset, index: u32) -> Vec2 {
+    let (rows, columns) = blade_grid(preset);
     let column = index % columns;
     let row = index / columns;
     Vec2::new(
@@ -97,7 +101,7 @@ fn clamp_to_ferrule(preset: &BrushPreset, root: Vec2) -> Vec2 {
     let half = Vec2::new(preset.width, preset.thickness) * 0.5;
     match preset.shape {
         BrushShape::Round => root.clamp_length_max(half.x),
-        BrushShape::Flat | BrushShape::Filbert | BrushShape::Shaper => root.clamp(-half, half),
+        BrushShape::Flat | BrushShape::Filbert | BrushShape::Blade => root.clamp(-half, half),
     }
 }
 
@@ -118,7 +122,7 @@ fn bristle_length(preset: &BrushPreset, root: Vec2) -> f32 {
             let across = (root.x / (preset.width * 0.5)).clamp(-1.0, 1.0);
             preset.length * (0.75 + 0.25 * (1.0 - across * across).sqrt())
         }
-        BrushShape::Round | BrushShape::Flat | BrushShape::Shaper => preset.length,
+        BrushShape::Round | BrushShape::Flat | BrushShape::Blade => preset.length,
     }
 }
 

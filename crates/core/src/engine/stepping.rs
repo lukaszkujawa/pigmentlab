@@ -39,7 +39,7 @@ impl Engine {
                     self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(self.paint.medium.clamp(0.0, 1.0));
                 }
                 if state.fresh_press {
-                    self.position_at_last_deposit = self.pose.position;
+                    self.position_at_last_deposit = self.tool_tip();
                     self.brush.teleport(&self.gpu, &self.pose);
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
@@ -69,13 +69,13 @@ impl Engine {
             let preset = *self.brush.preset();
             let (focus, footprint_radius) = match self.tool {
                 Tool::Brush => (self.brush.tuft_centre(), preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK),
-                Tool::Tube => (self.handle_position(), NOZZLE_RADIUS + FOOTPRINT_SLACK),
+                Tool::Tube => (self.tool_tip().truncate(), NOZZLE_RADIUS + FOOTPRINT_SLACK),
             };
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
             if self.touch.engaged() {
-                let touched = WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
+                let touched = WetBounds::around(self.tool_tip().truncate().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
                 match &mut self.watercolour {
                     Some(watercolour) => {
                         watercolour.wet(touched);
@@ -83,7 +83,7 @@ impl Engine {
                     }
                     None => self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched))),
                 }
-                self.mark_stale(WetBounds::around(self.handle_position().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
+                self.mark_stale(WetBounds::around(self.tool_tip().truncate().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
             }
             match self.tool {
                 Tool::Brush => {
@@ -101,7 +101,7 @@ impl Engine {
                 }
                 Tool::Tube => {
                     if self.pressed {
-                        let path = [self.position_at_last_deposit.truncate(), self.handle_position()];
+                        let path = [self.position_at_last_deposit.truncate(), self.tool_tip().truncate()];
                         let medium = self.paint.medium.clamp(0.0, 1.0);
                         match (&self.water_tube, &mut self.watercolour) {
                             (Some(tube), Some(water)) => {
@@ -111,7 +111,7 @@ impl Engine {
                             _ => self.tube.encode_squeeze(&self.gpu, &mut encoder, path, self.touch.pressure, self.paint_on_tool.coefficients, medium),
                         }
                     }
-                    self.position_at_last_deposit = self.pose.position;
+                    self.position_at_last_deposit = self.tool_tip();
                 }
             }
             if let Some(watercolour) = self.watercolour.as_mut().filter(|water| water.is_wet() && self.substeps.is_multiple_of(SUBSTEPS_PER_WATER_STEP)) {
