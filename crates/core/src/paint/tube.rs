@@ -1,112 +1,121 @@
-use super::window::ActiveWindow;
+use super::rheology::{strand, yield_stress};
+use super::squeeze::{MAX_REACH, Squeeze, Stamp};
+use super::window::{ActiveWindow, WINDOW_SIZE};
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
 use crate::pigment::Coefficients;
 use glam::Vec2;
 
 pub const NOZZLE_RADIUS: f32 = crate::units::cm(0.25);
-const PILE_PER_SECOND: f32 = crate::units::cm(0.75);
-const FULL_ROPE_SPEED: f32 = crate::units::cm(4.0);
-const ROPE_PROFILE_AREA: f32 = 2.0 + std::f32::consts::FRAC_PI_2;
+const BOX_MARGIN: f32 = 1.0;
+const ROPE_HEIGHT_PER_NOZZLE_RADIUS: f32 = 1.6;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct TubeUniform {
-    start: [f32; 2],
-    end: [f32; 2],
-    nozzle_radius: f32,
-    rope_radius: f32,
-    corner: [i32; 2],
     absorption: [f32; 4],
     scattering: [f32; 4],
-    pile_height: f32,
-    padding: [f32; 3],
-}
-
-pub struct Extrusion {
-    pub rope_radius: f32,
-    pub piled_share: f32,
-}
-
-pub fn extrude(nozzle_radius: f32, pressure: f32, travelled: f32, dt: f32) -> Extrusion {
-    let squeezed = ROPE_PROFILE_AREA * nozzle_radius * nozzle_radius * FULL_ROPE_SPEED * pressure.clamp(0.0, 1.0) * dt;
-    let full_rope = ROPE_PROFILE_AREA * nozzle_radius * nozzle_radius * travelled;
-    if squeezed <= 0.0 {
-        return Extrusion { rope_radius: 0.0, piled_share: 0.0 };
-    }
-    if squeezed >= full_rope {
-        return Extrusion { rope_radius: nozzle_radius, piled_share: 1.0 - full_rope / squeezed };
-    }
-    Extrusion { rope_radius: (squeezed / (ROPE_PROFILE_AREA * travelled)).sqrt(), piled_share: 0.0 }
+    path_start: [f32; 2],
+    path_end: [f32; 2],
+    corner: [i32; 2],
+    strand: [f32; 2],
+    mound: [f32; 2],
+    strand_core: f32,
+    strand_drape: f32,
+    mound_core: f32,
+    mound_drape: f32,
+    arc: f32,
+    memory: f32,
+    squeezed: f32,
+    backlog_limit: f32,
+    padding: [f32; 2],
 }
 
 pub struct Tube {
     uniform: wgpu::Buffer,
-    squeeze: ComputePass,
+    ledger: wgpu::Buffer,
+    offer: ComputePass,
+    plan: ComputePass,
+    fill: ComputePass,
+    squeeze: Squeeze,
+    reach: f32,
     dt: f32,
 }
 
 impl Tube {
-    pub fn new(gpu: &Gpu, window: &ActiveWindow, canvas: &Canvas, stroke_base: &wgpu::Buffer, dt: f32) -> Self {
+    pub fn new(gpu: &Gpu, window: &ActiveWindow, canvas: &Canvas, heights: &wgpu::Buffer, seed: u64, dt: f32) -> Self {
         let uniform = gpu.uniform_buffer("tube uniform", std::mem::size_of::<TubeUniform>() as u64);
-        let shader = gpu.shader(
-            "tube",
-            &[ include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/tube.wgsl")],
-        );
+        let marks = gpu.storage_buffer("tube marks", canvas.size.pixel_count() * 8);
+        let planned = gpu.storage_buffer("tube plan", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * 8);
+        let ledger = gpu.storage_buffer("tube ledger", 8);
+        let shader = gpu.shader("tube", &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/tube.wgsl")]);
         let bindings = [
             (0, Binding::Uniform(&uniform)),
             (1, Binding::Uniform(&window.uniform)),
             (2, Binding::ReadWrite(&window.volume)),
-            (3, Binding::ReadOnly(stroke_base)),
-            (4, Binding::ReadOnly(&canvas.ground)),
+            (3, Binding::ReadOnly(&canvas.ground)),
+            (4, Binding::ReadOnly(heights)),
+            (5, Binding::ReadOnly(&canvas.paint)),
+            (6, Binding::ReadWrite(&marks)),
+            (7, Binding::ReadWrite(&planned)),
+            (8, Binding::ReadOnly(&canvas.relief)),
+            (9, Binding::ReadWrite(&ledger)),
         ];
-        Self { squeeze: ComputePass::new(gpu, "squeeze tube", &shader, "squeeze", &bindings), uniform, dt }
+        Self {
+            offer: ComputePass::new(gpu, "offer squeeze", &shader, "offer", &bindings),
+            plan: ComputePass::new(gpu, "plan squeeze", &shader, "plan", &bindings),
+            fill: ComputePass::new(gpu, "fill squeeze", &shader, "fill", &bindings),
+            uniform,
+            ledger,
+            squeeze: Squeeze::new(seed),
+            reach: 0.0,
+            dt,
+        }
     }
 
-    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, path: [Vec2; 2], nozzle_radius: f32, pressure: f32, paint: Coefficients, medium: f32) {
-        let [from, to] = path;
-        let extrusion = extrude(nozzle_radius, pressure, from.distance(to), self.dt);
-        let low = (from.min(to) - nozzle_radius).floor();
-        let high = (from.max(to) + nozzle_radius).ceil();
-        let size = (high - low).as_uvec2().max(glam::UVec2::ONE);
-        let uniform = TubeUniform {
-            start: from.to_array(),
-            end: to.to_array(),
-            nozzle_radius,
-            rope_radius: extrusion.rope_radius,
-            corner: low.as_ivec2().to_array(),
-            absorption: paint.absorption.extend(medium).to_array(),
-            scattering: paint.scattering.extend(0.0).to_array(),
-            pile_height: PILE_PER_SECOND * pressure * self.dt * extrusion.piled_share,
-            padding: [0.0; 3],
-        };
-        gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
-        self.squeeze.dispatch(encoder, [size.x.div_ceil(16), size.y.div_ceil(16), 1]);
+    pub fn press(&mut self, gpu: &Gpu, nozzle: Vec2) {
+        self.squeeze.press(nozzle);
+        self.reach = 0.0;
+        gpu.queue.write_buffer(&self.ledger, 0, &[0; 8]);
+    }
+
+    pub fn reach(&self, nozzle_radius: f32, medium: f32) -> f32 {
+        let full_strand = strand(std::f32::consts::PI * nozzle_radius * nozzle_radius, yield_stress(medium), ROPE_HEIGHT_PER_NOZZLE_RADIUS * nozzle_radius);
+        self.reach.max(full_strand.half_width).min(MAX_REACH)
+    }
+
+    pub fn encode_squeeze(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, nozzle: Vec2, nozzle_radius: f32, pressure: f32, paint: Coefficients, medium: f32) {
+        let Some(stamp) = self.squeeze.advance(nozzle, nozzle_radius, pressure, yield_stress(medium), self.dt) else { return };
+        self.reach = stamp.reach();
+        let low = (stamp.path[0].min(stamp.path[1]) - stamp.strand.half_width).min(stamp.path[1] - stamp.mound.radius) - BOX_MARGIN;
+        let high = (stamp.path[0].max(stamp.path[1]) + stamp.strand.half_width).max(stamp.path[1] + stamp.mound.radius) + BOX_MARGIN;
+        let corner = low.floor().as_ivec2();
+        let size = (high.ceil().as_ivec2() - corner).max(glam::IVec2::ONE).as_uvec2();
+        gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform(&stamp, corner, paint, medium)));
+        let groups = [size.x.div_ceil(16), size.y.div_ceil(16), 1];
+        self.offer.dispatch(encoder, [1, 1, 1]);
+        self.plan.dispatch(encoder, groups);
+        self.fill.dispatch(encoder, groups);
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_brisk_hand_draws_a_thinner_rope_and_never_piles() {
-        let slow = extrude(10.0, 1.0, FULL_ROPE_SPEED * 0.01, 0.01);
-        let fast = extrude(10.0, 1.0, FULL_ROPE_SPEED * 0.04, 0.01);
-        assert!((slow.rope_radius - 10.0).abs() < 1e-3 && slow.piled_share < 1e-3);
-        assert!((fast.rope_radius - 5.0).abs() < 1e-3 && fast.piled_share == 0.0);
-    }
-
-    #[test]
-    fn a_still_nozzle_piles_everything() {
-        let still = extrude(10.0, 0.8, 0.0, 0.01);
-        assert_eq!(still.rope_radius, 10.0);
-        assert!((still.piled_share - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn no_pressure_squeezes_nothing() {
-        let none = extrude(10.0, 0.0, 5.0, 0.01);
-        assert_eq!((none.rope_radius, none.piled_share), (0.0, 0.0));
+fn uniform(stamp: &Stamp, corner: glam::IVec2, paint: Coefficients, medium: f32) -> TubeUniform {
+    TubeUniform {
+        path_start: stamp.path[0].to_array(),
+        path_end: stamp.path[1].to_array(),
+        corner: corner.to_array(),
+        strand: [stamp.strand.half_width, stamp.strand.height],
+        mound: [stamp.mound.radius, stamp.mound.height],
+        absorption: paint.absorption.extend(medium).to_array(),
+        scattering: paint.scattering.extend(0.0).to_array(),
+        strand_core: stamp.strand_core,
+        strand_drape: stamp.strand_drape,
+        mound_core: stamp.mound_core,
+        mound_drape: stamp.mound_drape,
+        arc: stamp.arc,
+        memory: stamp.memory,
+        squeezed: stamp.squeezed,
+        backlog_limit: stamp.backlog_limit,
+        padding: [0.0; 2],
     }
 }

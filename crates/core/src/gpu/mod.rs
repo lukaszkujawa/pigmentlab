@@ -87,7 +87,7 @@ pub fn buffer_binding(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEnt
 
 fn shared_constants() -> String {
     format!(
-        "const PIXELS_PER_CM: f32 = {:?};\nconst PAINT_SCALE: f32 = {:?};\nconst CHANNELS: u32 = {}u;\nconst FULL_CELL: f32 = {:?};\nconst BRISTLE_VERTICES: u32 = {}u;\nconst OPTICAL_THICKNESS_PER_PIXEL: f32 = {:?};\nconst MEDIUM_THINNING: f32 = {:?};",
+        "const PIXELS_PER_CM: f32 = {:?};\nconst PAINT_SCALE: f32 = {:?};\nconst CHANNELS: u32 = {}u;\nconst FULL_CELL: f32 = {:?};\nconst BRISTLE_VERTICES: u32 = {}u;\nconst OPTICAL_THICKNESS_PER_PIXEL: f32 = {:?};\nconst MEDIUM_THINNING: f32 = {:?};\nconst YIELD_STRESS_STIFF: f32 = {:?};\nconst YIELD_STRESS_OILY: f32 = {:?};",
         crate::units::PIXELS_PER_CM,
         crate::canvas::PAINT_SCALE,
         crate::canvas::PAINT_CHANNELS,
@@ -95,5 +95,7 @@ fn shared_constants() -> String {
         crate::brush::VERTICES_PER_BRISTLE,
         crate::pigment::OPTICAL_THICKNESS_PER_PIXEL,
         crate::paint::MEDIUM_THINNING,
+        crate::paint::YIELD_STRESS_STIFF,
+        crate::paint::YIELD_STRESS_OILY,
     )
 }

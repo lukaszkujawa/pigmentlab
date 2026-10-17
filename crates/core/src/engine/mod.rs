@@ -100,7 +100,7 @@ impl Engine {
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &canvas, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
         let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base, DEPOSIT_DT);
-        let tube = Tube::new(&gpu, &window, &canvas, &stroke_base, SIMULATION_DT);
+        let tube = Tube::new(&gpu, &window, &canvas, &height_map.heights, seed, SIMULATION_DT);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);

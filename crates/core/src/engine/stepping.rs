@@ -40,6 +40,7 @@ impl Engine {
                 }
                 if state.fresh_press {
                     self.position_at_last_deposit = self.tool_tip();
+                    self.tube.press(&self.gpu, self.tool_tip().truncate());
                     self.brush.teleport(&self.gpu, &self.pose);
                     let mut encoder = self.encoder("stroke snapshot");
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
@@ -69,7 +70,7 @@ impl Engine {
             let preset = *self.brush.preset();
             let (focus, footprint_radius) = match self.tool {
                 Tool::Brush => (self.brush.tuft_centre(), preset.reach_from_handle() + FOOTPRINT_SLACK),
-                Tool::Tube => (self.tool_tip().truncate(), self.nozzle_radius() + FOOTPRINT_SLACK),
+                Tool::Tube => (self.tool_tip().truncate(), self.tube_reach() + FOOTPRINT_SLACK),
             };
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
@@ -109,7 +110,7 @@ impl Engine {
                                 water.wet(tube.encode_squeeze(&self.gpu, &mut encoder, path, nozzle_radius, self.touch.pressure, self.paint_on_tool, medium));
                                 self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
                             }
-                            _ => self.tube.encode_squeeze(&self.gpu, &mut encoder, path, nozzle_radius, self.touch.pressure, self.paint_on_tool.coefficients, medium),
+                            _ => self.tube.encode_squeeze(&self.gpu, &mut encoder, path[1], nozzle_radius, self.touch.pressure, self.paint_on_tool.coefficients, medium),
                         }
                     }
                     self.position_at_last_deposit = self.tool_tip();
@@ -140,6 +141,13 @@ impl Engine {
     pub(super) fn request_gauge_reading(&mut self, encoder: &mut wgpu::CommandEncoder) {
         if self.gauge_version != self.contents_version && self.gauge().encode_copy(encoder) {
             self.gauge_version = self.contents_version;
+        }
+    }
+
+    fn tube_reach(&self) -> f32 {
+        match self.watercolour {
+            Some(_) => self.nozzle_radius(),
+            None => self.tube.reach(self.nozzle_radius(), self.paint.medium.clamp(0.0, 1.0)),
         }
     }
 

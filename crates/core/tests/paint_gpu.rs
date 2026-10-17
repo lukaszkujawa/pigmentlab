@@ -264,6 +264,7 @@ fn levelling_keeps_pigment_consistent_across_the_window_edge() {
     let width = 1600usize;
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: width as u32, height: 512 }, 1);
     engine.select_brush("Paint tube");
+    engine.set_param("size", 1.5);
     engine.dip(by_name("french_ultramarine").unwrap());
     engine.pointer(sample(PointerPhase::Down, 100.0, 256.0, 1.0, 0.0));
     engine.pointer(sample(PointerPhase::Move, 1500.0, 256.0, 1.0, 2.0));

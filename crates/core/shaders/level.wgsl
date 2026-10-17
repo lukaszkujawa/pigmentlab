@@ -1,13 +1,12 @@
 const LEVEL_RATE: f32 = 0.3;
 const LEVEL_RATE_OILY: f32 = 1.0;
-const LEVEL_YIELD_SLOPE: f32 = 0.4;
-const LEVEL_YIELD_SLOPE_OILY: f32 = 0.05;
 const LEVEL_FULL_MOBILITY_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 const LEVEL_FULL_MOBILITY_HEIGHT_OILY: f32 = 0.005 * PIXELS_PER_CM;
 const SPREAD_MIN_HEIGHT: f32 = 0.08 * PIXELS_PER_CM;
 const SPREAD_MIN_HEIGHT_OILY: f32 = 0.01 * PIXELS_PER_CM;
 const SURFACE_TENSION_OILY: f32 = 0.1;
 const COHESIVE_HEIGHT: f32 = 1.5;
+const YIELD_DEPTH: f32 = 0.5 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
 @group(0) @binding(1) var<storage, read_write> volume: array<i32>;
@@ -56,8 +55,8 @@ fn steepness(pixel: vec2<i32>) -> f32 {
 fn flow_between(surface: f32, other_surface: f32, slope: f32, wet: f32, medium: f32, tension: f32) -> f32 {
     let mobility = min(wet / geometric_mix(LEVEL_FULL_MOBILITY_HEIGHT, LEVEL_FULL_MOBILITY_HEIGHT_OILY, medium), 1.0);
     let difference = (surface - other_surface) * mobility;
-    let stress = max(slope, abs(surface - other_surface)) * mobility;
-    let yielding = max(1.0 - geometric_mix(LEVEL_YIELD_SLOPE, LEVEL_YIELD_SLOPE_OILY, medium) / max(stress, 1e-6), 0.0);
+    let stress = min(max(slope, abs(surface - other_surface)), 1.0) * min(wet, YIELD_DEPTH);
+    let yielding = max(1.0 - geometric_mix(YIELD_STRESS_STIFF, YIELD_STRESS_OILY, medium) / max(stress, 1e-6), 0.0);
     return difference * min(yielding * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) + tension, LEVEL_RATE_OILY) * 0.25;
 }
 

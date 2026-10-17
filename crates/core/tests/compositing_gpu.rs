@@ -31,13 +31,7 @@ fn squeeze_slab(engine: &mut Engine, pigment: &str, centre: (f32, f32), start: f
     engine.select_brush("Paint tube");
     engine.set_param("size", 0.5);
     engine.dip(by_name(pigment).unwrap());
-    let points: Vec<(f32, f32)> = (0..=16)
-        .map(|i| {
-            let angle = i as f32 / 16.0 * std::f32::consts::TAU;
-            (centre.0 + 10.0 * angle.cos(), centre.1 + 10.0 * angle.sin())
-        })
-        .collect();
-    let finished = stroke(engine, &points, 0.3, start, 0.025);
+    let finished = stroke(engine, &[centre, centre], 1.0, start, 0.3);
     engine.set_param("size", 1.0);
     finished
 }
