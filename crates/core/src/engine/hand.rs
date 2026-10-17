@@ -1,5 +1,6 @@
 use super::{Engine, LIFTED_HEIGHT, Tool};
 use crate::brush::{BrushPose, MAX_COMPRESSION};
+use crate::paint::NOZZLE_RADIUS;
 use glam::{Quat, Vec2, Vec3};
 
 const PEN_TO_BRUSH_LEAN: f32 = 0.6;
@@ -15,6 +16,10 @@ impl Engine {
             Tool::Brush => self.pose.position,
             Tool::Tube => self.touch.position.extend(0.0),
         }
+    }
+
+    pub fn nozzle_radius(&self) -> f32 {
+        NOZZLE_RADIUS * self.adjustments.scale.clamp(0.1, 3.0)
     }
 
     pub(super) fn handle_heights(&self) -> (f32, f32) {

@@ -1,5 +1,5 @@
 use super::{Engine, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
-use crate::paint::{NOZZLE_RADIUS, StrokeState, WetBounds};
+use crate::paint::{StrokeState, WetBounds};
 use glam::IVec2;
 
 const DEPOSIT_REACH: i32 = 24;
@@ -69,7 +69,7 @@ impl Engine {
             let preset = *self.brush.preset();
             let (focus, footprint_radius) = match self.tool {
                 Tool::Brush => (self.brush.tuft_centre(), preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK),
-                Tool::Tube => (self.tool_tip().truncate(), NOZZLE_RADIUS + FOOTPRINT_SLACK),
+                Tool::Tube => (self.tool_tip().truncate(), self.nozzle_radius() + FOOTPRINT_SLACK),
             };
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
@@ -103,12 +103,13 @@ impl Engine {
                     if self.pressed {
                         let path = [self.position_at_last_deposit.truncate(), self.tool_tip().truncate()];
                         let medium = self.paint.medium.clamp(0.0, 1.0);
+                        let nozzle_radius = self.nozzle_radius();
                         match (&self.water_tube, &mut self.watercolour) {
                             (Some(tube), Some(water)) => {
-                                water.wet(tube.encode_squeeze(&self.gpu, &mut encoder, path, self.touch.pressure, self.paint_on_tool, medium));
+                                water.wet(tube.encode_squeeze(&self.gpu, &mut encoder, path, nozzle_radius, self.touch.pressure, self.paint_on_tool, medium));
                                 self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
                             }
-                            _ => self.tube.encode_squeeze(&self.gpu, &mut encoder, path, self.touch.pressure, self.paint_on_tool.coefficients, medium),
+                            _ => self.tube.encode_squeeze(&self.gpu, &mut encoder, path, nozzle_radius, self.touch.pressure, self.paint_on_tool.coefficients, medium),
                         }
                     }
                     self.position_at_last_deposit = self.tool_tip();

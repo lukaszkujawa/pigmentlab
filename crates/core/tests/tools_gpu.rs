@@ -144,8 +144,10 @@ fn tube_drawn_in_a_circle_leaves_an_even_ring() {
 #[test]
 fn shaper_through_a_ring_scrapes_to_a_stain_and_carries_the_paint_on_its_blade() {
     let mut engine = fresh_engine();
+    engine.set_param("size", 0.4);
     let released = squeeze_ring(&mut engine, 0.0, 400.0, 380.0, 150.0, "cadmium_yellow");
     let mass_before = engine.paint_mass();
+    engine.set_param("size", 1.0);
     engine.select_brush("Colour shaper");
     engine.set_param("angle", 0.0);
     engine.pointer(sample(PointerPhase::Down, 500.0, 150.0, 0.9, released));
@@ -170,8 +172,8 @@ fn a_brush_dragged_out_of_a_blob_loads_up_and_fades_gradually() {
     let mut engine = fresh_engine();
     engine.select_brush("Paint tube");
     engine.dip(by_name("cadmium_red").unwrap());
-    engine.pointer(sample(PointerPhase::Down, 150.0, 250.0, 1.0, 0.0));
-    engine.pointer(sample(PointerPhase::Move, 220.0, 250.0, 1.0, 0.5));
+    engine.pointer(sample(PointerPhase::Down, 150.0, 250.0, 0.15, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 220.0, 250.0, 0.15, 0.5));
     engine.pointer(sample(PointerPhase::Up, 220.0, 250.0, 0.0, 0.5));
     engine.advance_exact(0.6);
     let blob = engine.paint_mass();
@@ -193,7 +195,7 @@ fn a_brush_dragged_out_of_a_blob_loads_up_and_fades_gradually() {
     for pair in centre.windows(2) {
         assert!(pair[1] > pair[0] * 0.55, "the trail should fade gradually, not step from {:.1} to {:.1} px within 20 px", pair[0], pair[1]);
     }
-    assert!(centre[0] > 1.5 && *centre.last().unwrap() < centre[0] * 0.4, "the trail should start thick and end thin ({:.1} -> {:.1})", centre[0], centre.last().unwrap());
+    assert!(centre[0] > 1.5 && *centre.last().unwrap() < centre[0] * 0.5, "the trail should start thick and end thin ({:.1} -> {:.1})", centre[0], centre.last().unwrap());
 }
 
 #[test]

@@ -601,7 +601,7 @@ export component AppWindow inherits Window {
                     }
 
                     if root.show-bristles && root.tube-selected && canvas-area.has-hover: Rectangle {
-                        property <length> radius: root.nozzle-radius / root.canvas-scale * root.zoom * 1px;
+                        property <length> radius: root.nozzle-radius * root.brush-scale / root.canvas-scale * root.zoom * 1px;
                         x: canvas-area.mouse-x - self.radius;
                         y: canvas-area.mouse-y - self.radius;
                         width: self.radius * 2;

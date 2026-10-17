@@ -1,7 +1,7 @@
 use super::Watercolour;
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
-use crate::paint::{NOZZLE_RADIUS, WetBounds};
+use crate::paint::WetBounds;
 use crate::pigment::Paint;
 use bytemuck::{Pod, Zeroable};
 use glam::{UVec2, Vec2};
@@ -60,10 +60,10 @@ impl WaterTube {
         }
     }
 
-    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, path: [Vec2; 2], pressure: f32, paint: Paint, medium: f32) -> WetBounds {
+    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, path: [Vec2; 2], nozzle_radius: f32, pressure: f32, paint: Paint, medium: f32) -> WetBounds {
         let [from, to] = path;
-        let low = (from.min(to) - NOZZLE_RADIUS).floor();
-        let high = (from.max(to) + NOZZLE_RADIUS).ceil();
+        let low = (from.min(to) - nozzle_radius).floor();
+        let high = (from.max(to) + nozzle_radius).ceil();
         let size = (high - low).as_uvec2().max(UVec2::ONE);
         let flow = WATER_PER_SECOND * pressure * self.dt;
         let uniform = PasteUniform {
@@ -72,7 +72,7 @@ impl WaterTube {
             corner: low.as_ivec2().to_array(),
             canvas: self.canvas,
             cells: self.cells,
-            radius: NOZZLE_RADIUS,
+            radius: nozzle_radius,
             water: flow,
             pigment: flow * PIGMENT_PER_WATER * (1.0 - DILUTION_PER_MEDIUM * medium),
             padding: [0.0; 3],
