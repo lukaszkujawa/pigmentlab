@@ -15,5 +15,5 @@ pub mod watercolour;
 pub use canvas::CanvasSize;
 pub use engine::Engine;
 pub use gpu::Gpu;
-pub use input::{PointerPhase, PointerSample};
+pub use input::{Hover, PointerPhase, PointerSample};
 pub use render::Lighting;

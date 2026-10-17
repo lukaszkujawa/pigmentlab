@@ -1,5 +1,5 @@
 use pigmentlab_core::pigment::by_name;
-use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
+use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, PointerPhase, PointerSample};
 
 const WIDTH: u32 = 1024;
 
@@ -231,7 +231,7 @@ fn a_lifted_brush_follows_the_hovering_pointer() {
     engine.pointer(sample(PointerPhase::Move, 400.0, 300.0, 0.5, 0.3));
     engine.pointer(sample(PointerPhase::Up, 400.0, 300.0, 0.0, 0.3));
     engine.advance_exact(0.6);
-    engine.hover(700.0, 500.0);
+    engine.hover(Hover { x: 700.0, y: 500.0, tilt: [0.0; 2], rotation: 0.0 });
     engine.advance_exact(1.2);
     let centre = engine.brush().tuft_centre();
     let reach = engine.brush().preset().bend_reach();

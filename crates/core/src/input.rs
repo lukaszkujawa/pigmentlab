@@ -17,6 +17,14 @@ pub struct PointerSample {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hover {
+    pub x: f32,
+    pub y: f32,
+    pub tilt: [f32; 2],
+    pub rotation: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PointerState {
     pub x: f32,
     pub y: f32,

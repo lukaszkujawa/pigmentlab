@@ -2,7 +2,7 @@ use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, PRESETS, Tou
 use crate::canvas::{Canvas, CanvasSize, Medium};
 use crate::gpu::{Gpu, read_rgba8, read_texel};
 use crate::history::History;
-use crate::input::{PointerSample, PointerTrack};
+use crate::input::{Hover, PointerSample, PointerTrack};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Tube, WetBounds};
 use crate::pigment::{Coefficients, Paint};
 use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
@@ -50,7 +50,7 @@ pub struct Engine {
     brush_lines: BrushLines,
     display: wgpu::Texture,
     pointer: PointerTrack,
-    hover: Option<glam::Vec2>,
+    hover: Option<Hover>,
     pose: BrushPose,
     position_at_last_deposit: Vec3,
     touch: Touch,
@@ -206,8 +206,8 @@ impl Engine {
         self.pointer.push(sample);
     }
 
-    pub fn hover(&mut self, x: f32, y: f32) {
-        self.hover = Some(glam::Vec2::new(x, y));
+    pub fn hover(&mut self, hover: Hover) {
+        self.hover = Some(hover);
     }
 
     pub fn time(&self) -> f64 {

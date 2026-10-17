@@ -55,7 +55,9 @@ impl Engine {
                 self.needs_render |= self.touch.engaged() || self.show_bristles;
             }
             if let Some(hover) = self.hover.filter(|_| !self.pressed && !self.touch.engaged()) {
-                self.touch.position = hover;
+                self.touch.position = glam::Vec2::new(hover.x, hover.y);
+                self.touch.tilt = hover.tilt;
+                self.touch.rotation = hover.rotation;
                 self.pose = self.pose_for();
                 self.needs_render |= self.show_bristles;
             }

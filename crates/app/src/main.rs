@@ -8,7 +8,7 @@ use pigmentlab_core::engine::{PaintSettings, tool_names};
 use pigmentlab_core::scenario::Recorder;
 use pigmentlab_core::canvas::{Medium, Surface};
 use pigmentlab_core::pigment::{Coefficients, PALETTE};
-use pigmentlab_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
+use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, Lighting, PointerPhase, PointerSample};
 use tablet::{PenState, Tablet};
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings};
 use std::cell::RefCell;
@@ -31,7 +31,8 @@ enum Dip {
 #[derive(Default)]
 struct Requests {
     pointer: Vec<PointerSample>,
-    hover: Option<(f32, f32)>,
+    hover: Option<Hover>,
+    last_hover: Option<Hover>,
     last_pointer: Option<PointerSample>,
     dip: Option<Dip>,
     clean: bool,
@@ -50,6 +51,13 @@ impl Requests {
     fn push_pointer(&mut self, sample: PointerSample) {
         self.pointer.push(sample);
         self.last_pointer = Some(sample);
+    }
+
+    fn follow_hovering_pen(&mut self, pen: PenState) {
+        let Some(last) = self.last_hover.filter(|_| pen.present) else { return };
+        if (last.tilt, last.rotation) != (pen.tilt, pen.rotation) {
+            self.hover = Some(Hover { tilt: pen.tilt, rotation: pen.rotation, ..last });
+        }
     }
 
     fn follow_held_pen(&mut self, pen: PenState, firmness: f32, time: f64) {
@@ -97,11 +105,11 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_pointer(move |kind, x, y| {
         let app = app_weak.unwrap();
         let scale = app.get_canvas_scale();
+        let pen = pen.state();
         if kind == HOVER {
-            shared.borrow_mut().hover = Some((x * scale, y * scale));
+            shared.borrow_mut().hover = Some(Hover { x: x * scale, y: y * scale, tilt: pen.tilt, rotation: pen.rotation });
             return;
         }
-        let pen = pen.state();
         let (pressure, tilt, rotation) = if pen.present {
             (pen.brush_pressure(app.get_pen_firmness()), pen.tilt, pen.rotation)
         } else {
@@ -232,6 +240,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     let now = started.elapsed().as_secs_f64();
                     let pen = tablet.state();
                     requests.borrow_mut().follow_held_pen(pen, app.get_pen_firmness(), now);
+                    requests.borrow_mut().follow_hovering_pen(pen);
                     update_recorder(&mut recorder, &app, now, &requests.borrow());
                     apply_requests(engine, &app, &mut requests.borrow_mut(), &mut custom.borrow_mut());
                     show_brush_contents(engine, &app);
@@ -373,8 +382,9 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     for sample in requests.pointer.drain(..) {
         engine.pointer(sample);
     }
-    if let Some((x, y)) = requests.hover.take() {
-        engine.hover(x, y);
+    if let Some(hover) = requests.hover.take() {
+        engine.hover(hover);
+        requests.last_hover = Some(hover);
     }
 }
 
