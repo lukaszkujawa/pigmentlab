@@ -27,3 +27,4 @@ Hyper-realistic, real-time painting simulator built in Rust with GPU acceleratio
 - Detect and report visual, functional and performance regressions.
 - Keep regression baselines versioned and review changes explicitly.
 - Ask before running long or expensive tests.
+- The watercolour GPU suite (`crates/core/tests/watercolour_gpu.rs`) is `#[ignore]`d because it takes ~6 minutes. Run it with `cargo test --release -p pigmentlab-core --test watercolour_gpu -- --ignored` whenever a change touches watercolour code or code it shares (engine stepping, brush simulation, canvas, pigments, shared shaders).

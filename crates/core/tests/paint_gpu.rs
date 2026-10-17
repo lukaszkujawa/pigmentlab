@@ -240,8 +240,8 @@ fn pickup_is_spread_along_a_fast_stroke() {
     engine.set_levelling_enabled(false);
     engine.select_brush("Paint tube");
     engine.dip(by_name("cadmium_yellow").unwrap());
-    engine.pointer(sample(PointerPhase::Down, 200.0, 256.0, 1.0, 0.0));
-    engine.pointer(sample(PointerPhase::Move, 800.0, 256.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Down, 200.0, 256.0, 0.3, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 800.0, 256.0, 0.3, 1.0));
     engine.pointer(sample(PointerPhase::Up, 800.0, 256.0, 0.0, 1.0));
     engine.advance_exact(1.1);
     engine.select_brush("Round medium");

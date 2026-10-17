@@ -5,6 +5,9 @@ const BEND_REACH_FRACTION: f32 = 0.66;
 const SINK_AT_LIGHT: f32 = 0.75;
 const SINK_AT_FULL: f32 = 1.0;
 const BLADE_CLEARANCE: f32 = 0.1;
+const KNIFE_SPINES: u32 = 48;
+const KNIFE_BLADE_THICKNESS: f32 = cm(0.02);
+const KNIFE_HANDLE_LEAN: f32 = 0.9;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BrushShape {
@@ -31,6 +34,7 @@ pub struct BrushPreset {
     pub deposit_rate: f32,
     pub pickup_rate: f32,
     pub blade_layer: f32,
+    pub handle_lean: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -70,6 +74,7 @@ impl BrushPreset {
             deposit_rate: cm(0.0022),
             pickup_rate: cm(0.00005),
             blade_layer: 0.0,
+            handle_lean: 0.0,
         }
     }
 
@@ -91,6 +96,11 @@ impl BrushPreset {
             BrushShape::Round => std::f32::consts::PI * self.width * self.thickness * 0.25,
             BrushShape::Flat | BrushShape::Filbert | BrushShape::Blade => self.width * self.thickness,
         }
+    }
+
+    pub fn reach_from_handle(&self) -> f32 {
+        let held_blade = if self.handle_lean > 0.0 { self.length } else { 0.0 };
+        self.bend_reach() + self.splayed_radius() + held_blade
     }
 
     pub fn bend_reach(&self) -> f32 {
@@ -121,13 +131,17 @@ impl BrushPreset {
         }
     }
 
-    pub const fn knife(width: f32, thickness: f32, length: f32) -> Self {
+    pub const fn knife(width: f32, length: f32) -> Self {
         Self {
-            sample_capacity: cm(0.02),
-            deposit_rate: cm(0.006),
+            bristle_count: KNIFE_SPINES,
+            stiffness: 0.3,
+            friction: 0.5,
+            sample_capacity: cm(0.12),
+            deposit_rate: cm(0.012),
             pickup_rate: cm(0.0005),
             blade_layer: cm(0.08),
-            ..Self::shaper(width, thickness, length)
+            handle_lean: KNIFE_HANDLE_LEAN,
+            ..Self::shaper(width, KNIFE_BLADE_THICKNESS, length)
         }
     }
 
@@ -179,7 +193,7 @@ pub const PRESETS: [NamedPreset; 8] = [
     NamedPreset { name: "Filbert", preset: BrushPreset::filbert(350, cm(1.0), cm(0.3), cm(2.2)) },
     NamedPreset { name: "Rigger", preset: BrushPreset::round(40, cm(0.12), cm(3.0)) },
     NamedPreset { name: "Colour shaper", preset: BrushPreset::shaper(cm(1.0), cm(0.12), cm(1.3)) },
-    NamedPreset { name: "Painting knife", preset: BrushPreset::knife(cm(1.2), cm(0.35), cm(1.0)) },
+    NamedPreset { name: "Painting knife", preset: BrushPreset::knife(cm(0.8), cm(2.4)) },
 ];
 
 pub fn preset_by_name(name: &str) -> Option<BrushPreset> {

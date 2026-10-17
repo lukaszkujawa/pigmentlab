@@ -45,6 +45,7 @@ fn row_profile(values: &[f32], x: usize) -> Vec<f32> {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn papers_switch_the_medium_and_linen_switches_back() {
     let mut engine = paper(Surface::ColdPressed);
     assert_eq!(engine.medium(), Medium::Watercolour);
@@ -55,6 +56,7 @@ fn papers_switch_the_medium_and_linen_switches_back() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn flowing_water_conserves_pigment() {
     let mut engine = paper(Surface::ColdPressed);
     engine.dip(by_name("french_ultramarine").unwrap());
@@ -69,6 +71,7 @@ fn flowing_water_conserves_pigment() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_wet_on_dry_wash_dries_with_darker_edges() {
     let mut engine = paper(Surface::HotPressed);
     let blank = engine.dry_layer();
@@ -108,6 +111,7 @@ fn footprint(engine: &mut Engine, prewet: bool) -> usize {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn wet_in_wet_spreads_far_wider_than_wet_on_dry() {
     let dry_paper = footprint(&mut paper(Surface::ColdPressed), false);
     let wet_paper = footprint(&mut paper(Surface::ColdPressed), true);
@@ -116,6 +120,7 @@ fn wet_in_wet_spreads_far_wider_than_wet_on_dry() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_thirsty_brush_lifts_wet_paint_and_it_stays_lifted_as_the_wash_dries() {
     let wash = |lift: bool| {
         let mut engine = paper(Surface::ColdPressed);
@@ -140,6 +145,7 @@ fn a_thirsty_brush_lifts_wet_paint_and_it_stays_lifted_as_the_wash_dries() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_glaze_mixes_optically_over_a_dried_wash_without_lifting_it() {
     let mut engine = paper(Surface::HotPressed);
     engine.dip(by_name("cadmium_yellow").unwrap());
@@ -163,6 +169,7 @@ fn a_glaze_mixes_optically_over_a_dried_wash_without_lifting_it() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn granulating_pigment_settles_into_paper_hollows() {
     let mut engine = paper(Surface::Rough);
     let blank = engine.dry_layer();
@@ -201,6 +208,7 @@ fn spread_of_a_stroke(surface: Surface) -> usize {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn unsized_rice_paper_feathers_beyond_the_brush() {
     let sized = spread_of_a_stroke(Surface::ColdPressed);
     let rice = spread_of_a_stroke(Surface::Rice);
@@ -249,6 +257,7 @@ fn red_stroke_on_flat_paper(to: (f32, f32)) -> (Engine, Vec<Vec4>, f64) {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_dried_wash_has_a_smooth_edge_not_a_cell_staircase() {
     let (mut engine, blank, end) = red_stroke_on_flat_paper((540.0, 190.0));
     engine.advance_exact(end + 4.0);
@@ -257,6 +266,7 @@ fn a_dried_wash_has_a_smooth_edge_not_a_cell_staircase() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_steep_dried_wash_has_a_smooth_edge_not_a_cell_staircase() {
     let (mut engine, blank, end) = red_stroke_on_flat_paper((420.0, 260.0));
     engine.advance_exact(end + 4.0);
@@ -265,6 +275,7 @@ fn a_steep_dried_wash_has_a_smooth_edge_not_a_cell_staircase() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_wet_wash_renders_a_smooth_edge_not_a_cell_staircase() {
     let (mut engine, _, end) = red_stroke_on_flat_paper((540.0, 190.0));
     engine.advance_exact(end + 0.5);
@@ -289,6 +300,7 @@ fn settled_contents(engine: &mut Engine) -> pigmentlab_core::paint::BrushContent
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn the_brush_gauge_drains_while_painting_watercolour() {
     let mut engine = paper(Surface::ColdPressed);
     engine.dip(by_name("french_ultramarine").unwrap());
@@ -302,6 +314,7 @@ fn the_brush_gauge_drains_while_painting_watercolour() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_brush_of_clear_water_shows_as_water_not_black() {
     let mut engine = paper(Surface::ColdPressed);
     engine.dip_water();
@@ -332,6 +345,7 @@ fn relative_variation(values: &[f32]) -> f32 {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn tube_paste_on_paper_dries_far_darker_than_a_brushed_wash() {
     let brushed = dried_ultramarine_band("Round medium");
     let paste = dried_ultramarine_band("Paint tube");
@@ -339,6 +353,7 @@ fn tube_paste_on_paper_dries_far_darker_than_a_brushed_wash() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn thick_paste_fills_the_paper_tooth_instead_of_granulating() {
     let brushed = relative_variation(&dried_ultramarine_band("Round medium"));
     let paste = relative_variation(&dried_ultramarine_band("Paint tube"));
@@ -360,6 +375,7 @@ fn scrub_loaded_wash(engine: &mut Engine) -> f64 {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn standing_water_levels_out_instead_of_sloshing_into_streaks() {
     let mut engine = paper(Surface::ColdPressed);
     let end = scrub_loaded_wash(&mut engine);
@@ -376,6 +392,7 @@ fn standing_water_levels_out_instead_of_sloshing_into_streaks() {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn water_dropped_into_a_damp_wash_dries_into_a_backrun_with_a_dark_rim() {
     let mut engine = paper(Surface::ColdPressed);
     let blank = engine.dry_layer();
@@ -416,6 +433,7 @@ fn correlation(a: &[f32], b: &[f32]) -> f32 {
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn mixed_pigments_separate_with_the_granulating_one_settling_into_the_paper_valleys() {
     let mut engine = paper(Surface::Rough);
     let blank = engine.dry_layer();
@@ -454,6 +472,7 @@ fn fingered_columns(darkness: &[f32], columns: std::ops::Range<usize>, rows: std
 }
 
 #[test]
+#[ignore = "slow watercolour suite: cargo test --release --test watercolour_gpu -- --ignored"]
 fn a_watercolour_stroke_ends_in_a_merged_wash_not_separate_bristle_fingers() {
     for (from, to) in [((100.0, 150.0), (540.0, 150.0)), ((540.0, 150.0), (100.0, 150.0))] {
         let mut engine = paper(Surface::HotPressed);

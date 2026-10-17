@@ -29,6 +29,7 @@ fn stroke(engine: &mut Engine, points: &[(f32, f32)], pressure: f32, start: f64,
 
 fn squeeze_slab(engine: &mut Engine, pigment: &str, centre: (f32, f32), start: f64) -> f64 {
     engine.select_brush("Paint tube");
+    engine.set_param("size", 0.5);
     engine.dip(by_name(pigment).unwrap());
     let points: Vec<(f32, f32)> = (0..=16)
         .map(|i| {
@@ -36,7 +37,9 @@ fn squeeze_slab(engine: &mut Engine, pigment: &str, centre: (f32, f32), start: f
             (centre.0 + 10.0 * angle.cos(), centre.1 + 10.0 * angle.sin())
         })
         .collect();
-    stroke(engine, &points, 0.3, start, 0.025)
+    let finished = stroke(engine, &points, 0.3, start, 0.025);
+    engine.set_param("size", 1.0);
+    finished
 }
 
 fn scrub(engine: &mut Engine, pigment: &str, load: f32, span: (f32, f32), y: f32, passes: usize, start: f64) -> f64 {

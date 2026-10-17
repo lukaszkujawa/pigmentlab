@@ -202,6 +202,19 @@ impl Brush {
         self.motion.set(Motion { previous: *pose, tuft_centre: pose.position.truncate() });
     }
 
+    fn bend_blade(&self, gpu: &Gpu, pose: &BrushPose) {
+        let chain = super::knife::blade_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize, self.preset.length, self.preset.width * 0.5);
+        let to_brush = pose.canvas_to_brush();
+        let positions: Vec<Vec4> = chain
+            .iter()
+            .zip(&self.rest)
+            .enumerate()
+            .map(|(index, (point, rest))| if index % VERTICES_PER_BRISTLE as usize == 0 { *rest } else { (to_brush * (point.truncate() - pose.position)).extend(0.0) })
+            .collect();
+        gpu.queue.write_buffer(&self.chain, 0, bytemuck::cast_slice(&chain));
+        gpu.queue.write_buffer(&self.positions, 0, bytemuck::cast_slice(&positions));
+    }
+
     pub fn tuft_centre(&self) -> Vec2 {
         self.motion.get().tuft_centre
     }
@@ -241,6 +254,10 @@ impl Brush {
         };
         self.motion.set(Motion { previous: *pose, tuft_centre });
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
+        if self.preset.handle_lean > 0.0 {
+            self.bend_blade(gpu, pose);
+            return;
+        }
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("bristles"), timestamp_writes: None });
         pass.set_bind_group(0, &self.bind_group, &[]);
         let clump_slots = clump_count(&self.preset) * VERTICES_PER_BRISTLE * 4;

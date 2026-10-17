@@ -2,14 +2,19 @@ use super::composite::DISPLAY_FORMAT;
 use crate::brush::{Brush, BrushPreset, VERTICES_PER_BRISTLE, blade_grid};
 use crate::gpu::Gpu;
 
+const SILICONE_FLAG: u32 = 1 << 30;
+
 pub struct BrushLines {
-    pipeline: wgpu::RenderPipeline,
+    lines: wgpu::RenderPipeline,
+    solids: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    vertex_count: u32,
+    line_vertices: u32,
+    solid_vertices: u32,
 }
 
 impl BrushLines {
     pub fn new(gpu: &Gpu, brush: &Brush) -> Self {
+        let preset = brush.preset();
         let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("brush lines"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/brush_lines.wgsl").into()),
@@ -22,17 +27,16 @@ impl BrushLines {
                 buffer_entry(2, wgpu::BufferBindingType::Storage { read_only: true }),
             ],
         });
-        let rigid = brush.preset().is_rigid();
-        let sheet: Vec<u32> = if rigid { blade_sheet(brush.preset()) } else { vec![0] };
-        let sheet_buffer = gpu.storage_buffer("blade sheet", (sheet.len() * 4) as u64);
-        gpu.queue.write_buffer(&sheet_buffer, 0, bytemuck::cast_slice(&sheet));
+        let silicone = if preset.deposit_rate > 0.0 { 0 } else { SILICONE_FLAG };
+        let solid: Vec<u32> = if preset.is_rigid() { blade_sheet(preset).into_iter().map(|id| id | silicone).collect() } else { Vec::new() };
+        let solid_buffer = upload(gpu, "blade sheet", bytemuck::cast_slice(&solid));
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("brush lines"),
             layout: &layout,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: brush.uniform.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: brush.positions.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: sheet_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: solid_buffer.as_entire_binding() },
             ],
         });
         let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -40,36 +44,36 @@ impl BrushLines {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("brush lines"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some(if rigid { "vs_blade" } else { "vs_main" }),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: DISPLAY_FORMAT,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: if rigid { wgpu::PrimitiveTopology::TriangleList } else { wgpu::PrimitiveTopology::LineList },
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-        let vertex_count = if rigid { sheet.len() as u32 } else { brush.preset().bristle_count * (VERTICES_PER_BRISTLE - 2) * 2 };
-        Self { pipeline, bind_group, vertex_count }
+        let pipeline = |entry: &str, topology: wgpu::PrimitiveTopology| {
+            gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(entry),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState { module: &shader, entry_point: Some(entry), buffers: &[], compilation_options: Default::default() },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: DISPLAY_FORMAT,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState { topology, ..Default::default() },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let line_vertices = if preset.is_rigid() { 0 } else { preset.bristle_count * (VERTICES_PER_BRISTLE - 2) * 2 };
+        Self {
+            lines: pipeline("vs_hair", wgpu::PrimitiveTopology::LineList),
+            solids: pipeline("vs_solid", wgpu::PrimitiveTopology::TriangleList),
+            bind_group,
+            line_vertices,
+            solid_vertices: solid.len() as u32,
+        }
     }
 
     pub fn encode(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView) {
@@ -86,19 +90,20 @@ impl BrushLines {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.draw(0..self.vertex_count, 0..1);
+        pass.set_pipeline(&self.solids);
+        pass.draw(0..self.solid_vertices, 0..1);
+        if self.line_vertices > 0 {
+            pass.set_pipeline(&self.lines);
+            pass.draw(0..self.line_vertices, 0..1);
+        }
     }
 }
 
-fn buffer_entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::VERTEX,
-        ty: wgpu::BindingType::Buffer { ty, has_dynamic_offset: false, min_binding_size: None },
-        count: None,
-    }
+fn upload(gpu: &Gpu, label: &str, bytes: &[u8]) -> wgpu::Buffer {
+    let buffer = gpu.storage_buffer(label, bytes.len().max(16) as u64);
+    gpu.queue.write_buffer(&buffer, 0, bytes);
+    buffer
 }
 
 fn blade_sheet(preset: &BrushPreset) -> Vec<u32> {
@@ -120,4 +125,13 @@ fn blade_sheet(preset: &BrushPreset) -> Vec<u32> {
         }
     }
     sheet
+}
+
+fn buffer_entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::VERTEX,
+        ty: wgpu::BindingType::Buffer { ty, has_dynamic_offset: false, min_binding_size: None },
+        count: None,
+    }
 }

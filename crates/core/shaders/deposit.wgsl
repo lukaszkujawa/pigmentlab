@@ -384,7 +384,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         if (height > point.z + film) { continue; }
         let lift_carry = select(1.0, brush_motion, deposit.lifting != 0u);
-        let deposit_share = select(0.0, deposit.deposit_rate * share * segment.motion * deposit.contact * lift_carry * f32(stride), depositing);
+        let transfer = select(segment.motion, 1.0, BLADE);
+        let deposit_share = select(0.0, deposit.deposit_rate * share * transfer * deposit.contact * lift_carry * f32(stride), depositing);
         release(point.xy, point.z - film, deposit_share, &load, absorption, scattering, medium);
     }
 
@@ -672,5 +673,27 @@ fn apply_film(@builtin(global_invocation_id) id: vec3<u32>) {
     let pixel = vec2<i32>(id.xy) + window.origin;
     if (!on_canvas(pixel)) { return; }
     var remaining = mass;
-    give(window_cell(vec3<u32>(id.xy, column_top(id.xy))), mass, &remaining, absorption, scattering, medium);
+    give(window_cell(vec3<u32>(id.xy, film_cell(id.xy))), mass, &remaining, absorption, scattering, medium);
+}
+
+fn film_cell(local: vec2<u32>) -> u32 {
+    let top = window.depth - 1u;
+    if (f32(atomicLoad(&paint[window_cell(vec3<u32>(local, top))])) / PAINT_SCALE < FULL_CELL) { return column_top(local); }
+    let bottom = window_cell(vec3<u32>(local, 0u));
+    let above_bottom = window_cell(vec3<u32>(local, 1u));
+    for (var channel = 0u; channel < CHANNELS; channel++) {
+        atomicAdd(&paint[bottom + channel], atomicLoad(&paint[above_bottom + channel]));
+    }
+    for (var z = 1u; z < top; z++) {
+        let cell = window_cell(vec3<u32>(local, z));
+        let above = window_cell(vec3<u32>(local, z + 1u));
+        for (var channel = 0u; channel < CHANNELS; channel++) {
+            atomicStore(&paint[cell + channel], atomicLoad(&paint[above + channel]));
+        }
+    }
+    let top_cell = window_cell(vec3<u32>(local, top));
+    for (var channel = 0u; channel < CHANNELS; channel++) {
+        atomicStore(&paint[top_cell + channel], 0);
+    }
+    return top;
 }

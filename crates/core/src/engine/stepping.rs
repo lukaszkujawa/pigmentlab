@@ -68,7 +68,7 @@ impl Engine {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("substep") });
             let preset = *self.brush.preset();
             let (focus, footprint_radius) = match self.tool {
-                Tool::Brush => (self.brush.tuft_centre(), preset.bend_reach() + preset.splayed_radius() + FOOTPRINT_SLACK),
+                Tool::Brush => (self.brush.tuft_centre(), preset.reach_from_handle() + FOOTPRINT_SLACK),
                 Tool::Tube => (self.tool_tip().truncate(), self.nozzle_radius() + FOOTPRINT_SLACK),
             };
             if self.window.needs_relocation(focus, footprint_radius) {
