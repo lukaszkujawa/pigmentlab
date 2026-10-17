@@ -3439,8 +3439,10 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "pigmentlab-core",
+ "raw-window-handle",
  "slint",
  "slint-build",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4143,6 +4145,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "pin-weak",
+ "raw-window-handle",
  "slint-macros",
  "unicode-segmentation",
  "vtable",
