@@ -1,4 +1,4 @@
-use super::Engine;
+use super::{Engine, Tool};
 use crate::canvas::{PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::read_buffer;
 use crate::paint::{BrushContents, Gauge};
@@ -17,8 +17,11 @@ impl Engine {
         let load = self.paint.load.clamp(0.0, 1.0);
         let medium = self.paint.medium.clamp(0.0, 1.0);
         if self.watercolour.is_some() {
-            let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * medium) / load.max(WATERCOLOUR_DRIEST_LOAD);
             self.paint_on_tool = paint;
+            if self.tool == Tool::Tube {
+                return;
+            }
+            let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * medium) / load.max(WATERCOLOUR_DRIEST_LOAD);
             self.brush.dip_watercolour(&self.gpu, paint, load, concentration);
             self.gauge().invalidate();
             self.brush_contents = BrushContents { fill: load, paint: paint.coefficients, concentration };
@@ -27,6 +30,9 @@ impl Engine {
         let dilution = 1.0 - DILUTION_PER_MEDIUM * medium;
         let thinned = Coefficients { absorption: paint.coefficients.absorption * dilution, scattering: paint.coefficients.scattering * dilution };
         self.paint_on_tool = Paint { coefficients: thinned, ..paint };
+        if self.tool == Tool::Tube {
+            return;
+        }
         self.brush.dip(&self.gpu, thinned, load, medium);
         self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: load, paint: thinned, concentration: 1.0 };

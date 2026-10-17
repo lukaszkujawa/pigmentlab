@@ -5,6 +5,7 @@ const BEND_REACH_FRACTION: f32 = 0.66;
 const SINK_AT_LIGHT: f32 = 0.75;
 const SINK_AT_FULL: f32 = 1.0;
 const BLADE_CLEARANCE: f32 = 0.1;
+const FIRMLY_PRESSED_LAYER: f32 = 0.5;
 const KNIFE_SPINES: u32 = 48;
 const KNIFE_BLADE_THICKNESS: f32 = cm(0.02);
 const KNIFE_HANDLE_LEAN: f32 = 0.9;
@@ -125,7 +126,7 @@ impl BrushPreset {
             splay: 0.0,
             cohesion: 0.0,
             sink: 1.0,
-            sample_capacity: cm(0.003),
+            sample_capacity: cm(0.01),
             deposit_rate: 0.0,
             pickup_rate: cm(0.0002),
             ..Self::flat(160, width, thickness, length)
@@ -137,7 +138,7 @@ impl BrushPreset {
             bristle_count: KNIFE_SPINES,
             stiffness: 0.3,
             friction: 0.5,
-            sample_capacity: cm(0.12),
+            sample_capacity: cm(0.3),
             deposit_rate: cm(0.012),
             pickup_rate: cm(0.0005),
             blade_layer: cm(0.08),
@@ -147,7 +148,7 @@ impl BrushPreset {
     }
 
     pub fn blade_film(&self, pressure: f32) -> f32 {
-        (self.blade_layer * (1.0 - pressure.clamp(0.0, 1.0))).max(BLADE_CLEARANCE)
+        (self.blade_layer * (1.0 - (1.0 - FIRMLY_PRESSED_LAYER) * pressure.clamp(0.0, 1.0))).max(BLADE_CLEARANCE)
     }
 
     pub fn has_thickness(&self) -> bool {

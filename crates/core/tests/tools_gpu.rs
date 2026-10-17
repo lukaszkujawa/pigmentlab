@@ -431,3 +431,103 @@ fn a_knife_can_be_made_longer() {
     let long = engine.brush().preset().length;
     assert!(long > short * 2.0, "the length control should stretch the blade ({short:.0} -> {long:.0} px)");
 }
+
+#[test]
+fn a_knife_scraped_through_a_bead_stops_trailing_it_soon_after() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_yellow").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 400.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 400.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 500.0, 400.0, 0.0, 1.0));
+    engine.advance_exact(1.05);
+    engine.select_brush("Painting knife");
+    engine.set_param("angle", 90.0);
+    engine.clean();
+    engine.pointer(sample(PointerPhase::Down, 250.0, 400.0, 0.5, 1.05));
+    for k in 1..=20 {
+        let t = 1.05 + k as f64 * 0.1;
+        engine.pointer(sample(PointerPhase::Move, 250.0 + k as f32 * 35.0, 400.0, 0.5, t));
+        engine.advance_exact(t);
+    }
+    engine.pointer(sample(PointerPhase::Up, 950.0, 400.0, 0.0, 3.05));
+    engine.advance_exact(3.5);
+    let heights = engine.paint_heights();
+    let far_trail = (750..940).flat_map(|x| (380..420).map(move |y| (x, y))).map(|(x, y)| heights[y * WIDTH as usize + x]).fold(0.0f32, f32::max);
+    assert!(far_trail < 0.05, "a steel blade must not feed scraped paint back out 3 cm past the bead, left {far_trail:.2} px");
+}
+
+#[test]
+fn a_dipped_knife_lays_its_paint_and_runs_dry() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Painting knife");
+    engine.dip(by_name("cadmium_red").unwrap());
+    let dipped = engine.brush_load();
+    engine.pointer(sample(PointerPhase::Down, 100.0, 400.0, 0.5, 0.0));
+    for k in 1..=60 {
+        let t = k as f64 / 30.0;
+        engine.pointer(sample(PointerPhase::Move, 100.0 + k as f32 * 15.0, 400.0, 0.5, t));
+        engine.advance_exact(t);
+    }
+    engine.pointer(sample(PointerPhase::Up, 1000.0, 400.0, 0.0, 2.0));
+    engine.advance_exact(2.5);
+    assert!(engine.brush_load() < dipped * 0.02, "the knife should give up the paint it was loaded with, kept {:.0} of {dipped:.0}", engine.brush_load());
+    let heights = engine.paint_heights();
+    let laid = |x: usize| (380..420).map(|y| heights[y * WIDTH as usize + x]).fold(0.0f32, f32::max);
+    assert!(laid(200) > 1.0, "a loaded knife should lay a solid layer at the start, got {:.2} px", laid(200));
+    assert!(laid(980) < 0.05, "a knife that has run dry should leave nothing at the end, got {:.2} px", laid(980));
+}
+
+#[test]
+fn dipping_the_tube_leaves_the_knife_clean() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Painting knife");
+    engine.clean();
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.select_brush("Painting knife");
+    assert_eq!(engine.brush_load(), 0.0, "a colour picked for the tube must not load the knife");
+}
+
+fn knife_pass(engine: &mut Engine, x: f32, from_y: f32, length: f32, start: f64) -> f64 {
+    engine.select_brush("Painting knife");
+    engine.pointer(sample(PointerPhase::Down, x, from_y, 1.0, start));
+    for k in 1..=60 {
+        let t = start + k as f64 / 30.0;
+        engine.pointer(sample(PointerPhase::Move, x, from_y + length * k as f32 / 60.0, 1.0, t));
+        engine.advance_exact(t);
+    }
+    engine.pointer(sample(PointerPhase::Up, x, from_y + length, 0.0, start + 2.0));
+    engine.advance_exact(start + 2.3);
+    start + 2.3
+}
+
+fn last_painted_row(engine: &mut Engine, x: usize) -> usize {
+    let heights = engine.paint_heights();
+    (0..768).rev().find(|&y| (x - 40..x + 40).any(|c| heights[y * WIDTH as usize + c] > 0.05)).unwrap_or(0)
+}
+
+#[test]
+fn a_firmly_pressed_loaded_knife_runs_out_within_a_few_centimetres() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Painting knife");
+    engine.dip(by_name("cadmium_yellow").unwrap());
+    knife_pass(&mut engine, 500.0, 100.0, 600.0, 0.0);
+    let reach = last_painted_row(&mut engine, 500) as f32 - 100.0;
+    assert!(reach < 400.0, "a dipped knife pressed hard should run dry well before 5 cm, painted {reach:.0} px");
+    assert!(engine.brush_load() < 1.0, "the knife should have laid all its paint, kept {:.0}", engine.brush_load());
+}
+
+#[test]
+fn a_firmly_pressed_knife_spreads_a_drop_only_a_short_way() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("titanium_white").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 500.0, 120.0, 0.5, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 120.0, 0.5, 0.35));
+    engine.pointer(sample(PointerPhase::Up, 500.0, 120.0, 0.0, 0.35));
+    engine.advance_exact(0.5);
+    knife_pass(&mut engine, 500.0, 100.0, 600.0, 0.5);
+    let reach = last_painted_row(&mut engine, 500) as f32 - 120.0;
+    assert!(reach < 300.0, "a drop should be spread out within a few centimetres, painted {reach:.0} px past it");
+}

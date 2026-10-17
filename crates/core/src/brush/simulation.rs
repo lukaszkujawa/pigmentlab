@@ -163,12 +163,26 @@ impl Brush {
 
     pub fn dip(&self, gpu: &Gpu, paint: Coefficients, load_fraction: f32, medium: f32) {
         let samples = (self.preset.bristle_count * SAMPLES_PER_BRISTLE) as usize;
-        let loads = vec![self.preset.sample_capacity * load_fraction; samples];
+        let loads: Vec<f32> = self.dipped_loads().map(|load| load * load_fraction).collect();
         let absorption = vec![paint.absorption.extend(medium); samples];
         let scattering = vec![paint.scattering.extend(0.0); samples];
         gpu.queue.write_buffer(&self.sample_load, 0, bytemuck::cast_slice(&loads));
         gpu.queue.write_buffer(&self.sample_absorption, 0, bytemuck::cast_slice(&absorption));
         gpu.queue.write_buffer(&self.sample_scattering, 0, bytemuck::cast_slice(&scattering));
+    }
+
+    pub fn paint_capacity(&self) -> f32 {
+        self.dipped_loads().sum()
+    }
+
+    fn dipped_loads(&self) -> impl Iterator<Item = f32> + '_ {
+        let held_blade = self.preset.handle_lean > 0.0;
+        (0..self.preset.bristle_count * SAMPLES_PER_BRISTLE).map(move |sample| {
+            let offset = self.rest[(sample / SAMPLES_PER_BRISTLE * VERTICES_PER_BRISTLE) as usize + 1].x;
+            let along = (sample % SAMPLES_PER_BRISTLE) as f32 / (SAMPLES_PER_BRISTLE - 1) as f32;
+            let loaded = !held_blade || super::knife::carries_paint(offset, along, self.preset.length, self.preset.width * 0.5);
+            if loaded { self.preset.sample_capacity } else { 0.0 }
+        })
     }
 
     pub fn rest(&self) -> &[Vec4] {

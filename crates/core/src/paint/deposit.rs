@@ -171,7 +171,7 @@ impl Deposit {
             base,
             medium: 0.0,
             previous_chain,
-            gauge: Gauge::new(gpu, &pickup_demand, (2 * columns + 1) * 4, BRUSH_CONTENTS_SCALE, preset.sample_capacity * sample_count as f32),
+            gauge: Gauge::new(gpu, &pickup_demand, (2 * columns + 1) * 4, BRUSH_CONTENTS_SCALE, brush.paint_capacity()),
             bind_group,
             pipeline: compute_pipeline("step"),
             replenish: compute_pipeline("replenish"),

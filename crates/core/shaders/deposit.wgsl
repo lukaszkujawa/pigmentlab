@@ -330,7 +330,7 @@ fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, 
 
 fn release(point_xy: vec2<f32>, reach_floor: f32, deposit_share: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
-    let given = min(deposit_share * pow(fill, 1.5), *load);
+    let given = min(deposit_share * select(pow(fill, 1.5), sqrt(fill), BLADE), *load);
     if (given <= 0.0) { return; }
     *load -= given;
     splat_film(point_xy, film_radius(fill), given, absorption, scattering, medium, reach_floor);
@@ -353,8 +353,6 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let scattering = sample_scattering[sample].xyz;
     var remaining_capacity = deposit.sample_capacity - initial_load;
     var requested = 0.0;
-    let stride = max(u32(round(film_radius(segment.fill) * 0.75)), 1u);
-    let depositing = (sample % deposit.samples_per_bristle) % stride == 0u;
     let travelled = distance(segment.start.xy, segment.end.xy);
     let brush_moving = deposit.brush_travel >= MIN_DISPLACING_SPEED * deposit.dt;
     let share = 1.0 / f32(segment.steps);
@@ -386,7 +384,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         if (height > point.z + film) { continue; }
         let lift_carry = select(1.0, brush_motion, deposit.lifting != 0u);
         let transfer = select(segment.motion, 1.0, BLADE);
-        let deposit_share = select(0.0, deposit.deposit_rate * share * transfer * deposit.contact * lift_carry * f32(stride), depositing);
+        let deposit_share = deposit.deposit_rate * share * transfer * deposit.contact * lift_carry;
         release(point.xy, point.z - film, deposit_share, &load, absorption, scattering, medium);
     }
 
@@ -633,6 +631,7 @@ fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
         scattering_mass += sample_scattering[base + i].xyz * load;
     }
     report_brush_contents(total, absorption_mass, scattering_mass);
+    if (BLADE) { return; }
     let mean = total / f32(deposit.samples_per_bristle);
     let rate = min(WICKING_PER_SECOND * deposit.dt, 1.0);
     var given = 0.0;

@@ -8,6 +8,7 @@ const LONGEST_REACH: f32 = 3.0;
 const WIDEST_AT: f32 = 0.6;
 const NECK_WIDTH: f32 = 0.1;
 const WORKING_POINT: f32 = 0.92;
+const LOADED_FROM: f32 = 0.8;
 
 pub struct Spine {
     samples: Vec<Vec3>,
@@ -56,6 +57,11 @@ pub fn kite_extent(offset: f32, length: f32, half_width: f32) -> (f32, f32) {
     let start = WIDEST_AT * length * ((across - NECK_WIDTH) / (1.0 - NECK_WIDTH)).max(0.0);
     let end = length * (1.0 - (1.0 - WIDEST_AT) * across);
     (start, end)
+}
+
+pub fn carries_paint(offset: f32, along: f32, length: f32, half_width: f32) -> bool {
+    let (start, end) = kite_extent(offset, length, half_width);
+    start + (end - start) * along >= length * LOADED_FROM
 }
 
 pub fn blade_chain(pose: &BrushPose, rest: &[Vec4], vertices_per_spine: usize, length: f32, half_width: f32) -> Vec<Vec4> {
