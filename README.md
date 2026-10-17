@@ -20,3 +20,7 @@ cargo build --release
 ```sh
 cargo run --release -p pigmentlab
 ```
+
+## Bundling
+
+`scripts/bundle.sh` builds `target/PigmentLab.app` with the PigmentLab icon, ready to drag into Applications.
