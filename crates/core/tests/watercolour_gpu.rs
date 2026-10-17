@@ -1,8 +1,8 @@
 use glam::Vec4;
-use simpaint_core::canvas::{Medium, Surface};
-use simpaint_core::gpu::read_buffer;
-use simpaint_core::pigment::by_name;
-use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
+use pigmentlab_core::canvas::{Medium, Surface};
+use pigmentlab_core::gpu::read_buffer;
+use pigmentlab_core::pigment::by_name;
+use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
 const WIDTH: usize = 640;
 const HEIGHT: usize = 320;
@@ -280,7 +280,7 @@ fn a_wet_wash_renders_a_smooth_edge_not_a_cell_staircase() {
     assert_smooth_outline(&shade, 180..460, "a wet stroke");
 }
 
-fn settled_contents(engine: &mut Engine) -> simpaint_core::paint::BrushContents {
+fn settled_contents(engine: &mut Engine) -> pigmentlab_core::paint::BrushContents {
     for _ in 0..3 {
         engine.brush_contents();
         engine.brush_load();

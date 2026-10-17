@@ -1,13 +1,14 @@
 slint::include_modules!();
 
+mod dock_icon;
 mod tablet;
 
-use simpaint_core::brush::{BrushAdjustments, PRESETS};
-use simpaint_core::engine::{PaintSettings, tool_names};
-use simpaint_core::scenario::Recorder;
-use simpaint_core::canvas::{Medium, Surface};
-use simpaint_core::pigment::{Coefficients, PALETTE};
-use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
+use pigmentlab_core::brush::{BrushAdjustments, PRESETS};
+use pigmentlab_core::engine::{PaintSettings, tool_names};
+use pigmentlab_core::scenario::Recorder;
+use pigmentlab_core::canvas::{Medium, Surface};
+use pigmentlab_core::pigment::{Coefficients, PALETTE};
+use pigmentlab_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
 use tablet::{PenState, Tablet};
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings};
 use std::cell::RefCell;
@@ -60,12 +61,13 @@ impl Requests {
 
 fn main() -> Result<(), slint::PlatformError> {
     let mut wgpu_settings = WGPUSettings::default();
-    wgpu_settings.device_required_limits = simpaint_core::gpu::required_limits();
+    wgpu_settings.device_required_limits = pigmentlab_core::gpu::required_limits();
     slint::BackendSelector::new()
         .require_wgpu_30(WGPUConfiguration::Automatic(wgpu_settings))
         .select()?;
 
     let app = AppWindow::new()?;
+    dock_icon::install();
     let scale = app.window().scale_factor().max(1.0);
     app.set_canvas_width(CANVAS.width as f32 / scale);
     app.set_canvas_height(CANVAS.height as f32 / scale);
@@ -209,7 +211,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let mut engine: Option<Engine> = None;
     let mut last_frame = Instant::now();
     let mut recorder: Option<Recorder> = None;
-    let log_frames = std::env::var_os("SIMPAINT_LOG_FRAMES").is_some();
+    let log_frames = std::env::var_os("PIGMENTLAB_LOG_FRAMES").is_some();
     app.window()
         .set_rendering_notifier(move |state, graphics_api| match state {
             slint::RenderingState::RenderingSetup => {
@@ -372,7 +374,7 @@ fn stamp() -> u64 {
 }
 
 fn save_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(format!("simpaint-{}.png", stamp()))
+    std::path::PathBuf::from(format!("pigmentlab-{}.png", stamp()))
 }
 
 fn swatches(custom: &[[u8; 3]]) -> slint::ModelRc<slint::Color> {

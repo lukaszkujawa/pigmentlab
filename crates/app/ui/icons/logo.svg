@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff7a3d"/>
+      <stop offset="0.5" stop-color="#d81b60"/>
+      <stop offset="1" stop-color="#2e3fb8"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e6e2f0"/>
+    </linearGradient>
+    <linearGradient id="swirl" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffb300"/>
+      <stop offset="0.5" stop-color="#e53935"/>
+      <stop offset="1" stop-color="#283593"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#ground)"/>
+  <path d="M512 176 C512 176 282 450 282 616 C282 750 386 848 512 848 C638 848 742 750 742 616 C742 450 512 176 512 176 Z" fill="url(#drop)"/>
+  <path d="M332 650 C392 560 470 720 552 640 C620 574 668 610 700 650 C690 760 610 816 512 816 C420 816 350 760 332 650 Z" fill="url(#swirl)"/>
+  <path d="M410 470 C430 420 462 372 492 334" stroke="#ffffff" stroke-opacity="0.9" stroke-width="34" stroke-linecap="round" fill="none"/>
+</svg>

@@ -1,11 +1,11 @@
 use glam::{Vec2, Vec3, Vec4};
-use simpaint_core::brush::{Brush, BrushPose, BrushPreset, MAX_COMPRESSION, VERTICES_PER_BRISTLE, clump_count};
-use simpaint_core::pigment::by_name;
-use simpaint_core::canvas::Canvas;
-use simpaint_core::gpu::{Gpu, read_buffer};
-use simpaint_core::paint::ActiveWindow;
-use simpaint_core::CanvasSize;
-use simpaint_core::units::cm;
+use pigmentlab_core::brush::{Brush, BrushPose, BrushPreset, MAX_COMPRESSION, VERTICES_PER_BRISTLE, clump_count};
+use pigmentlab_core::pigment::by_name;
+use pigmentlab_core::canvas::Canvas;
+use pigmentlab_core::gpu::{Gpu, read_buffer};
+use pigmentlab_core::paint::ActiveWindow;
+use pigmentlab_core::CanvasSize;
+use pigmentlab_core::units::cm;
 
 const CANVAS: [f32; 2] = [512.0, 512.0];
 const LANDING_STEPS: usize = 15;

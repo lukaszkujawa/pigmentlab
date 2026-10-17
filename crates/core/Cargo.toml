@@ -1,5 +1,5 @@
 [package]
-name = "simpaint-core"
+name = "pigmentlab-core"
 version.workspace = true
 edition.workspace = true
 

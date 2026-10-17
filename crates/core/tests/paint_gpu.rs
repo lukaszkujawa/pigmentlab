@@ -1,5 +1,5 @@
-use simpaint_core::pigment::by_name;
-use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
+use pigmentlab_core::pigment::by_name;
+use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
 fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, time: f64) -> PointerSample {
     PointerSample { phase, x, y, pressure, tilt: [0.0; 2], rotation: 0.0, time }
@@ -227,9 +227,9 @@ fn a_held_brush_stamps_once_and_then_stops_adding_paint() {
 #[test]
 fn selecting_a_preset_keeps_its_own_bristle_count() {
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: 512, height: 384 }, 1);
-    assert!(engine.configure_brush("Rigger", simpaint_core::brush::BrushAdjustments::default()));
+    assert!(engine.configure_brush("Rigger", pigmentlab_core::brush::BrushAdjustments::default()));
     assert_eq!(engine.brush().preset().bristle_count, 40);
-    assert!(engine.configure_brush("Round large", simpaint_core::brush::BrushAdjustments::default()));
+    assert!(engine.configure_brush("Round large", pigmentlab_core::brush::BrushAdjustments::default()));
     assert_eq!(engine.brush().preset().bristle_count, 450);
 }
 

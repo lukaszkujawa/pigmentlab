@@ -1,5 +1,5 @@
-use simpaint_core::pigment::by_name;
-use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
+use pigmentlab_core::pigment::by_name;
+use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 use std::time::Instant;
 
 fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, time: f64) -> PointerSample {
@@ -51,7 +51,7 @@ fn report_cost_per_simulated_second() {
     let end3 = scrub(&mut engine, end2 + 2.0, 4);
     timed("2048 large scrub over paint", &mut engine, end2 + 2.0, end3);
     let mut water = Engine::new(Gpu::headless(), CanvasSize { width: 2048, height: 1536 }, 1);
-    water.set_surface(simpaint_core::canvas::Surface::ColdPressed);
+    water.set_surface(pigmentlab_core::canvas::Surface::ColdPressed);
     water.select_brush("Round large");
     water.dip(by_name("french_ultramarine").unwrap());
     let wash = scrub(&mut water, 0.0, 4);

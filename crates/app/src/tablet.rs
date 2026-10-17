@@ -51,7 +51,7 @@ mod macos {
 
     pub fn install(state: Rc<Cell<PenState>>) -> Option<Retained<AnyObject>> {
         NSEvent::setMouseCoalescingEnabled(false);
-        let log = std::env::var_os("SIMPAINT_LOG_PEN").is_some();
+        let log = std::env::var_os("PIGMENTLAB_LOG_PEN").is_some();
         let block = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
             let event_ref = unsafe { event.as_ref() };
             let updated = updated_state(event_ref, state.get());

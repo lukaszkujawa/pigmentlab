@@ -23,7 +23,7 @@ impl Gpu {
         }))
         .expect("no compatible GPU adapter");
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("simpaint headless"),
+            label: Some("pigmentlab headless"),
             required_limits: required_limits(),
             ..Default::default()
         }))

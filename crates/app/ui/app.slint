@@ -124,6 +124,60 @@ component ToolButton inherits Rectangle {
     area := TouchArea { clicked => { root.clicked(); } }
 }
 
+component ToolbarButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <string> tooltip;
+    in property <bool> danger;
+    callback clicked;
+    width: root.icon != "" ? 32px : caption.preferred-width + 24px;
+    height: 32px;
+    border-radius: 6px;
+    background: area.pressed ? Theme.track : (area.has-hover ? Theme.card : transparent);
+    animate background { duration: 100ms; }
+    property <color> ink: root.danger && area.has-hover ? Theme.danger : (area.has-hover ? Theme.text : Theme.muted);
+
+    Path {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        commands: root.icon;
+        stroke: root.ink;
+        stroke-width: 1.5px;
+        stroke-line-cap: round;
+    }
+    caption := Text {
+        text: root.icon == "" ? root.label : "";
+        color: root.ink;
+        font-size: 13px;
+        font-weight: 500;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+    if area.has-hover && root.tooltip != "": Rectangle {
+        x: root.width - self.width;
+        y: root.height + 8px;
+        width: hint.preferred-width + 16px;
+        height: 24px;
+        border-radius: 5px;
+        background: #0b0c0eee;
+        border-width: 1px;
+        border-color: Theme.line;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: #00000080;
+        hint := Text { text: root.tooltip; color: Theme.text; font-size: 12px; vertical-alignment: center; horizontal-alignment: center; }
+    }
+}
+
+component ToolbarDivider {
+    width: 1px;
+    Rectangle { y: (parent.height - self.height) / 2; height: 18px; background: Theme.line; }
+}
+
 component PresetRow inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
@@ -159,7 +213,8 @@ component BrushGauge inherits Rectangle {
     property <length> tuft-start: self.width * 178 / 260;
     property <length> tuft-length: self.width * 76 / 260;
     animate shown { duration: 220ms; easing: ease-out; }
-    height: 64px;
+    width: self.height * 260 / 64;
+    height: 34px;
 
     Path {
         width: root.width;
@@ -368,7 +423,8 @@ component ColourPicker {
 }
 
 export component AppWindow inherits Window {
-    title: "SimPaint";
+    title: "PigmentLab";
+    icon: @image-url("icons/icon.png");
     preferred-width: 1440px;
     preferred-height: 900px;
     background: Theme.window;
@@ -451,27 +507,15 @@ export component AppWindow inherits Window {
                 root.undo();
                 return accept;
             }
+            if (event.text == "s" && (event.modifiers.meta || event.modifiers.control)) {
+                root.save();
+                return accept;
+            }
             return reject;
         }
 
         VerticalLayout {
-            toolbar := Rectangle {
-                height: 48px;
-                background: Theme.panel;
-                HorizontalLayout {
-                    padding-left: 16px;
-                    padding-right: 16px;
-                    spacing: 8px;
-                    Text { text: "SimPaint"; color: Theme.text; font-size: 15px; font-weight: 700; vertical-alignment: center; }
-                    Text { text: root.watercolour ? "watercolour" : "oil"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
-                    Rectangle { horizontal-stretch: 1; }
-                    ToolButton { label: "Undo"; clicked => { root.undo(); } }
-                    ToolButton { label: "Dry"; clicked => { root.dry(); } }
-                    ToolButton { label: "Save PNG"; clicked => { root.save(); } }
-                    ToolButton { label: "Clear"; danger: true; clicked => { root.clear(); } }
-                }
-                Rectangle { y: parent.height - 1px; height: 1px; width: 100%; background: Theme.line; }
-            }
+            Rectangle { height: 48px; }
 
             HorizontalLayout {
                 viewport := Rectangle {
@@ -556,19 +600,6 @@ export component AppWindow inherits Window {
 
                             Card {
                                 title: "BRUSH";
-                                BrushGauge { fill: root.brush-fill; paint: root.brush-paint; }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text {
-                                        text: root.brush-fill > 0.005 ? "Paint " + round(root.brush-fill * 100) + "%" : "Clean brush";
-                                        color: Theme.muted;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                        horizontal-stretch: 1;
-                                    }
-                                    ToolButton { label: "Clean"; clicked => { root.clean(); } }
-                                }
-                                Rectangle { height: 1px; background: Theme.line; }
                                 Rectangle {
                                     height: ceil(root.brush-names.length / 2) * 32px - 2px;
                                     for name[index] in root.brush-names: PresetRow {
@@ -591,6 +622,21 @@ export component AppWindow inherits Window {
 
                             Card {
                                 title: "PALETTE";
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    BrushGauge { fill: root.brush-fill; paint: root.brush-paint; }
+                                    Text {
+                                        text: root.brush-fill > 0.005 ? round(root.brush-fill * 100) + "%" : "Clean";
+                                        color: Theme.muted;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        ToolButton { label: "Clean"; clicked => { root.clean(); } }
+                                    }
+                                }
                                 Rectangle {
                                     height: ceil((root.swatches.length + (root.watercolour ? 3 : 2)) / root.swatch-columns) * root.swatch-cell - 8px;
                                     for swatch[index] in root.swatches: Swatch {
@@ -706,6 +752,49 @@ export component AppWindow inherits Window {
                     Text { text: root.pen-status; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
                     Text { text: root.status; color: Theme.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                     Text { text: round(root.frame-ms * 10) / 10 + " ms"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                }
+            }
+        }
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 48px;
+            background: Theme.panel;
+            Rectangle { y: parent.height - 1px; height: 1px; width: 100%; background: Theme.line; }
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 12px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 4px;
+                VerticalLayout {
+                    alignment: center;
+                    Image { source: @image-url("icons/logo.svg"); width: 24px; height: 24px; }
+                }
+                Rectangle { width: 6px; }
+                Text { text: "PigmentLab"; color: Theme.text; font-size: 15px; font-weight: 600; letter-spacing: 0.2px; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                ToolbarButton {
+                    icon: "M 5.5 2.5 L 2.5 5.5 L 5.5 8.5 M 2.5 5.5 L 10 5.5 C 12 5.5 13.5 7.2 13.5 9.5 C 13.5 11.8 12 13.5 10 13.5 L 6 13.5";
+                    tooltip: "Undo  ⌘Z";
+                    clicked => { root.undo(); }
+                }
+                ToolbarButton { label: "Dry"; tooltip: "Dry the wet paint"; clicked => { root.dry(); } }
+                Rectangle { width: 6px; }
+                ToolbarDivider { }
+                Rectangle { width: 6px; }
+                ToolbarButton {
+                    icon: "M 8 2.5 L 8 10 M 5 7 L 8 10 L 11 7 M 2.5 10.5 L 2.5 13.5 L 13.5 13.5 L 13.5 10.5";
+                    tooltip: "Save PNG  ⌘S";
+                    clicked => { root.save(); }
+                }
+                ToolbarButton {
+                    icon: "M 2.5 4.5 L 13.5 4.5 M 6 4.5 L 6 2.5 L 10 2.5 L 10 4.5 M 4 4.5 L 4.8 13.5 L 11.2 13.5 L 12 4.5 M 6.8 7 L 6.8 11 M 9.2 7 L 9.2 11";
+                    tooltip: "Clear canvas";
+                    danger: true;
+                    clicked => { root.clear(); }
                 }
             }
         }

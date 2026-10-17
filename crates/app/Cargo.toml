@@ -1,16 +1,16 @@
 [package]
-name = "simpaint"
+name = "pigmentlab"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-simpaint-core = { path = "../core" }
+pigmentlab-core = { path = "../core" }
 slint = { version = "1.18", features = ["unstable-wgpu-30", "renderer-femtovg-wgpu"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSEvent", "block2"] }
-objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSEvent", "NSImage", "NSResponder", "block2"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSGeometry"] }
 block2 = "0.6"
 
 [build-dependencies]

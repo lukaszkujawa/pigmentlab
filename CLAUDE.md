@@ -1,4 +1,4 @@
-# SimPaint - Painting Simulator
+# PigmentLab - Painting Simulator
 
 Hyper-realistic, real-time painting simulator built in Rust with GPU acceleration.
 

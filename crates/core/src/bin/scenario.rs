@@ -1,4 +1,4 @@
-use simpaint_core::scenario::{Scenario, run};
+use pigmentlab_core::scenario::{Scenario, run};
 use std::path::{Path, PathBuf};
 
 fn main() {

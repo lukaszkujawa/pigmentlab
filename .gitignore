@@ -1,5 +1,5 @@
 /target
-/simpaint-*.png
+/pigmentlab-*.png
 baselines/**/*.diff.png
 baselines/**/*.actual.png
 .DS_Store

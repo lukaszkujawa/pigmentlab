@@ -1,6 +1,6 @@
-use simpaint_core::brush::{BrushAdjustments, SAMPLES_PER_BRISTLE};
-use simpaint_core::pigment::by_name;
-use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
+use pigmentlab_core::brush::{BrushAdjustments, SAMPLES_PER_BRISTLE};
+use pigmentlab_core::pigment::by_name;
+use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
 const WIDTH: usize = 1024;
 
@@ -176,7 +176,7 @@ fn a_loaded_brush_runs_out_over_a_few_long_strokes() {
     assert!(remaining < 0.25, "the brush still holds {:.0}% of its paint", remaining * 100.0);
 }
 
-fn settled_contents(engine: &mut Engine) -> simpaint_core::paint::BrushContents {
+fn settled_contents(engine: &mut Engine) -> pigmentlab_core::paint::BrushContents {
     for _ in 0..2 {
         engine.brush_contents();
         engine.brush_load();
@@ -227,7 +227,7 @@ fn the_brush_gauge_follows_paint_leaving_and_entering_the_brush() {
 fn the_eyedropper_reads_the_colour_on_the_canvas() {
     let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
     engine.select_brush("Paint tube");
-    engine.dip(simpaint_core::pigment::Coefficients::from_srgb([40, 90, 200]));
+    engine.dip(pigmentlab_core::pigment::Coefficients::from_srgb([40, 90, 200]));
     engine.pointer(sample(PointerPhase::Down, 300.0, 256.0, 1.0, 0.0));
     engine.pointer(sample(PointerPhase::Move, 700.0, 256.0, 1.0, 1.0));
     engine.pointer(sample(PointerPhase::Up, 700.0, 256.0, 0.0, 1.0));

@@ -1,5 +1,5 @@
-use simpaint_core::pigment::by_name;
-use simpaint_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
+use pigmentlab_core::pigment::by_name;
+use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
 const WIDTH: u32 = 1024;
 
