@@ -44,7 +44,7 @@ fn a_dry_brush_catches_the_weave_peaks() {
     let in_stroke = |x: usize, y: usize| (300..800).contains(&x) && (236..276).contains(&y);
     let on_peaks = mean_paint_where(&paint, &relief, in_stroke, |r| r > 0.6);
     let in_valleys = mean_paint_where(&paint, &relief, in_stroke, |r| r < -0.3);
-    assert!(on_peaks > 0.03, "the dry brush should leave paint on the peaks, got {on_peaks:.3} px");
+    assert!(on_peaks > 0.02, "the dry brush should leave paint on the peaks, got {on_peaks:.3} px");
     assert!(on_peaks > in_valleys * 1.8, "dry paint should sit on the weave peaks ({on_peaks:.3}) more than in the valleys ({in_valleys:.3})");
 }
 

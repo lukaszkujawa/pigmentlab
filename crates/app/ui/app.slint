@@ -392,7 +392,8 @@ export component AppWindow inherits Window {
     changed picker-colour => { root.picker-changed(self.picker-colour); }
     in property <string> status: "";
     in property <float> frame-ms: 0;
-    in property <bool> pen-present: false;
+    in property <bool> pen-seen: false;
+    in-out property <float> pen-firmness: 0.7;
     in property <string> pen-status: "";
     in property <[string]> brush-names: [];
     in property <[string]> surface-names: [];
@@ -584,7 +585,8 @@ export component AppWindow inherits Window {
                                 bristles-slider := ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value: 200; value-text: round(self.value); released => { root.brush-adjusted(); } }
                                 stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
                                 angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 180; value: 0; value-text: round(self.value) + "°"; }
-                                pressure-slider := ParamSlider { label: root.pen-present ? "Pressure (pen)" : "Pressure"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
+                                pressure-slider := ParamSlider { label: "Pressure"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
+                                if root.pen-seen: ParamSlider { label: "Pen firmness"; minimum: 0.2; maximum: 1; value <=> root.pen-firmness; value-text: round(self.value * 100) + "%"; }
                             }
 
                             Card {

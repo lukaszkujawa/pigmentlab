@@ -8,7 +8,7 @@ use simpaint_core::scenario::Recorder;
 use simpaint_core::canvas::{Medium, Surface};
 use simpaint_core::pigment::{Coefficients, PALETTE};
 use simpaint_core::{CanvasSize, Engine, Gpu, Lighting, PointerPhase, PointerSample};
-use tablet::Tablet;
+use tablet::{PenState, Tablet};
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -29,6 +29,7 @@ enum Dip {
 #[derive(Default)]
 struct Requests {
     pointer: Vec<PointerSample>,
+    last_pointer: Option<PointerSample>,
     dip: Option<Dip>,
     clean: bool,
     pick: Option<(f32, f32)>,
@@ -40,6 +41,21 @@ struct Requests {
     undo: bool,
     save: bool,
     dry: bool,
+}
+
+impl Requests {
+    fn push_pointer(&mut self, sample: PointerSample) {
+        self.pointer.push(sample);
+        self.last_pointer = Some(sample);
+    }
+
+    fn follow_held_pen(&mut self, pen: PenState, firmness: f32, time: f64) {
+        let Some(last) = self.last_pointer.filter(|last| pen.present && last.phase != PointerPhase::Up) else { return };
+        let pressure = pen.brush_pressure(firmness);
+        if (last.pressure, last.tilt, last.rotation) != (pressure, pen.tilt, pen.rotation) {
+            self.push_pointer(PointerSample { phase: PointerPhase::Move, pressure, tilt: pen.tilt, rotation: pen.rotation, time, ..last });
+        }
+    }
 }
 
 fn main() -> Result<(), slint::PlatformError> {
@@ -77,10 +93,13 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_pointer(move |kind, x, y| {
         let app = app_weak.unwrap();
         let pen = pen.state();
-        let (pressure, tilt, rotation) =
-            if pen.present { (pen.pressure, pen.tilt, pen.rotation) } else { (app.get_pressure(), [0.0; 2], 0.0) };
+        let (pressure, tilt, rotation) = if pen.present {
+            (pen.brush_pressure(app.get_pen_firmness()), pen.tilt, pen.rotation)
+        } else {
+            (app.get_pressure(), [0.0; 2], 0.0)
+        };
         let scale = app.get_canvas_scale();
-        shared.borrow_mut().pointer.push(PointerSample {
+        shared.borrow_mut().push_pointer(PointerSample {
             phase: phase(kind),
             x: x * scale,
             y: y * scale,
@@ -203,6 +222,8 @@ fn main() -> Result<(), slint::PlatformError> {
             slint::RenderingState::BeforeRendering => {
                 if let (Some(engine), Some(app)) = (engine.as_mut(), app_weak.upgrade()) {
                     let now = started.elapsed().as_secs_f64();
+                    let pen = tablet.state();
+                    requests.borrow_mut().follow_held_pen(pen, app.get_pen_firmness(), now);
                     update_recorder(&mut recorder, &app, now, &requests.borrow());
                     apply_requests(engine, &app, &mut requests.borrow_mut(), &mut custom.borrow_mut());
                     show_brush_contents(engine, &app);
@@ -215,10 +236,12 @@ fn main() -> Result<(), slint::PlatformError> {
                         gloss: app.get_gloss(),
                         ..Lighting::default()
                     });
-                    let pen = tablet.state();
-                    app.set_pen_present(pen.present);
+                    if pen.present {
+                        app.set_pen_seen(true);
+                    }
                     app.set_pen_status(if pen.present {
-                        format!("Pen {:.0}%  tilt {:+.2} {:+.2}", pen.pressure * 100.0, pen.tilt[0], pen.tilt[1]).into()
+                        let brush = pen.brush_pressure(app.get_pen_firmness());
+                        format!("Pen {:.0}% → brush {:.0}%  tilt {:+.2} {:+.2}", pen.pressure * 100.0, brush * 100.0, pen.tilt[0], pen.tilt[1]).into()
                     } else {
                         "Mouse".into()
                     });

@@ -6,6 +6,7 @@ use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 
 const WORKGROUP_SIZE: u32 = 128;
 const CONTACT_HEIGHT: f32 = crate::units::cm(0.08);
+const LIGHT_TOUCH_FILM: f32 = 0.25;
 const FLOW_PER_MEDIUM: f32 = 1.0;
 pub const MEDIUM_THINNING: f32 = 0.6;
 const BRUSH_CONTENTS_SCALE: f32 = 16.0;
@@ -25,6 +26,8 @@ struct DepositUniform {
     wet_floor_keep: f32,
     contact: f32,
     lifting: u32,
+    film_height: f32,
+    padding: [f32; 3],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -72,6 +75,8 @@ impl Deposit {
             wet_floor_keep: 1.0,
             contact: 1.0,
             lifting: 0,
+            film_height: CONTACT_HEIGHT,
+            padding: [0.0; 3],
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
@@ -188,6 +193,7 @@ impl Deposit {
             wet_floor_keep: brush.preset().wet_floor_keep(stroke.pressure),
             contact: stroke.contact,
             lifting: u32::from(stroke.lifting),
+            film_height: CONTACT_HEIGHT * (LIGHT_TOUCH_FILM + (1.0 - LIGHT_TOUCH_FILM) * stroke.pressure.clamp(0.0, 1.0)),
             ..self.base
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));

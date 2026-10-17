@@ -37,6 +37,10 @@ struct DepositUniform {
     wet_floor_keep: f32,
     contact: f32,
     lifting: u32,
+    film_height: f32,
+    padding_1: f32,
+    padding_2: f32,
+    padding_3: f32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -83,7 +87,7 @@ fn segment_of(sample: u32, load: f32) -> Segment {
     let travelled = distance(start.xy, end.xy);
     let carries_film = deposit.rigidity < 0.5;
     let fill = clamp(load / deposit.sample_capacity, 0.0, 1.0) * select(0.0, 1.0, carries_film);
-    return Segment(start, end, clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS), min(travelled / (REFERENCE_SPEED * deposit.dt), 1.0), mix(FILM_MIN_RADIUS, deposit.contact_height, fill), fill, carries_film);
+    return Segment(start, end, clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS), min(travelled / (REFERENCE_SPEED * deposit.dt), 1.0), mix(FILM_MIN_RADIUS, deposit.film_height, fill), fill, carries_film);
 }
 
 fn exchange_portion(segment: Segment) -> f32 {
@@ -358,7 +362,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
             let stirring = buried_depth(point, pixel, state) * min(segment.motion, brush_motion);
             if (stirring > 0.0) { atomicMax(&stir_depth[column_index(local)], fixed(stirring)); }
         }
-        let film = mix(FILM_MIN_RADIUS, deposit.contact_height, clamp(load / deposit.sample_capacity, 0.0, 1.0) * carries_film);
+        let film = mix(FILM_MIN_RADIUS, deposit.film_height, clamp(load / deposit.sample_capacity, 0.0, 1.0) * carries_film);
         let height = state.x + state.w;
         if (point.z > height + film) { continue; }
         if (brush_moving && travelled > 1e-3 && height > point.z) {
