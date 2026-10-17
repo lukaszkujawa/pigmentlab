@@ -6,6 +6,8 @@ const LEVEL_FULL_MOBILITY_HEIGHT: f32 = 0.03 * PIXELS_PER_CM;
 const LEVEL_FULL_MOBILITY_HEIGHT_OILY: f32 = 0.005 * PIXELS_PER_CM;
 const SPREAD_MIN_HEIGHT: f32 = 0.08 * PIXELS_PER_CM;
 const SPREAD_MIN_HEIGHT_OILY: f32 = 0.01 * PIXELS_PER_CM;
+const SURFACE_TENSION_OILY: f32 = 0.1;
+const COHESIVE_HEIGHT: f32 = 1.5;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
 @group(0) @binding(1) var<storage, read_write> volume: array<i32>;
@@ -39,22 +41,36 @@ fn geometric_mix(stiff: f32, oily: f32, medium: f32) -> f32 {
     return exp(mix(log(stiff), log(oily), medium));
 }
 
-fn flow_between(surface: f32, other_surface: f32, wet: f32, medium: f32) -> f32 {
+fn surface_of(pixel: vec2<i32>, fallback: f32) -> f32 {
+    if (!on_canvas(pixel) || heights[pixel_index(pixel)] <= 0.0) { return fallback; }
+    return heights[pixel_index(pixel)] + ground_of(pixel);
+}
+
+fn steepness(pixel: vec2<i32>) -> f32 {
+    let centre = surface_of(pixel, 0.0);
+    let dx = surface_of(pixel + vec2<i32>(1, 0), centre) - surface_of(pixel - vec2<i32>(1, 0), centre);
+    let dy = surface_of(pixel + vec2<i32>(0, 1), centre) - surface_of(pixel - vec2<i32>(0, 1), centre);
+    return 0.5 * length(vec2<f32>(dx, dy));
+}
+
+fn flow_between(surface: f32, other_surface: f32, slope: f32, wet: f32, medium: f32, tension: f32) -> f32 {
     let mobility = min(wet / geometric_mix(LEVEL_FULL_MOBILITY_HEIGHT, LEVEL_FULL_MOBILITY_HEIGHT_OILY, medium), 1.0);
-    let stress = (surface - other_surface) * mobility;
-    let beyond_yield = sign(stress) * max(abs(stress) - geometric_mix(LEVEL_YIELD_SLOPE, LEVEL_YIELD_SLOPE_OILY, medium), 0.0);
-    return beyond_yield * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) * 0.25;
+    let difference = (surface - other_surface) * mobility;
+    let stress = max(slope, abs(surface - other_surface)) * mobility;
+    let yielding = max(1.0 - geometric_mix(LEVEL_YIELD_SLOPE, LEVEL_YIELD_SLOPE_OILY, medium) / max(stress, 1e-6), 0.0);
+    return difference * min(yielding * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) + tension, LEVEL_RATE_OILY) * 0.25;
 }
 
 fn shared_medium(paint: f32, medium: f32, other_paint: f32, other_medium: f32) -> f32 {
     return (paint * medium + other_paint * other_medium) / max(paint + other_paint, 1e-6);
 }
 
-fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32, medium: f32) -> f32 {
+fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32, slope: f32, medium: f32) -> f32 {
     let oiliness = clamp(medium, 0.0, 1.0);
     let both_wet = paint > 0.0 && other_paint > 0.0;
     if (!both_wet && max(paint, other_paint) <= geometric_mix(SPREAD_MIN_HEIGHT, SPREAD_MIN_HEIGHT_OILY, oiliness)) { return 0.0; }
-    let flow = flow_between(surface, other_surface, max(paint, other_paint), oiliness);
+    let cohesion = clamp(min(paint, other_paint) / COHESIVE_HEIGHT, 0.0, 1.0);
+    let flow = flow_between(surface, other_surface, slope * cohesion, max(paint, other_paint), oiliness, SURFACE_TENSION_OILY * oiliness * cohesion);
     return clamp(flow, -other_paint * MAX_SHARE_PER_NEIGHBOUR, paint * MAX_SHARE_PER_NEIGHBOUR);
 }
 
@@ -79,12 +95,13 @@ fn neighbour_pigment(local: vec2<i32>) -> array<f32, 7> {
     return pigment;
 }
 
-fn column_flow(paint: f32, surface: f32, medium: f32, local: vec2<i32>) -> f32 {
+fn column_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, local: vec2<i32>) -> f32 {
     let pixel = local + window.origin;
     let other = height_of(pixel);
     if (other < 0.0) { return 0.0; }
     let other_medium = neighbour_pigment(local)[6];
-    return pair_flow(paint, surface, other, other + ground_of(pixel), shared_medium(paint, medium, other, other_medium));
+    let slope = 0.5 * (steepness(own) + steepness(pixel));
+    return pair_flow(paint, surface, other, other + ground_of(pixel), slope, shared_medium(paint, medium, other, other_medium));
 }
 
 fn take_from_top(local: vec2<u32>, amount: f32) {
@@ -157,7 +174,7 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
     var incoming_scattering = vec3<f32>(0.0);
     var incoming_medium = 0.0;
     for (var n = 0u; n < 4u; n++) {
-        let flow = column_flow(paint, surface, medium, local + offsets[n]);
+        let flow = column_flow(pixel, paint, surface, medium, local + offsets[n]);
         if (flow > 0.0) {
             outgoing += flow;
         } else if (flow < 0.0) {
@@ -177,10 +194,11 @@ fn store_medium(pixel: vec2<i32>) -> f32 {
     return f32(store[cell + 7u]) / max(f32(store[cell]), 1.0);
 }
 
-fn store_flow(paint: f32, surface: f32, medium: f32, neighbour: vec2<i32>) -> f32 {
+fn store_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, neighbour: vec2<i32>) -> f32 {
     if (!on_canvas(neighbour)) { return 0.0; }
     let other = heights[pixel_index(neighbour)];
-    return pair_flow(paint, surface, other, other + ground_of(neighbour), shared_medium(paint, medium, other, store_medium(neighbour)));
+    let slope = 0.5 * (steepness(own) + steepness(neighbour));
+    return pair_flow(paint, surface, other, other + ground_of(neighbour), slope, shared_medium(paint, medium, other, store_medium(neighbour)));
 }
 
 fn level_store_pixel(pixel: vec2<i32>) {
@@ -196,7 +214,7 @@ fn level_store_pixel(pixel: vec2<i32>) {
     for (var channel = 0u; channel < 7u; channel++) { incoming_pigment[channel] = 0.0; }
     for (var n = 0u; n < 4u; n++) {
         let neighbour = pixel + offsets[n];
-        let flow = store_flow(height, surface, medium, neighbour);
+        let flow = store_flow(pixel, height, surface, medium, neighbour);
         if (flow > 0.0) {
             outgoing += flow;
         } else if (flow < 0.0) {
