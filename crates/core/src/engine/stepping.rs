@@ -1,9 +1,8 @@
-use super::{Engine, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
+use super::{Engine, FOOTPRINT_SLACK, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
 use crate::paint::{StrokeState, WetBounds};
 use glam::IVec2;
 
 const DEPOSIT_REACH: i32 = 24;
-const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
 const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
 const LEVELLING_SETTLE_SECONDS_PER_MEDIUM: f64 = 4.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
@@ -95,7 +94,8 @@ impl Engine {
                     } else if self.water_brush.is_none() && self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
                         let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
                         let stroke = StrokeState { travel, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
-                        self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke);
+                        let region = self.window.region_around(self.brush.tuft_centre(), footprint_radius + DEPOSIT_REACH as f32);
+                        self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke, region);
                         self.contents_version += 1;
                         self.position_at_last_deposit = self.pose.position;
                     }
@@ -128,7 +128,7 @@ impl Engine {
             let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;
             if let Some(wet) = self.wet_bounds.filter(|_| levelling_due && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING)) {
                 self.refresh_heights(&mut encoder);
-                self.levelling.encode(&self.gpu, &mut encoder, wet);
+                self.levelling.encode(&self.gpu, &mut encoder, &self.window, wet);
                 self.mark_stale(wet.expand(1));
             }
             self.request_gauge_reading(&mut encoder);

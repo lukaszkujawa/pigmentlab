@@ -64,8 +64,15 @@ impl Gpu {
     }
 }
 
+const LARGEST_BUFFER: u64 = 1 << 30;
+
 pub fn required_limits() -> wgpu::Limits {
-    wgpu::Limits { max_storage_buffers_per_shader_stage: 16, ..wgpu::Limits::default() }
+    wgpu::Limits {
+        max_storage_buffers_per_shader_stage: 16,
+        max_buffer_size: LARGEST_BUFFER,
+        max_storage_buffer_binding_size: LARGEST_BUFFER,
+        ..wgpu::Limits::default()
+    }
 }
 
 pub fn buffer_layout_entry(

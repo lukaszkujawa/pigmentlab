@@ -16,6 +16,7 @@ const YIELD_DEPTH: f32 = 0.5 * PIXELS_PER_CM;
 @group(0) @binding(5) var<storage, read_write> column_pigment: array<vec4<f32>>;
 @group(0) @binding(6) var<storage, read> ground: array<f32>;
 @group(0) @binding(7) var<uniform> wet: WetBounds;
+@group(0) @binding(8) var<uniform> region: WetBounds;
 
 struct WetBounds {
     origin: vec2<i32>,
@@ -136,15 +137,22 @@ fn add_on_top(local: vec2<u32>, amount: f32, absorption: vec3<f32>, scattering: 
     }
 }
 
+fn region_column(id: vec2<u32>) -> vec2<i32> {
+    if (id.x >= region.size.x || id.y >= region.size.y) { return vec2<i32>(-1); }
+    return region.origin + vec2<i32>(id);
+}
+
 @compute @workgroup_size(16, 16)
 fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height) { return; }
+    let column = region_column(id.xy);
+    if (column.x < 0) { return; }
+    let local = vec2<u32>(column);
     var height = 0.0;
     var medium_mass = 0.0;
     var top_absorption = vec3<f32>(0.0);
     var top_scattering = vec3<f32>(0.0);
     for (var z = 0u; z < window.depth; z++) {
-        let base = window_cell(vec3<u32>(id.xy, z));
+        let base = window_cell(vec3<u32>(local, z));
         let density = f32(volume[base]) / PAINT_SCALE;
         if (density <= 0.0) { continue; }
         height += density;
@@ -152,20 +160,20 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
         top_absorption = vec3<f32>(f32(volume[base + 1u]), f32(volume[base + 2u]), f32(volume[base + 3u])) / PAINT_SCALE / density;
         top_scattering = vec3<f32>(f32(volume[base + 4u]), f32(volume[base + 5u]), f32(volume[base + 6u])) / PAINT_SCALE / density;
     }
-    let slot = column_slot(id.xy);
+    let slot = column_slot(local);
     columns[slot] = vec4<f32>(height, top_scattering);
     column_pigment[slot] = vec4<f32>(top_absorption, medium_mass / max(height, 1e-6));
 }
 
 @compute @workgroup_size(16, 16)
 fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height) { return; }
-    let local = vec2<i32>(id.xy);
+    let local = region_column(id.xy);
+    if (local.x < 0) { return; }
     let pixel = local + window.origin;
     let paint = height_of(pixel);
     if (paint < 0.0) { return; }
     let surface = paint + ground_of(pixel);
-    let medium = column_pigment[column_slot(id.xy)].w;
+    let medium = column_pigment[column_slot(vec2<u32>(local))].w;
     let offsets = array<vec2<i32>, 4>(vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
     var outgoing = 0.0;
     var incoming = 0.0;
@@ -184,8 +192,8 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
             incoming_medium += pigment[6] * -flow;
         }
     }
-    if (outgoing > 0.0) { take_from_top(id.xy, outgoing); }
-    if (incoming > 0.0) { add_on_top(id.xy, incoming, incoming_absorption / incoming, incoming_scattering / incoming, incoming_medium / incoming); }
+    if (outgoing > 0.0) { take_from_top(vec2<u32>(local), outgoing); }
+    if (incoming > 0.0) { add_on_top(vec2<u32>(local), incoming, incoming_absorption / incoming, incoming_scattering / incoming, incoming_medium / incoming); }
 }
 
 fn store_medium(pixel: vec2<i32>) -> f32 {

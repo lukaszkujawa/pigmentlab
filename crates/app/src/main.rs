@@ -199,6 +199,7 @@ fn main() -> Result<(), slint::PlatformError> {
             app.set_brush_bristles(preset.adjusted(adjustments_of(&app, None)).bristle_count as f32);
         }
         app.set_brush_has_thickness(preset.is_some_and(|preset| preset.has_thickness()));
+        app.set_brush_has_length(preset.is_some_and(|preset| preset.is_rigid()));
         app.set_tube_selected(tool_name(index.max(0) as usize) == TUBE_TOOL);
         shared.borrow_mut().brush = Some((index.max(0) as usize, adjustments_of(&app, None)));
     });

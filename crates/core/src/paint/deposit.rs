@@ -1,4 +1,4 @@
-use super::window::{ActiveWindow, WINDOW_SIZE};
+use super::window::{ActiveWindow, WindowRegion};
 use crate::canvas::{Canvas, PAINT_CHANNELS};
 use crate::brush::{Brush, SAMPLES_PER_BRISTLE};
 use super::gauge::{GAUGE_CHANNELS, Gauge};
@@ -27,7 +27,8 @@ struct DepositUniform {
     contact: f32,
     lifting: u32,
     film_height: f32,
-    padding: [f32; 3],
+    region_origin: [u32; 2],
+    padding: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -52,6 +53,7 @@ pub struct Deposit {
     apply_pickups: wgpu::ComputePipeline,
     grant_displacement: wgpu::ComputePipeline,
     snapshot_columns: wgpu::ComputePipeline,
+    clear_marks: wgpu::ComputePipeline,
     sample_count: u32,
     bristle_count: u32,
 }
@@ -76,18 +78,19 @@ impl Deposit {
             contact: 1.0,
             lifting: 0,
             film_height: CONTACT_HEIGHT,
-            padding: [0.0; 3],
+            region_origin: [0; 2],
+            padding: 0.0,
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
-        let film = gpu.storage_buffer("brush film", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * PAINT_CHANNELS * 4);
-        let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
+        let columns = window.columns();
+        let film = gpu.storage_buffer("brush film", columns * PAINT_CHANNELS * 4);
         let pickup_demand = gpu.storage_buffer("pickup demand", (3 * columns + 1 + GAUGE_CHANNELS as u64) * 4);
         let pickup_grant = gpu.storage_buffer("pickup grant", columns * 32);
         let stir_depth = gpu.storage_buffer("stir depth", columns * 4);
         let sample_request = gpu.storage_buffer("sample pickup request", u64::from(sample_count) * 8);
         let displacement = gpu.storage_buffer("displacement marks", columns * 20);
         let previous_chain = gpu.storage_buffer("deposit previous chain", brush.chain.size());
-        let coarse_marks = gpu.storage_buffer("coarse displacement marks", u64::from(WINDOW_SIZE.x.div_ceil(16) * WINDOW_SIZE.y.div_ceil(16)) * 4);
+        let coarse_marks = gpu.storage_buffer("coarse displacement marks", u64::from(window.size().div_ceil(16)) * u64::from(window.size().div_ceil(16)) * 4);
         let compute = wgpu::ShaderStages::COMPUTE;
         let read_only = wgpu::BufferBindingType::Storage { read_only: true };
         let read_write = wgpu::BufferBindingType::Storage { read_only: false };
@@ -177,6 +180,7 @@ impl Deposit {
             apply_pickups: compute_pipeline("apply_pickups"),
             grant_displacement: compute_pipeline("grant_displacement"),
             snapshot_columns: compute_pipeline("snapshot_columns"),
+            clear_marks: compute_pipeline("clear_marks"),
             sample_count,
             bristle_count: preset.bristle_count,
         }
@@ -186,7 +190,7 @@ impl Deposit {
         self.medium = medium.clamp(0.0, 1.0);
     }
 
-    pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, stroke: StrokeState) {
+    pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, stroke: StrokeState, region: WindowRegion) {
         let flow = 1.0 + FLOW_PER_MEDIUM * self.medium;
         let uniform = DepositUniform {
             deposit_rate: self.base.deposit_rate * flow,
@@ -199,26 +203,30 @@ impl Deposit {
             } else {
                 CONTACT_HEIGHT * (LIGHT_TOUCH_FILM + (1.0 - LIGHT_TOUCH_FILM) * stroke.pressure.clamp(0.0, 1.0)) * stroke.contact
             },
+            region_origin: region.origin.to_array(),
             ..self.base
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
+        let [columns_x, columns_y, _] = region.groups();
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("deposit"),
             timestamp_writes: None,
         });
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_pipeline(&self.snapshot_columns);
-        pass.dispatch_workgroups(WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1);
+        pass.dispatch_workgroups(columns_x, columns_y, 1);
         pass.set_pipeline(&self.pipeline);
         pass.dispatch_workgroups(self.sample_count.div_ceil(WORKGROUP_SIZE), 1, 1);
         pass.set_pipeline(&self.grant_pickups);
-        pass.dispatch_workgroups(WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1);
+        pass.dispatch_workgroups(columns_x, columns_y, 1);
         pass.set_pipeline(&self.apply_pickups);
         pass.dispatch_workgroups(self.sample_count.div_ceil(WORKGROUP_SIZE), 1, 1);
         pass.set_pipeline(&self.grant_displacement);
-        pass.dispatch_workgroups(WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1);
+        pass.dispatch_workgroups(columns_x, columns_y, 1);
         pass.set_pipeline(&self.apply_film);
-        pass.dispatch_workgroups(WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1);
+        pass.dispatch_workgroups(columns_x, columns_y, 1);
+        pass.set_pipeline(&self.clear_marks);
+        pass.dispatch_workgroups(columns_x, columns_y, 1);
         pass.set_pipeline(&self.replenish);
         pass.dispatch_workgroups(self.bristle_count.div_ceil(64), 1, 1);
         drop(pass);

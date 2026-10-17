@@ -3,7 +3,7 @@ use crate::canvas::{Canvas, CanvasSize, Medium};
 use crate::gpu::{Gpu, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{Hover, PointerSample, PointerTrack};
-use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Tube, WetBounds};
+use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, SMALLEST_WINDOW, Tube, WetBounds};
 use crate::pigment::{Coefficients, Paint};
 use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
 use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
@@ -23,6 +23,7 @@ const LIFTED_HEIGHT: f32 = 1.25;
 const SUBSTEPS_PER_WATER_STEP: u64 = 4;
 const WATER_SETTLE_SECONDS: f64 = 90.0;
 pub const TUBE_TOOL: &str = "Paint tube";
+const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tool {
@@ -78,6 +79,7 @@ pub struct Engine {
     adjustments: BrushAdjustments,
     brush_angle_degrees: f32,
     paint: PaintSettings,
+    lighting: Lighting,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -95,7 +97,7 @@ impl Default for PaintSettings {
 impl Engine {
     pub fn new(gpu: Gpu, size: CanvasSize, seed: u64) -> Self {
         let canvas = Canvas::new(&gpu, size, seed);
-        let window = ActiveWindow::new(&gpu, &canvas);
+        let window = ActiveWindow::new(&gpu, &canvas, SMALLEST_WINDOW);
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &canvas, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
@@ -163,6 +165,7 @@ impl Engine {
             adjustments: BrushAdjustments::default(),
             brush_angle_degrees: 0.0,
             paint: PaintSettings::default(),
+            lighting: Lighting::default(),
         };
         engine.mark_whole_canvas_stale();
         engine
@@ -189,6 +192,7 @@ impl Engine {
     }
 
     pub fn set_lighting(&mut self, lighting: Lighting) {
+        self.lighting = lighting;
         self.composite.set_lighting(&self.gpu, lighting);
         self.needs_render = true;
     }

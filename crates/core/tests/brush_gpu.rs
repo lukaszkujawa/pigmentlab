@@ -3,7 +3,7 @@ use pigmentlab_core::brush::{Brush, BrushPose, BrushPreset, MAX_COMPRESSION, VER
 use pigmentlab_core::pigment::by_name;
 use pigmentlab_core::canvas::Canvas;
 use pigmentlab_core::gpu::{Gpu, read_buffer};
-use pigmentlab_core::paint::ActiveWindow;
+use pigmentlab_core::paint::{ActiveWindow, SMALLEST_WINDOW};
 use pigmentlab_core::CanvasSize;
 use pigmentlab_core::units::cm;
 
@@ -17,7 +17,7 @@ fn run(preset: BrushPreset, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Bru
 fn run_loaded(preset: BrushPreset, load: f32, poses: impl Iterator<Item = BrushPose>) -> (Gpu, Brush, Vec<Vec4>) {
     let gpu = Gpu::headless();
     let canvas = Canvas::new(&gpu, CanvasSize { width: 512, height: 512 }, 1);
-    let window = ActiveWindow::new(&gpu, &canvas);
+    let window = ActiveWindow::new(&gpu, &canvas, SMALLEST_WINDOW);
     let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
     let brush = Brush::new(&gpu, preset, 7, &window, &canvas, &flat_canvas);
     brush.dip(&gpu, by_name("cadmium_red").unwrap().into(), load, 0.0);

@@ -394,3 +394,40 @@ fn a_tap_of_thinned_paint_leaves_a_small_sharp_puddle_and_no_faint_halo() {
     assert_eq!(halo, 0, "a tap must not leave a faint halo, found {halo} px of film beyond 40 px");
     assert!(peak > 4.0, "the tap should leave a proper puddle, peak {peak:.2} px");
 }
+
+#[test]
+fn a_huge_brush_paints_its_full_width_and_switching_to_it_keeps_the_paint_already_there() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Round medium");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 150.0, 150.0, 0.8, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 400.0, 150.0, 0.8, 0.5));
+    engine.pointer(sample(PointerPhase::Up, 400.0, 150.0, 0.0, 0.5));
+    engine.advance_exact(0.6);
+    let small_stroke = engine.paint_mass();
+    let colour_before = engine.colour_at(300.0, 150.0);
+    engine.select_brush("Flat");
+    engine.set_param("size", 10.0);
+    assert!((engine.paint_mass() - small_stroke).abs() < small_stroke * 0.001, "resizing the window must keep the paint");
+    assert_eq!(engine.colour_at(300.0, 150.0), colour_before, "resizing the window must not change what is drawn");
+    let width = engine.brush().preset().width;
+    assert!(width > 400.0, "a 10x flat brush should be far wider than before, got {width:.0} px");
+    engine.dip(by_name("french_ultramarine").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 550.0, 250.0, 0.8, 0.7));
+    engine.pointer(sample(PointerPhase::Move, 550.0, 700.0, 0.8, 1.7));
+    engine.pointer(sample(PointerPhase::Up, 550.0, 700.0, 0.0, 1.7));
+    engine.advance_exact(1.8);
+    let heights = engine.paint_heights();
+    let painted = (50..1000).filter(|&x| heights[450 * WIDTH as usize + x] > 0.05).count();
+    assert!(painted as f32 > width * 0.8, "the stroke should cover the brush width without clipping, covered {painted} columns of {width:.0}");
+}
+
+#[test]
+fn a_knife_can_be_made_longer() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Painting knife");
+    let short = engine.brush().preset().length;
+    engine.set_param("thickness", 3.0);
+    let long = engine.brush().preset().length;
+    assert!(long > short * 2.0, "the length control should stretch the blade ({short:.0} -> {long:.0} px)");
+}

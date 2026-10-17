@@ -171,13 +171,14 @@ impl BrushPreset {
     }
 
     pub fn adjusted(self, adjustments: BrushAdjustments) -> Self {
-        let scale = adjustments.scale.clamp(0.1, 3.0);
+        let scale = adjustments.scale.clamp(0.1, 10.0);
         let thickness = if self.has_thickness() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
+        let blade_length = if self.is_rigid() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
         let natural_count = (self.bristle_count as f32 * scale * scale * thickness).round() as u32;
         let bristle_count = adjustments.bristle_count.unwrap_or(natural_count).clamp(20, 600);
         let share_per_hair = natural_count as f32 / bristle_count as f32;
         let stiffness = adjustments.stiffness.clamp(0.0, 1.0);
-        let scaled = Self { length: self.length * scale.sqrt(), width: self.width * scale, thickness: self.thickness * scale * thickness, ..self };
+        let scaled = Self { length: self.length * scale.sqrt() * blade_length, width: self.width * scale, thickness: self.thickness * scale * thickness, ..self };
         if self.is_rigid() {
             return Self { bristle_count: (self.bristle_count as f32 * scale * scale).round() as u32, ..scaled };
         }

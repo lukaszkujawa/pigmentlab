@@ -1,8 +1,10 @@
-use super::window::{ActiveWindow, WINDOW_SIZE};
+use super::window::ActiveWindow;
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
 use crate::render::HeightMap;
 use glam::IVec2;
+
+const NEIGHBOUR_REACH: i32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WetBounds {
@@ -43,15 +45,17 @@ pub struct Levelling {
     store_even: ComputePass,
     store_odd: ComputePass,
     wet_uniform: wgpu::Buffer,
+    region_uniform: wgpu::Buffer,
     canvas_size: (u32, u32),
 }
 
 impl Levelling {
     pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, height_map: &HeightMap) -> Self {
-        let columns = u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y);
+        let columns = window.columns();
         let column_heights = gpu.storage_buffer("column snapshot", columns * 16);
         let column_pigment = gpu.storage_buffer("column pigment snapshot", columns * 16);
         let wet_uniform = gpu.uniform_buffer("wet bounds", std::mem::size_of::<WetUniform>() as u64);
+        let region_uniform = gpu.uniform_buffer("levelling window region", std::mem::size_of::<WetUniform>() as u64);
         let shader = gpu.shader(
             "level",
             &[
@@ -68,6 +72,7 @@ impl Levelling {
             (5, Binding::ReadWrite(&column_pigment)),
             (6, Binding::ReadOnly(&canvas.ground)),
             (7, Binding::Uniform(&wet_uniform)),
+            (8, Binding::Uniform(&region_uniform)),
         ];
         let pass = |label, entry| ComputePass::new(gpu, label, &shader, entry, &bindings);
         Self {
@@ -76,14 +81,18 @@ impl Levelling {
             store_even: pass("level store even", "level_store_even"),
             store_odd: pass("level store odd", "level_store_odd"),
             wet_uniform,
+            region_uniform,
             canvas_size: (canvas.size.width, canvas.size.height),
         }
     }
 
-    pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, wet: WetBounds) {
-        let window_groups = [WINDOW_SIZE.x.div_ceil(16), WINDOW_SIZE.y.div_ceil(16), 1];
-        self.snapshot.dispatch(encoder, window_groups);
-        self.window.dispatch(encoder, window_groups);
+    pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, window: &ActiveWindow, wet: WetBounds) {
+        let region = window.region_of(wet.min - NEIGHBOUR_REACH, wet.max + NEIGHBOUR_REACH);
+        if !region.is_empty() {
+            gpu.queue.write_buffer(&self.region_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: region.origin.as_ivec2().to_array(), size: region.size.to_array() }));
+            self.snapshot.dispatch(encoder, region.groups());
+            self.window.dispatch(encoder, region.groups());
+        }
         let (origin, size) = wet.clamped(self.canvas_size.0, self.canvas_size.1);
         if size.x == 0 || size.y == 0 {
             return;

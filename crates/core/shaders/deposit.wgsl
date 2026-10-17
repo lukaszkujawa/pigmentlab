@@ -46,9 +46,9 @@ struct DepositUniform {
     contact: f32,
     lifting: u32,
     film_height: f32,
-    padding_1: f32,
-    padding_2: f32,
-    padding_3: f32,
+    region_x: u32,
+    region_y: u32,
+    padding: f32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -229,20 +229,21 @@ fn snapshot_height(local: vec2<u32>) -> f32 {
 
 @compute @workgroup_size(16, 16)
 fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height) { return; }
+    let local = id.xy + vec2<u32>(deposit.region_x, deposit.region_y);
+    if (local.x >= window.width || local.y >= window.height) { return; }
     var height = 0;
     var medium = 0;
     var top = -1.0;
     for (var z = 0u; z < window.depth; z++) {
-        let cell = window_cell(vec3<u32>(id.xy, z));
+        let cell = window_cell(vec3<u32>(local, z));
         let density = atomicLoad(&paint[cell]);
         if (density <= 0) { continue; }
         height += density;
         medium += atomicLoad(&paint[cell + 7u]);
         top = f32(z);
     }
-    let column = column_index(id.xy);
-    let ground_here = ground_at(vec2<i32>(id.xy) + window.origin);
+    let column = column_index(local);
+    let ground_here = ground_at(vec2<i32>(local) + window.origin);
     let medium_fraction = select(0.0, clamp(f32(medium) / f32(height), 0.0, 1.0), height > 0);
     column_state[column] = vec4<f32>(f32(height) / PAINT_SCALE, top, medium_fraction, ground_here);
     atomicMax(&pickup_demand[max_surface_slot()], fixed(f32(height) / PAINT_SCALE + ground_here));
@@ -252,7 +253,7 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     atomicStore(&stir_depth[column], 0);
     for (var channel = 0u; channel < CHANNELS; channel++) { atomicStore(&film[column * CHANNELS + channel], 0); }
     for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
-    atomicStore(&coarse_marks[coarse_index(id.xy)], 0u);
+    atomicStore(&coarse_marks[coarse_index(local)], 0u);
     if (id.x < 8u && id.y == 0u) { atomicStore(&pickup_demand[brush_contents_slot() + id.x], 0); }
 }
 
@@ -426,15 +427,16 @@ fn stir_column(local: vec2<u32>, depth: f32) {
 
 @compute @workgroup_size(16, 16)
 fn grant_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height) { return; }
-    let column = column_index(id.xy);
-    stir_column(id.xy, f32(atomicLoad(&stir_depth[column])) / PAINT_SCALE);
+    let local = id.xy + vec2<u32>(deposit.region_x, deposit.region_y);
+    if (local.x >= window.width || local.y >= window.height) { return; }
+    let column = column_index(local);
+    stir_column(local, f32(atomicLoad(&stir_depth[column])) / PAINT_SCALE);
     let demand = f32(atomicLoad(&pickup_demand[column])) / PAINT_SCALE;
     pickup_grant[column] = PickupGrant(vec3<f32>(0.0), 0.0, vec4<f32>(0.0));
     if (demand <= 0.0) { return; }
-    let top = topmost_filled_cell(id.xy);
+    let top = topmost_filled_cell(local);
     if (top < 0) { return; }
-    let cell = window_cell(vec3<u32>(id.xy, u32(top)));
+    let cell = window_cell(vec3<u32>(local, u32(top)));
     let available = f32(atomicLoad(&paint[cell])) / PAINT_SCALE;
     if (available <= 0.0) { return; }
     let state = column_state[column];
@@ -488,7 +490,8 @@ fn take_from_top(local: vec2<u32>, amount: f32, absorption: ptr<function, vec3<f
 
 @compute @workgroup_size(16, 16)
 fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height || !near_marks(id.xy)) { return; }
+    let local = id.xy + vec2<u32>(deposit.region_x, deposit.region_y);
+    if (local.x >= window.width || local.y >= window.height || !near_marks(local)) { return; }
     var limit_code = 0;
     var groove_code = 0;
     var level_code = 0;
@@ -496,7 +499,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     var push = vec2<f32>(0.0);
     for (var dy = -DRAG_RADIUS; dy <= DRAG_RADIUS; dy++) {
         for (var dx = -DRAG_RADIUS; dx <= DRAG_RADIUS; dx++) {
-            let mark = vec2<i32>(id.xy) + vec2<i32>(dx, dy);
+            let mark = vec2<i32>(local) + vec2<i32>(dx, dy);
             if (mark.x < 0 || mark.y < 0 || mark.x >= i32(window.width) || mark.y >= i32(window.height)) { continue; }
             let slot = column_index(vec2<u32>(mark)) * DISPLACEMENT_SLOTS;
             let code = atomicLoad(&displacement[slot]);
@@ -509,11 +512,11 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
     if (limit_code == 0) { return; }
-    let pixel = vec2<i32>(id.xy) + window.origin;
-    let paint_here = column_height(id.xy);
+    let pixel = vec2<i32>(local) + window.origin;
+    let paint_here = column_height(local);
     let height = paint_here + ground_at(pixel);
     let hair_level = f32(LIMIT_ENCODING - level_code) / PAINT_SCALE;
-    let drag = f32(drag_code) / PAINT_SCALE * (1.0 - MEDIUM_THINNING * column_state[column_index(id.xy)].z);
+    let drag = f32(drag_code) / PAINT_SCALE * (1.0 - MEDIUM_THINNING * column_state[column_index(local)].z);
     var excess = ridge_amount(height, f32(LIMIT_ENCODING - limit_code) / PAINT_SCALE, drag);
     if (groove_code != 0) {
         excess = groove_amount(height, hair_level, f32(LIMIT_ENCODING - groove_code) / PAINT_SCALE, base_surface(pixel), drag);
@@ -548,7 +551,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     var absorption = vec3<f32>(0.0);
     var scattering = vec3<f32>(0.0);
     var medium = 0.0;
-    let moved = take_from_top(id.xy, excess * placeable, &absorption, &scattering, &medium);
+    let moved = take_from_top(local, excess * placeable, &absorption, &scattering, &medium);
     for (var t = 0u; t < targets; t++) {
         if (shares[t] <= 0.0) { continue; }
         splat_film(centre + offsets[t], PUSH_RADIUS, moved * shares[t] / placeable, absorption, scattering, medium, -1e9);
@@ -661,19 +664,29 @@ fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 @compute @workgroup_size(16, 16)
+fn clear_marks(@builtin(global_invocation_id) id: vec3<u32>) {
+    let local = id.xy + vec2<u32>(deposit.region_x, deposit.region_y);
+    if (local.x >= window.width || local.y >= window.height) { return; }
+    let column = column_index(local);
+    for (var slot = 0u; slot < DISPLACEMENT_SLOTS; slot++) { atomicStore(&displacement[column * DISPLACEMENT_SLOTS + slot], 0); }
+    atomicStore(&coarse_marks[coarse_index(local)], 0u);
+}
+
+@compute @workgroup_size(16, 16)
 fn apply_film(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= window.width || id.y >= window.height) { return; }
+    let local = id.xy + vec2<u32>(deposit.region_x, deposit.region_y);
+    if (local.x >= window.width || local.y >= window.height) { return; }
     if (id.x == 0u && id.y == 0u) { atomicStore(&pickup_demand[max_surface_slot()], 0); }
-    let slot = (id.y * window.width + id.x) * CHANNELS;
+    let slot = (local.y * window.width + local.x) * CHANNELS;
     let mass = f32(atomicLoad(&film[slot])) / PAINT_SCALE;
     if (mass <= 0.0) { return; }
     let absorption = vec3<f32>(f32(atomicLoad(&film[slot + 1u])), f32(atomicLoad(&film[slot + 2u])), f32(atomicLoad(&film[slot + 3u]))) / PAINT_SCALE / mass;
     let scattering = vec3<f32>(f32(atomicLoad(&film[slot + 4u])), f32(atomicLoad(&film[slot + 5u])), f32(atomicLoad(&film[slot + 6u]))) / PAINT_SCALE / mass;
     let medium = f32(atomicLoad(&film[slot + 7u])) / PAINT_SCALE / mass;
-    let pixel = vec2<i32>(id.xy) + window.origin;
+    let pixel = vec2<i32>(local) + window.origin;
     if (!on_canvas(pixel)) { return; }
     var remaining = mass;
-    give(window_cell(vec3<u32>(id.xy, film_cell(id.xy))), mass, &remaining, absorption, scattering, medium);
+    give(window_cell(vec3<u32>(local, film_cell(local))), mass, &remaining, absorption, scattering, medium);
 }
 
 fn film_cell(local: vec2<u32>) -> u32 {

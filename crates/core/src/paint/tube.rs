@@ -1,6 +1,6 @@
 use super::rheology::{strand, yield_stress};
 use super::squeeze::{MAX_REACH, Squeeze, Stamp};
-use super::window::{ActiveWindow, WINDOW_SIZE};
+use super::window::ActiveWindow;
 use crate::canvas::Canvas;
 use crate::gpu::{Binding, ComputePass, Gpu};
 use crate::pigment::Coefficients;
@@ -46,7 +46,7 @@ impl Tube {
     pub fn new(gpu: &Gpu, window: &ActiveWindow, canvas: &Canvas, heights: &wgpu::Buffer, seed: u64, dt: f32) -> Self {
         let uniform = gpu.uniform_buffer("tube uniform", std::mem::size_of::<TubeUniform>() as u64);
         let marks = gpu.storage_buffer("tube marks", canvas.size.pixel_count() * 8);
-        let planned = gpu.storage_buffer("tube plan", u64::from(WINDOW_SIZE.x * WINDOW_SIZE.y) * 8);
+        let planned = gpu.storage_buffer("tube plan", window.columns() * 8);
         let ledger = gpu.storage_buffer("tube ledger", 8);
         let shader = gpu.shader("tube", &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/tube.wgsl")]);
         let bindings = [
