@@ -498,6 +498,9 @@ export component AppWindow inherits Window {
     property <float> zoom: 1.0;
     property <length> pan-x: 0;
     property <length> pan-y: 0;
+    property <bool> panning: false;
+    property <length> pan-grab-x: 0;
+    property <length> pan-grab-y: 0;
 
     forward-focus: keys;
 
@@ -540,12 +543,37 @@ export component AppWindow inherits Window {
                     }
 
                     TouchArea {
+                        mouse-cursor: root.panning ? MouseCursor.grabbing : MouseCursor.default;
+
+                        function zoom-around(factor: float) {
+                            let anchor-x = (self.mouse-x - canvas-image.x) / root.zoom;
+                            let anchor-y = (self.mouse-y - canvas-image.y) / root.zoom;
+                            root.zoom = clamp(root.zoom * factor, 0.1, 16.0);
+                            root.pan-x = self.mouse-x - anchor-x * root.zoom - (viewport.width - root.canvas-width * root.zoom) / 2;
+                            root.pan-y = self.mouse-y - anchor-y * root.zoom - (viewport.height - root.canvas-height * root.zoom) / 2;
+                        }
+
                         pointer-event(event) => {
-                            if (event.kind == PointerEventKind.move) {
-                                if (!self.pressed) { root.pointer(3, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px); }
+                            if (event.button == PointerEventButton.right) {
+                                if (event.kind == PointerEventKind.down) {
+                                    root.panning = true;
+                                    root.pan-grab-x = self.mouse-x - root.pan-x;
+                                    root.pan-grab-y = self.mouse-y - root.pan-y;
+                                } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                                    root.panning = false;
+                                }
                                 return;
                             }
-                            if (event.button != PointerEventButton.left) { return; }
+                            if (event.kind == PointerEventKind.move) {
+                                if (root.panning) {
+                                    root.pan-x = self.mouse-x - root.pan-grab-x;
+                                    root.pan-y = self.mouse-y - root.pan-grab-y;
+                                } else if (!self.pressed) {
+                                    root.pointer(3, (self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
+                                }
+                                return;
+                            }
+                            if (event.button != PointerEventButton.left || root.panning) { return; }
                             if (event.kind == PointerEventKind.down && root.eyedropper) {
                                 root.eyedropper = false;
                                 root.pick-colour((self.mouse-x - canvas-image.x) / root.zoom / 1px, (self.mouse-y - canvas-image.y) / root.zoom / 1px);
@@ -563,12 +591,7 @@ export component AppWindow inherits Window {
                             }
                         }
                         scroll-event(event) => {
-                            if (event.modifiers.control || event.modifiers.meta) {
-                                root.zoom = clamp(root.zoom * (1 + event.delta-y / 500px), 0.1, 16.0);
-                            } else {
-                                root.pan-x += event.delta-x;
-                                root.pan-y += event.delta-y;
-                            }
+                            self.zoom-around(pow(2, event.delta-y / 300px));
                             return accept;
                         }
                     }
