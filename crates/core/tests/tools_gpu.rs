@@ -376,3 +376,21 @@ fn thinned_paint_spreads_from_the_nozzle_outward_instead_of_appearing_as_a_faint
     assert_eq!(faint_far_away, 0, "no faint film should appear far from the nozzle");
     assert!(width(&late) > width(&early) * 2, "the puddle should keep widening as paint arrives ({} -> {} px)", width(&early), width(&late));
 }
+
+#[test]
+fn a_tap_of_thinned_paint_leaves_a_small_sharp_puddle_and_no_faint_halo() {
+    let mut engine = fresh_engine();
+    engine.set_param("medium", 1.0);
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 500.0, 400.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 502.0, 401.0, 1.0, 0.05));
+    engine.pointer(sample(PointerPhase::Up, 502.0, 401.0, 0.0, 0.12));
+    engine.advance_exact(0.3);
+    let heights = engine.paint_heights();
+    let far = |i: usize| ((i % WIDTH as usize) as f32 - 501.0).hypot((i / WIDTH as usize) as f32 - 400.0) > 40.0;
+    let halo = heights.iter().enumerate().filter(|(i, h)| **h > 0.005 && far(*i)).count();
+    let peak = heights.iter().cloned().fold(0.0f32, f32::max);
+    assert_eq!(halo, 0, "a tap must not leave a faint halo, found {halo} px of film beyond 40 px");
+    assert!(peak > 4.0, "the tap should leave a proper puddle, peak {peak:.2} px");
+}

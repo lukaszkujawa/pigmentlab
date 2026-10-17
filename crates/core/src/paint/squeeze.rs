@@ -47,12 +47,13 @@ pub struct Squeeze {
     arc: f32,
     strand_area: f32,
     pile_volume: f32,
+    stroke_volume: f32,
     wobble: [(f32, f32); 3],
 }
 
 impl Squeeze {
     pub fn new(seed: u64) -> Self {
-        Self { rng: SplitMix64::new(seed), pointer: Vec2::ZERO, nozzle: Vec2::ZERO, arc: STROKE_GAP, strand_area: 0.0, pile_volume: 0.0, wobble: [(0.0, 0.0); 3] }
+        Self { rng: SplitMix64::new(seed), pointer: Vec2::ZERO, nozzle: Vec2::ZERO, arc: STROKE_GAP, strand_area: 0.0, pile_volume: 0.0, stroke_volume: 0.0, wobble: [(0.0, 0.0); 3] }
     }
 
     pub fn press(&mut self, nozzle: Vec2) {
@@ -61,6 +62,7 @@ impl Squeeze {
         self.arc += STROKE_GAP;
         self.strand_area = 0.0;
         self.pile_volume = 0.0;
+        self.stroke_volume = 0.0;
         for harmonic in &mut self.wobble {
             *harmonic = (self.rng.range(-WOBBLE, WOBBLE), self.rng.range(0.0, TAU));
         }
@@ -87,6 +89,7 @@ impl Squeeze {
         if squeezed <= 0.0 {
             return None;
         }
+        self.stroke_volume += squeezed;
         if travelled > 0.0 {
             let closed = self.strand_area < CLOSED_STRAND * PI * nozzle_radius * nozzle_radius;
             self.strand_area += (laid / travelled - self.strand_area) * if closed { 1.0 } else { settling(dt) };
@@ -97,8 +100,9 @@ impl Squeeze {
         let rope_tallest = ROPE_HEIGHT_PER_NOZZLE_RADIUS * nozzle_radius;
         let pile_tallest = PILE_HEIGHT_PER_NOZZLE_RADIUS * nozzle_radius;
         let wobble = self.width_wobble(nozzle_radius, dt);
+        let covered = mound(self.stroke_volume, yield_stress, pile_tallest).radius;
         let strand_stiff = wobbled(strand(self.strand_area, YIELD_STRESS_STIFF, rope_tallest), wobble);
-        let strand = widest(wobbled(strand(self.strand_area, yield_stress, rope_tallest), wobble), self.strand_area);
+        let strand = no_wider_than(widest(wobbled(strand(self.strand_area, yield_stress, rope_tallest), wobble), self.strand_area), covered);
         let mound_stiff = mound(self.pile_volume, YIELD_STRESS_STIFF, pile_tallest);
         let mound = roundest(mound(self.pile_volume, yield_stress, pile_tallest), self.pile_volume);
         let strand_drape = ratio(strand.height, strand_stiff.height);
@@ -130,6 +134,10 @@ fn settling(dt: f32) -> f32 {
 
 fn ratio(slumped: f32, stiff: f32) -> f32 {
     if stiff <= 0.0 { 1.0 } else { (slumped / stiff).clamp(0.0, 1.0) }
+}
+
+fn no_wider_than(strand: Strand, reach: f32) -> Strand {
+    Strand { half_width: strand.half_width.min(reach), height: strand.height.min(reach) }
 }
 
 fn widest(strand: Strand, area: f32) -> Strand {
@@ -206,6 +214,15 @@ mod tests {
         let (lo, hi) = widths.iter().fold((f32::MAX, f32::MIN), |(lo, hi), w| (lo.min(*w), hi.max(*w)));
         assert!(hi > lo * 1.02 && hi < lo * 1.3, "the width should vary a little, {lo} to {hi}");
         assert_eq!(rope, stamps(along(FASTEST_EXTRUSION), 1.0, YIELD_STRESS_STIFF));
+    }
+
+    #[test]
+    fn a_strand_is_never_wider_than_the_paint_squeezed_so_far_could_cover() {
+        let runny = stamps(along(FASTEST_EXTRUSION), 0.5, 0.05);
+        let widths: Vec<f32> = runny.iter().map(|s| s.strand.half_width).collect();
+        assert!(widths[0] < 15.0, "a strand starts narrow, got {}", widths[0]);
+        assert!(widths[12] < widths.last().unwrap() * 0.5);
+        assert!(*widths.last().unwrap() > 60.0, "after half a second the runny strand should be wide, got {}", widths.last().unwrap());
     }
 
     #[test]
