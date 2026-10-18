@@ -28,7 +28,7 @@ struct DepositUniform {
     lifting: u32,
     film_height: f32,
     region_origin: [u32; 2],
-    padding: f32,
+    blade_flattening: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -79,7 +79,7 @@ impl Deposit {
             lifting: 0,
             film_height: CONTACT_HEIGHT,
             region_origin: [0; 2],
-            padding: 0.0,
+            blade_flattening: 0.0,
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let columns = window.columns();
@@ -155,7 +155,8 @@ impl Deposit {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let blade = [("BLADE", if preset.is_rigid() { 1.0 } else { 0.0 })];
+        let steel = preset.is_rigid() && preset.deposit_rate > 0.0;
+        let blade = [("BLADE", if preset.is_rigid() { 1.0 } else { 0.0 }), ("STEEL", if steel { 1.0 } else { 0.0 })];
         let compute_pipeline = |entry: &str| {
             gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
@@ -204,6 +205,7 @@ impl Deposit {
                 CONTACT_HEIGHT * (LIGHT_TOUCH_FILM + (1.0 - LIGHT_TOUCH_FILM) * stroke.pressure.clamp(0.0, 1.0)) * stroke.contact
             },
             region_origin: region.origin.to_array(),
+            blade_flattening: brush.preset().blade_flattening(stroke.pressure),
             ..self.base
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));

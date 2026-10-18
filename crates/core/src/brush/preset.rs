@@ -5,7 +5,6 @@ const BEND_REACH_FRACTION: f32 = 0.66;
 const SINK_AT_LIGHT: f32 = 0.75;
 const SINK_AT_FULL: f32 = 1.0;
 const BLADE_CLEARANCE: f32 = 0.1;
-const FIRMLY_PRESSED_LAYER: f32 = 0.5;
 const KNIFE_SPINES: u32 = 48;
 const KNIFE_BLADE_THICKNESS: f32 = cm(0.02);
 const KNIFE_HANDLE_LEAN: f32 = 0.9;
@@ -35,6 +34,7 @@ pub struct BrushPreset {
     pub deposit_rate: f32,
     pub pickup_rate: f32,
     pub blade_layer: f32,
+    pub pressed_blade_layer: f32,
     pub handle_lean: f32,
 }
 
@@ -76,6 +76,7 @@ impl BrushPreset {
             deposit_rate: cm(0.0022),
             pickup_rate: cm(0.00005),
             blade_layer: 0.0,
+            pressed_blade_layer: 0.0,
             handle_lean: 0.0,
         }
     }
@@ -85,10 +86,10 @@ impl BrushPreset {
     }
 
     pub fn wet_floor_keep(&self, pressure: f32) -> f32 {
-        let light_touch = 1.0 - pressure.clamp(0.0, 1.0);
         if self.is_rigid() {
-            return light_touch.powi(3);
+            return 0.0;
         }
+        let light_touch = 1.0 - pressure.clamp(0.0, 1.0);
         let press = 1.0 - light_touch * light_touch;
         1.0 - press * (SINK_AT_LIGHT + (SINK_AT_FULL - SINK_AT_LIGHT) * self.sink)
     }
@@ -129,6 +130,7 @@ impl BrushPreset {
             sample_capacity: cm(0.01),
             deposit_rate: 0.0,
             pickup_rate: cm(0.0002),
+            blade_layer: cm(0.06),
             ..Self::flat(160, width, thickness, length)
         }
     }
@@ -139,16 +141,21 @@ impl BrushPreset {
             stiffness: 0.3,
             friction: 0.5,
             sample_capacity: cm(0.3),
-            deposit_rate: cm(0.012),
+            deposit_rate: cm(0.1),
             pickup_rate: cm(0.0005),
             blade_layer: cm(0.08),
+            pressed_blade_layer: 0.0,
             handle_lean: KNIFE_HANDLE_LEAN,
             ..Self::shaper(width, KNIFE_BLADE_THICKNESS, length)
         }
     }
 
     pub fn blade_film(&self, pressure: f32) -> f32 {
-        (self.blade_layer * (1.0 - (1.0 - FIRMLY_PRESSED_LAYER) * pressure.clamp(0.0, 1.0))).max(BLADE_CLEARANCE)
+        (self.blade_layer + (self.pressed_blade_layer - self.blade_layer) * self.blade_flattening(pressure)).max(BLADE_CLEARANCE)
+    }
+
+    pub fn blade_flattening(&self, pressure: f32) -> f32 {
+        if self.is_rigid() { pressure.clamp(0.0, 1.0).powi(3) } else { 0.0 }
     }
 
     pub fn has_thickness(&self) -> bool {
@@ -172,7 +179,7 @@ impl BrushPreset {
     }
 
     pub fn adjusted(self, adjustments: BrushAdjustments) -> Self {
-        let scale = adjustments.scale.clamp(0.1, 10.0);
+        let scale = adjustments.scale.clamp(0.1, 5.0);
         let thickness = if self.has_thickness() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
         let blade_length = if self.is_rigid() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
         let natural_count = (self.bristle_count as f32 * scale * scale * thickness).round() as u32;

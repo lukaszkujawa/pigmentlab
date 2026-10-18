@@ -26,6 +26,9 @@ struct BrushUniform {
 @group(0) @binding(2) var<storage, read> solids: array<u32>;
 
 const SILICONE_FLAG: u32 = 0x40000000u;
+const WORKING_FACE_FLAG: u32 = 0x20000000u;
+const VERTEX_MASK: u32 = 0x1fffffffu;
+const CONTACT_SHADE_HEIGHT: f32 = 3.0;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -68,9 +71,12 @@ fn blade_colour(silicone: bool, along: f32) -> vec3<f32> {
 fn vs_solid(@builtin(vertex_index) index: u32) -> VertexOutput {
     let id = solids[index];
     var out: VertexOutput;
-    let canvas = to_canvas(positions[id & ~SILICONE_FLAG].xyz);
+    let canvas = to_canvas(positions[id & VERTEX_MASK].xyz);
     out.position = seen_from_above(canvas);
-    out.color = vec4<f32>(blade_colour((id & SILICONE_FLAG) != 0u, clamp(canvas.z / BLADE_SHADE_HEIGHT, 0.0, 1.0)), 0.9);
+    var colour = blade_colour((id & SILICONE_FLAG) != 0u, clamp(canvas.z / BLADE_SHADE_HEIGHT, 0.0, 1.0));
+    if ((id & WORKING_FACE_FLAG) != 0u) { colour = mix(colour, vec3<f32>(0.98, 0.55, 0.1), 0.85); }
+    let touching = clamp(1.0 - canvas.z / CONTACT_SHADE_HEIGHT, 0.0, 1.0);
+    out.color = vec4<f32>(mix(colour, vec3<f32>(0.12, 0.1, 0.08), touching * 0.35), 0.9);
     return out;
 }
 

@@ -6,6 +6,7 @@ use glam::{Quat, Vec2, Vec3};
 const PEN_TO_BRUSH_LEAN: f32 = 0.6;
 const MAX_LEAN: f32 = 0.5;
 const BLADE_FLEX: f32 = 0.75;
+const KNIFE_RESTING_WEIGHT: f32 = 0.4;
 
 impl Engine {
     pub(super) fn handle_position(&self) -> Vec2 {
@@ -25,8 +26,12 @@ impl Engine {
 
     pub(super) fn handle_heights(&self) -> (f32, f32) {
         let preset = self.brush.preset();
-        let compression = if preset.handle_lean > 0.0 { BLADE_FLEX } else { MAX_COMPRESSION };
-        (preset.length * LIFTED_HEIGHT, preset.length * (1.0 - compression * self.touch.pressure))
+        let (compression, press) = if preset.handle_lean > 0.0 {
+            (BLADE_FLEX, KNIFE_RESTING_WEIGHT + (1.0 - KNIFE_RESTING_WEIGHT) * self.touch.pressure)
+        } else {
+            (MAX_COMPRESSION, self.touch.pressure)
+        };
+        (preset.length * LIFTED_HEIGHT, preset.length * (1.0 - compression * press))
     }
 
     pub(super) fn contact(&self) -> f32 {
@@ -41,10 +46,13 @@ impl Engine {
 
     pub(super) fn pose_for(&self) -> BrushPose {
         let (lifted, pressed) = self.handle_heights();
-        let mut spin_radians = (self.brush_angle_degrees + self.touch.rotation).to_radians();
         let preset = self.brush.preset();
         let held_lean = preset.handle_lean;
-        let heading = self.touch.heading();
+        let (heading, mut spin_radians) = if held_lean > 0.0 {
+            (Vec2::from_angle(self.brush_angle_degrees.to_radians()).rotate(self.touch.heading()), self.touch.rotation.to_radians())
+        } else {
+            (self.touch.heading(), (self.brush_angle_degrees + self.touch.rotation).to_radians())
+        };
         if preset.turns_with_tilt() && heading != Vec2::Y {
             spin_radians += heading.y.atan2(heading.x) - std::f32::consts::FRAC_PI_2;
         }

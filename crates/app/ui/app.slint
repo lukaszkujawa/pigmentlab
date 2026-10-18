@@ -666,11 +666,11 @@ export component AppWindow inherits Window {
                                     }
                                 }
                                 Rectangle { height: 1px; background: Theme.line; }
-                                size-slider := ParamSlider { label: root.brush-has-thickness ? "Width" : "Size"; minimum: 0.13; maximum: 10; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
+                                size-slider := ParamSlider { label: root.brush-has-thickness ? "Width" : "Size"; minimum: 0.13; maximum: 5; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
                                 thickness-slider := ParamSlider { visible: root.brush-has-thickness || root.brush-has-length; height: root.brush-has-thickness || root.brush-has-length ? self.preferred-height : 0; label: root.brush-has-length ? "Length" : "Thickness"; minimum: 0.25; maximum: 3; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
                                 bristles-slider := ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value: 200; value-text: round(self.value); released => { root.brush-adjusted(); } }
                                 stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
-                                angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 180; value: 0; value-text: round(self.value) + "°"; }
+                                angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 360; value: 0; value-text: round(self.value) + "°"; }
                                 pressure-slider := ParamSlider { label: "Pressure"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
                                 if root.pen-seen: ParamSlider { label: "Pen firmness"; minimum: 0.2; maximum: 1; value <=> root.pen-firmness; value-text: round(self.value * 100) + "%"; }
                             }

@@ -24,8 +24,9 @@ pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
             BrushShape::Blade => grid_root(preset, index),
             _ => clamp_to_ferrule(preset, clump + jitter(rng, clump_radius)),
         };
-        let length = bristle_length(preset, root) * (1.0 + rng.range(-LENGTH_JITTER, LENGTH_JITTER));
-        let wobble = jitter(rng, DIRECTION_JITTER) * preset.length;
+        let irregularity = if preset.is_rigid() { 0.0 } else { 1.0 };
+        let length = bristle_length(preset, root) * (1.0 + irregularity * rng.range(-LENGTH_JITTER, LENGTH_JITTER));
+        let wobble = jitter(rng, DIRECTION_JITTER * irregularity) * preset.length;
         let curl = curl_direction(preset, root, jitter(rng, 1.0)) * CURL * preset.length;
         let segment = length / (VERTICES_PER_BRISTLE - 2) as f32;
         positions.push(Vec4::new(root.x, root.y, segment, rng.unit()));

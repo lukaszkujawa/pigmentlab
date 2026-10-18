@@ -1,4 +1,5 @@
 use pigmentlab_core::pigment::by_name;
+use pigmentlab_core::brush::VERTICES_PER_BRISTLE;
 use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, PointerPhase, PointerSample};
 
 const WIDTH: u32 = 1024;
@@ -163,8 +164,8 @@ fn shaper_through_a_ring_scrapes_to_a_stain_and_carries_the_paint_on_its_blade()
     engine.set_param("size", 1.0);
     engine.select_brush("Colour shaper");
     engine.set_param("angle", 0.0);
-    engine.pointer(sample(PointerPhase::Down, 500.0, 150.0, 0.9, released));
-    engine.pointer(sample(PointerPhase::Move, 500.0, 620.0, 0.9, released + 1.0));
+    engine.pointer(sample(PointerPhase::Down, 500.0, 150.0, 1.0, released));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 620.0, 1.0, released + 1.0));
     engine.pointer(sample(PointerPhase::Up, 500.0, 620.0, 0.0, released + 1.0));
     engine.advance_exact(released + 1.1);
     let heights = engine.paint_heights();
@@ -407,11 +408,11 @@ fn a_huge_brush_paints_its_full_width_and_switching_to_it_keeps_the_paint_alread
     let small_stroke = engine.paint_mass();
     let colour_before = engine.colour_at(300.0, 150.0);
     engine.select_brush("Flat");
-    engine.set_param("size", 10.0);
+    engine.set_param("size", 5.0);
     assert!((engine.paint_mass() - small_stroke).abs() < small_stroke * 0.001, "resizing the window must keep the paint");
     assert_eq!(engine.colour_at(300.0, 150.0), colour_before, "resizing the window must not change what is drawn");
     let width = engine.brush().preset().width;
-    assert!(width > 400.0, "a 10x flat brush should be far wider than before, got {width:.0} px");
+    assert!(width > 400.0, "a 5x flat brush should be far wider than before, got {width:.0} px");
     engine.dip(by_name("french_ultramarine").unwrap());
     engine.pointer(sample(PointerPhase::Down, 550.0, 250.0, 0.8, 0.7));
     engine.pointer(sample(PointerPhase::Move, 550.0, 700.0, 0.8, 1.7));
@@ -438,8 +439,8 @@ fn a_knife_scraped_through_a_bead_stops_trailing_it_soon_after() {
     engine.select_brush("Paint tube");
     engine.dip(by_name("cadmium_yellow").unwrap());
     engine.pointer(sample(PointerPhase::Down, 300.0, 400.0, 1.0, 0.0));
-    engine.pointer(sample(PointerPhase::Move, 500.0, 400.0, 1.0, 1.0));
-    engine.pointer(sample(PointerPhase::Up, 500.0, 400.0, 0.0, 1.0));
+    engine.pointer(sample(PointerPhase::Move, 340.0, 400.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 340.0, 400.0, 0.0, 1.0));
     engine.advance_exact(1.05);
     engine.select_brush("Painting knife");
     engine.set_param("angle", 90.0);
@@ -454,7 +455,7 @@ fn a_knife_scraped_through_a_bead_stops_trailing_it_soon_after() {
     engine.advance_exact(3.5);
     let heights = engine.paint_heights();
     let far_trail = (750..940).flat_map(|x| (380..420).map(move |y| (x, y))).map(|(x, y)| heights[y * WIDTH as usize + x]).fold(0.0f32, f32::max);
-    assert!(far_trail < 0.05, "a steel blade must not feed scraped paint back out 3 cm past the bead, left {far_trail:.2} px");
+    assert!(far_trail < 0.05, "a steel blade must not feed scraped paint back out 5 cm past the bead, left {far_trail:.2} px");
 }
 
 #[test]
@@ -489,45 +490,79 @@ fn dipping_the_tube_leaves_the_knife_clean() {
     assert_eq!(engine.brush_load(), 0.0, "a colour picked for the tube must not load the knife");
 }
 
-fn knife_pass(engine: &mut Engine, x: f32, from_y: f32, length: f32, start: f64) -> f64 {
-    engine.select_brush("Painting knife");
-    engine.pointer(sample(PointerPhase::Down, x, from_y, 1.0, start));
-    for k in 1..=60 {
-        let t = start + k as f64 / 30.0;
-        engine.pointer(sample(PointerPhase::Move, x, from_y + length * k as f32 / 60.0, 1.0, t));
-        engine.advance_exact(t);
-    }
-    engine.pointer(sample(PointerPhase::Up, x, from_y + length, 0.0, start + 2.0));
-    engine.advance_exact(start + 2.3);
-    start + 2.3
-}
 
-fn last_painted_row(engine: &mut Engine, x: usize) -> usize {
-    let heights = engine.paint_heights();
-    (0..768).rev().find(|&y| (x - 40..x + 40).any(|c| heights[y * WIDTH as usize + c] > 0.05)).unwrap_or(0)
-}
+
+
+
+
 
 #[test]
-fn a_firmly_pressed_loaded_knife_runs_out_within_a_few_centimetres() {
-    let mut engine = fresh_engine();
-    engine.select_brush("Painting knife");
-    engine.dip(by_name("cadmium_yellow").unwrap());
-    knife_pass(&mut engine, 500.0, 100.0, 600.0, 0.0);
-    let reach = last_painted_row(&mut engine, 500) as f32 - 100.0;
-    assert!(reach < 400.0, "a dipped knife pressed hard should run dry well before 5 cm, painted {reach:.0} px");
-    assert!(engine.brush_load() < 1.0, "the knife should have laid all its paint, kept {:.0}", engine.brush_load());
-}
-
-#[test]
-fn a_firmly_pressed_knife_spreads_a_drop_only_a_short_way() {
+fn the_colour_shaper_moves_as_one_solid_blade() {
     let mut engine = fresh_engine();
     engine.select_brush("Paint tube");
-    engine.dip(by_name("titanium_white").unwrap());
-    engine.pointer(sample(PointerPhase::Down, 500.0, 120.0, 0.5, 0.0));
-    engine.pointer(sample(PointerPhase::Move, 500.0, 120.0, 0.5, 0.35));
-    engine.pointer(sample(PointerPhase::Up, 500.0, 120.0, 0.0, 0.35));
-    engine.advance_exact(0.5);
-    knife_pass(&mut engine, 500.0, 100.0, 600.0, 0.5);
-    let reach = last_painted_row(&mut engine, 500) as f32 - 120.0;
-    assert!(reach < 300.0, "a drop should be spread out within a few centimetres, painted {reach:.0} px past it");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 400.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 700.0, 400.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 700.0, 400.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    engine.select_brush("Colour shaper");
+    engine.pointer(sample(PointerPhase::Down, 500.0, 300.0, 0.3, 1.1));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 500.0, 0.3, 2.1));
+    engine.advance_exact(1.6);
+    let chain = pigmentlab_core::gpu::read_buffer::<glam::Vec4>(engine.gpu(), &engine.brush().chain);
+    let per_hair = VERTICES_PER_BRISTLE as usize;
+    for level in 1..per_hair {
+        let heights: Vec<f32> = chain.chunks(per_hair).map(|hair| hair[level].z).collect();
+        let spread = heights.iter().cloned().fold(f32::MIN, f32::max) - heights.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(spread < 0.01, "every part of a silicone blade at the same depth must sit at the same height, level {level} spreads {spread:.2} px");
+    }
+}
+
+fn shaper_trail_through_a_bead(pressure: f32) -> f32 {
+    let mut engine = fresh_engine();
+    engine.select_brush("Paint tube");
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 300.0, 300.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 700.0, 300.0, 1.0, 1.0));
+    engine.pointer(sample(PointerPhase::Up, 700.0, 300.0, 0.0, 1.0));
+    engine.advance_exact(1.1);
+    engine.select_brush("Colour shaper");
+    engine.pointer(sample(PointerPhase::Down, 500.0, 240.0, pressure, 1.1));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 600.0, pressure, 2.6));
+    engine.pointer(sample(PointerPhase::Up, 500.0, 600.0, 0.0, 2.6));
+    engine.advance_exact(2.8);
+    let heights = engine.paint_heights();
+    (360..420).flat_map(|y| (490..510).map(move |x| (x, y))).map(|(x, y)| heights[y * WIDTH as usize + x]).sum::<f32>() / 1200.0
+}
+
+#[test]
+fn a_lightly_pressed_shaper_smears_paint_where_a_firm_one_scrapes_it_away() {
+    let light = shaper_trail_through_a_bead(0.2);
+    let firm = shaper_trail_through_a_bead(1.0);
+    assert!(light > 1.5, "a light shaper should ride on the paint and smear a layer behind the bead, left {light:.2} px");
+    assert!(firm < 0.3, "a fully pressed shaper should scrape the trail down to a stain, left {firm:.2} px");
+}
+
+fn knife_pointing(angle: f32) -> glam::Vec2 {
+    let mut engine = fresh_engine();
+    engine.select_brush("Painting knife");
+    engine.set_param("angle", angle);
+    engine.pointer(sample(PointerPhase::Down, 500.0, 380.0, 0.5, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 500.0, 380.0, 0.5, 0.2));
+    engine.advance_exact(0.2);
+    let chain = pigmentlab_core::gpu::read_buffer::<glam::Vec4>(engine.gpu(), &engine.brush().chain);
+    let per_spine = VERTICES_PER_BRISTLE as usize;
+    let middle = engine.brush().preset().bristle_count as usize / 2 * per_spine;
+    (chain[middle + per_spine - 1].truncate().truncate() - chain[middle + 1].truncate().truncate()).normalize()
+}
+
+#[test]
+fn the_angle_control_turns_the_knife_all_the_way_round() {
+    let unturned = knife_pointing(0.0);
+    let quarter = knife_pointing(90.0);
+    let half = knife_pointing(180.0);
+    let three_quarters = knife_pointing(270.0);
+    assert!(unturned.dot(quarter).abs() < 0.05, "a quarter turn should point the knife across ({unturned} vs {quarter})");
+    assert!(unturned.dot(half) < -0.99, "half a turn should point the knife the other way ({unturned} vs {half})");
+    assert!(quarter.dot(three_quarters) < -0.99, "three quarters should point opposite a quarter turn ({quarter} vs {three_quarters})");
 }

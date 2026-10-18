@@ -1,8 +1,10 @@
 use super::composite::DISPLAY_FORMAT;
-use crate::brush::{Brush, BrushPreset, VERTICES_PER_BRISTLE, blade_grid};
+use crate::brush::{Brush, BrushPreset, VERTICES_PER_BRISTLE, blade_grid, carries_paint};
+use glam::Vec4;
 use crate::gpu::Gpu;
 
 const SILICONE_FLAG: u32 = 1 << 30;
+const WORKING_FACE_FLAG: u32 = 1 << 29;
 
 pub struct BrushLines {
     lines: wgpu::RenderPipeline,
@@ -28,7 +30,7 @@ impl BrushLines {
             ],
         });
         let silicone = if preset.deposit_rate > 0.0 { 0 } else { SILICONE_FLAG };
-        let solid: Vec<u32> = if preset.is_rigid() { blade_sheet(preset).into_iter().map(|id| id | silicone).collect() } else { Vec::new() };
+        let solid: Vec<u32> = if preset.is_rigid() { blade_sheet(preset).into_iter().map(|id| id | silicone | working_face(preset, brush.rest(), id)).collect() } else { Vec::new() };
         let solid_buffer = upload(gpu, "blade sheet", bytemuck::cast_slice(&solid));
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("brush lines"),
@@ -104,6 +106,15 @@ fn upload(gpu: &Gpu, label: &str, bytes: &[u8]) -> wgpu::Buffer {
     let buffer = gpu.storage_buffer(label, bytes.len().max(16) as u64);
     gpu.queue.write_buffer(&buffer, 0, bytes);
     buffer
+}
+
+fn working_face(preset: &BrushPreset, rest: &[Vec4], id: u32) -> u32 {
+    let per_spine = VERTICES_PER_BRISTLE;
+    let level = id % per_spine;
+    let offset = rest[(id - level) as usize + 1].x;
+    let along = (level - 1) as f32 / (per_spine - 2) as f32;
+    let meets_paint = preset.handle_lean > 0.0 && carries_paint(offset, along, preset.length, preset.width * 0.5);
+    if meets_paint { WORKING_FACE_FLAG } else { 0 }
 }
 
 fn blade_sheet(preset: &BrushPreset) -> Vec<u32> {

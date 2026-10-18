@@ -6,10 +6,15 @@ const LOADED_HAIR_RADIUS: f32 = 0.9;
 const PIXEL_SPREAD_SQUARED: f32 = 0.5;
 const BLADE_SPLAT_RADIUS: f32 = 2.5;
 override BLADE: bool = false;
+override STEEL: bool = false;
+const SQUEEZE_OUTWARD: f32 = 3.0;
+const SQUEEZED_LAYER: f32 = 4.0;
+const WEAVE_PEAK_REACH: i32 = 3;
 const VALLEY_SOFTNESS: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 0;
+const BLADE_GROOVE_RADIUS: i32 = 1;
 const PUSH_DISTANCE: f32 = 1.5;
 const PUSH_PACE: f32 = 1.25;
 const MAX_PUSH_REACH: f32 = 16.0;
@@ -48,7 +53,7 @@ struct DepositUniform {
     film_height: f32,
     region_x: u32,
     region_y: u32,
-    padding: f32,
+    blade_flattening: f32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -110,7 +115,8 @@ fn returned_portion(segment: Segment) -> f32 {
 }
 
 fn buried_depth(point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>) -> f32 {
-    return clamp(min(state.x, base_height(pixel)) - (point.z - state.w), 0.0, deposit.contact_height);
+    let paint_below_blade = select(min(state.x, base_height(pixel)), state.x, BLADE);
+    return clamp(paint_below_blade - (point.z - state.w), 0.0, deposit.contact_height);
 }
 
 fn pickup_wanted(segment: Segment, point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>, remaining: ptr<function, f32>) -> f32 {
@@ -281,8 +287,30 @@ fn base_height(pixel: vec2<i32>) -> f32 {
     return stroke_base[u32(pixel.y) * window.canvas_width + u32(pixel.x)];
 }
 
+fn squeeze_outward(sample: u32, point: vec2<f32>, heading: vec2<f32>) -> vec2<f32> {
+    let base = sample / deposit.samples_per_bristle * BRISTLE_VERTICES;
+    let blade = chain[base];
+    let along_blade = normalize(chain[base + BRISTLE_VERTICES - 1u].xy - chain[base + 1u].xy + vec2<f32>(1e-6, 0.0));
+    let across_blade = vec2<f32>(-along_blade.y, along_blade.x);
+    let side = vec2<f32>(-heading.y, heading.x);
+    let reach = blade.z * abs(dot(along_blade, side)) + blade.w * abs(dot(across_blade, side));
+    return side * clamp(dot(point - blade.xy, side) / max(reach, 1.0), -1.0, 1.0);
+}
+
 fn above_floor(point: vec3<f32>, pixel: vec2<i32>) -> vec3<f32> {
-    return vec3<f32>(point.xy, max(point.z, ground_at(pixel) + base_height(pixel) * deposit.wet_floor_keep));
+    let support = select(ground_at(pixel), weave_peak(pixel), STEEL);
+    return vec3<f32>(point.xy, max(point.z, support + base_height(pixel) * deposit.wet_floor_keep));
+}
+
+fn weave_peak(pixel: vec2<i32>) -> f32 {
+    var peak = ground_at(pixel);
+    for (var dy = -WEAVE_PEAK_REACH; dy <= WEAVE_PEAK_REACH; dy += WEAVE_PEAK_REACH) {
+        for (var dx = -WEAVE_PEAK_REACH; dx <= WEAVE_PEAK_REACH; dx += WEAVE_PEAK_REACH) {
+            let neighbour = pixel + vec2<i32>(dx, dy);
+            if (on_canvas(neighbour)) { peak = max(peak, ground_at(neighbour)); }
+        }
+    }
+    return peak;
 }
 
 fn base_surface(pixel: vec2<i32>) -> f32 {
@@ -357,7 +385,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     let brush_moving = deposit.brush_travel >= MIN_DISPLACING_SPEED * deposit.dt;
     let share = 1.0 / f32(segment.steps);
     let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
-    let direction = select(vec2<f32>(0.0), (segment.end.xy - segment.start.xy) / max(travelled, 1e-6), travelled > 1e-3);
+    let heading = select(vec2<f32>(0.0), (segment.end.xy - segment.start.xy) / max(travelled, 1e-6), travelled > 1e-3);
+    let direction = select(heading, normalize(heading + SQUEEZE_OUTWARD * deposit.blade_flattening * squeeze_outward(sample, segment.end.xy, heading)), STEEL && travelled > 1e-3);
     for (var i = 1u; i <= segment.steps; i++) {
         let pixel = vec2<i32>(floor(mix(segment.start.xy, segment.end.xy, f32(i) / f32(segment.steps))));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
@@ -378,12 +407,12 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let film = film_reach(load);
         let height = state.x + state.w;
         if (point.z > height + film) { continue; }
-        if (brush_moving && travelled > 1e-3 && height > point.z) {
+        if (brush_moving && travelled > 1e-3 && height > point.z && !(BLADE && deposit.lifting != 0u)) {
             mark_displacement(local, height, point.z, film, direction, DRAG_RATE_PER_SECOND * deposit.dt * segment.motion);
         }
-        if (height > point.z + film) { continue; }
-        let lift_carry = select(1.0, brush_motion, deposit.lifting != 0u);
-        let transfer = select(segment.motion, 1.0, BLADE);
+        if (height > point.z + select(film, max(film, SQUEEZED_LAYER), STEEL)) { continue; }
+        let lift_carry = select(1.0, select(brush_motion, 0.0, BLADE), deposit.lifting != 0u);
+        let transfer = segment.motion;
         let deposit_share = deposit.deposit_rate * share * transfer * deposit.contact * lift_carry;
         release(point.xy, point.z - film, deposit_share, &load, absorption, scattering, medium);
     }
@@ -489,12 +518,14 @@ fn take_from_top(local: vec2<u32>, amount: f32, absorption: ptr<function, vec3<f
 @compute @workgroup_size(16, 16)
 fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     let local = id.xy + vec2<u32>(deposit.region_x, deposit.region_y);
-    if (local.x >= window.width || local.y >= window.height || !near_marks(local)) { return; }
+    if (local.x >= window.width || local.y >= window.height) { return; }
+    if (!near_marks(local)) { return; }
     var limit_code = 0;
     var groove_code = 0;
     var level_code = 0;
     var drag_code = 0;
     var push = vec2<f32>(0.0);
+    let groove_radius = select(GROOVE_RADIUS, BLADE_GROOVE_RADIUS, BLADE);
     for (var dy = -DRAG_RADIUS; dy <= DRAG_RADIUS; dy++) {
         for (var dx = -DRAG_RADIUS; dx <= DRAG_RADIUS; dx++) {
             let mark = vec2<i32>(local) + vec2<i32>(dx, dy);
@@ -503,7 +534,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
             let code = atomicLoad(&displacement[slot]);
             if (code == 0) { continue; }
             limit_code = max(limit_code, code);
-            if (abs(dx) <= GROOVE_RADIUS && abs(dy) <= GROOVE_RADIUS) { groove_code = max(groove_code, code); }
+            if (abs(dx) <= groove_radius && abs(dy) <= groove_radius) { groove_code = max(groove_code, code); }
             level_code = max(level_code, atomicLoad(&displacement[slot + 1u]));
             drag_code = max(drag_code, atomicLoad(&displacement[slot + 2u]));
             push += vec2<f32>(f32(atomicLoad(&displacement[slot + 3u])), f32(atomicLoad(&displacement[slot + 4u])));
@@ -555,6 +586,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
         splat_film(centre + offsets[t], PUSH_RADIUS, moved * shares[t] / placeable, absorption, scattering, medium, -1e9);
     }
 }
+
 
 @compute @workgroup_size(128)
 fn apply_pickups(@builtin(global_invocation_id) id: vec3<u32>) {

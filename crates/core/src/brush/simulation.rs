@@ -216,8 +216,12 @@ impl Brush {
         self.motion.set(Motion { previous: *pose, tuft_centre: pose.position.truncate() });
     }
 
-    fn bend_blade(&self, gpu: &Gpu, pose: &BrushPose) {
-        let chain = super::knife::blade_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize, self.preset.length, self.preset.width * 0.5);
+    fn place_blade(&self, gpu: &Gpu, pose: &BrushPose) {
+        let chain = if self.preset.handle_lean > 0.0 {
+            super::knife::blade_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize, self.preset.length, self.preset.width * 0.5)
+        } else {
+            super::shaper::flexed_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize)
+        };
         let to_brush = pose.canvas_to_brush();
         let positions: Vec<Vec4> = chain
             .iter()
@@ -268,8 +272,8 @@ impl Brush {
         };
         self.motion.set(Motion { previous: *pose, tuft_centre });
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
-        if self.preset.handle_lean > 0.0 {
-            self.bend_blade(gpu, pose);
+        if self.preset.is_rigid() {
+            self.place_blade(gpu, pose);
             return;
         }
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("bristles"), timestamp_writes: None });
@@ -284,3 +288,4 @@ impl Brush {
         pass.dispatch_workgroups(groups, 1, 1);
     }
 }
+

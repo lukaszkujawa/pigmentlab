@@ -5,8 +5,9 @@ const BISECTION_STEPS: u32 = 24;
 const LENGTH_SAMPLES: usize = 48;
 const LONGEST_REACH: f32 = 3.0;
 
-const WIDEST_AT: f32 = 0.6;
-const NECK_WIDTH: f32 = 0.1;
+const NECK_LENGTH: f32 = 0.15;
+const NECK_WIDTH: f32 = 0.35;
+const TIP_TAPER: f32 = 0.15;
 const WORKING_POINT: f32 = 0.92;
 const LOADED_FROM: f32 = 0.8;
 
@@ -52,15 +53,22 @@ pub fn working_point(pose: &BrushPose, length: f32) -> Vec3 {
     spine(pose, length).at(length * WORKING_POINT)
 }
 
-pub fn kite_extent(offset: f32, length: f32, half_width: f32) -> (f32, f32) {
-    let across = (offset.abs() / half_width).min(1.0);
-    let start = WIDEST_AT * length * ((across - NECK_WIDTH) / (1.0 - NECK_WIDTH)).max(0.0);
-    let end = length * (1.0 - (1.0 - WIDEST_AT) * across);
-    (start, end)
+pub fn blade_extent(offset: f32, length: f32, half_width: f32) -> (f32, f32) {
+    let distance = offset.abs().min(half_width);
+    let neck_end = NECK_LENGTH * length;
+    let start = neck_end * ((distance / half_width - NECK_WIDTH) / (1.0 - NECK_WIDTH)).max(0.0);
+    let tip_half_width = half_width * (1.0 - TIP_TAPER);
+    let rounding_starts = (length - tip_half_width).max(neck_end);
+    let end = if distance <= tip_half_width {
+        rounding_starts + (tip_half_width * tip_half_width - distance * distance).sqrt()
+    } else {
+        neck_end + (rounding_starts - neck_end) * (half_width - distance) / (half_width - tip_half_width)
+    };
+    (start, end.min(length).max(start))
 }
 
 pub fn carries_paint(offset: f32, along: f32, length: f32, half_width: f32) -> bool {
-    let (start, end) = kite_extent(offset, length, half_width);
+    let (start, end) = blade_extent(offset, length, half_width);
     start + (end - start) * along >= length * LOADED_FROM
 }
 
@@ -71,14 +79,15 @@ pub fn blade_chain(pose: &BrushPose, rest: &[Vec4], vertices_per_spine: usize, l
     rest.chunks(vertices_per_spine)
         .flat_map(|spine_rest| {
             let offset = spine_rest[1].x;
-            let (start, end) = kite_extent(offset, length, half_width);
+            let (start, end) = blade_extent(offset, length, half_width);
             let points: Vec<Vec4> = (0..drawn)
                 .map(|i| {
                     let point = spine.at(start + (end - start) * i as f32 / (drawn - 1) as f32) + across * offset;
                     Vec3::new(point.x, point.y, point.z.max(0.0)).extend(0.0)
                 })
                 .collect();
-            std::iter::once(Vec4::ZERO).chain(points)
+            let centre = spine.at(length * 0.5);
+            std::iter::once(Vec4::new(centre.x, centre.y, length * 0.5, half_width)).chain(points)
         })
         .collect()
 }
@@ -133,11 +142,13 @@ mod tests {
     }
 
     #[test]
-    fn the_blade_is_a_kite_widest_past_the_middle_and_pointed_at_the_tip() {
-        assert_eq!(kite_extent(0.0, 100.0, 10.0), (0.0, 100.0));
-        let (start, end) = kite_extent(10.0, 100.0, 10.0);
-        assert!((start - 60.0).abs() < 1e-4 && (end - 60.0).abs() < 1e-4);
-        let (start, end) = kite_extent(5.0, 100.0, 10.0);
-        assert!(start > 20.0 && start < 60.0 && end > 60.0 && end < 100.0);
+    fn the_blade_is_a_gently_tapered_rectangle_with_a_rounded_end() {
+        assert_eq!(blade_extent(0.0, 100.0, 10.0), (0.0, 100.0));
+        let (start, end) = blade_extent(3.0, 100.0, 10.0);
+        assert!(start == 0.0 && end > 99.0, "the neck is narrow but the middle runs the whole length: {start}..{end}");
+        let (start, end) = blade_extent(8.0, 100.0, 10.0);
+        assert!(start > 5.0 && start < 15.0 && end > 92.0 && end < 97.0, "near the side it starts past the neck and ends on the rounded tip: {start}..{end}");
+        let (start, end) = blade_extent(9.5, 100.0, 10.0);
+        assert!(end > 30.0 && end < 92.0, "the outermost edge tapers in gently along the blade: {start}..{end}");
     }
 }
