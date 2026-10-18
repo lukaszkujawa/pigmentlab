@@ -1,8 +1,10 @@
 mod compare;
+mod fractal;
 mod recorder;
 mod runner;
 
 pub use compare::{Comparison, Tolerance, compare};
+pub use fractal::box_counting_dimension;
 pub use recorder::Recorder;
 pub use runner::{CheckpointResult, Report, run};
 
@@ -54,6 +56,14 @@ pub enum Action {
         rotation: f32,
     },
     Release,
+    Hover {
+        x: f32,
+        y: f32,
+        #[serde(default)]
+        tilt: [f32; 2],
+        #[serde(default)]
+        rotation: f32,
+    },
     Dip { pigment: String },
     DipColour { colour: [u8; 3] },
     DipWater,

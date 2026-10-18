@@ -1,19 +1,24 @@
 use super::flight::Droplet;
 use super::fluid::{DENSITY, Fluid};
+use super::jet::{Fallen, Jet, Source};
+use super::laid::{Threads, falling_droplet};
+use crate::units::METRES_PER_PIXEL;
 use super::outflow::orifice_flow;
 use super::pendulum::{Damping, Pendulum};
-use super::thread::{Laying, falling_thread};
 use crate::paint::Mark;
-use crate::paint::rheology::{strand, yield_stress};
 use crate::pigment::Coefficients;
 use crate::rng::SplitMix64;
-use crate::units::{GRAVITY, METRES_PER_PIXEL, pixels};
-use glam::{Vec2, Vec3};
-use std::collections::VecDeque;
+use crate::units::GRAVITY;
+use glam::Vec2;
 use std::f32::consts::PI;
 
 const HEIGHT_PER_RADIUS: f32 = 6.0;
 const FILLED: f32 = 0.75;
+const LUMP_TIME: f32 = 0.15;
+const TREMOR: f32 = 0.0003;
+const NARROWEST_CLOG: f32 = 0.4;
+const LUMPY_STIFF: f32 = 0.3;
+const LUMPY_RUNNY: f32 = 0.1;
 pub const SHORTEST_STRING: f32 = 0.05;
 pub const CLEARANCE: f32 = 0.01;
 const SHELL_MASS_PER_AREA: f32 = 1.5;
@@ -25,9 +30,6 @@ const STRING_THICKNESS: f32 = 0.002;
 const HOOK_RUB: f32 = 0.001;
 const CORD_LOSS_FACTOR: f32 = 0.015;
 const SUSPENSION_UNEVENNESS: f32 = 0.004;
-const SURGE: f32 = 0.12;
-const SURGE_TIME: f32 = 0.4;
-const BREAKUP_SPREAD: f32 = 0.5;
 const QUICKEST_SPIN_SETTLING: f32 = 0.3;
 const SLOWEST_SPIN_SETTLING: f32 = 4.0;
 
@@ -46,14 +48,13 @@ pub struct Bottle {
     pub held_over: Option<Vec2>,
     held_from: Option<Vec2>,
     pub pouring: bool,
-    laying: Option<Laying>,
     seed: u64,
-    surge: f32,
-    lead: Vec2,
-    falling: VecDeque<Vec2>,
-    unevenness: SplitMix64,
-    last_contact: Option<Vec2>,
-    bead_debt: f32,
+    jet: Jet,
+    threads: Threads,
+    lumps: SplitMix64,
+    clogging: f32,
+    shaking: f32,
+    tremor: [(f32, f32, Vec2); 3],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -87,14 +88,13 @@ impl Bottle {
             held_over: None,
             held_from: None,
             pouring: filling.pouring,
-            laying: None,
             seed,
-            surge: 0.0,
-            lead: Vec2::ZERO,
-            falling: VecDeque::new(),
-            unevenness: SplitMix64::new(seed.rotate_left(17)),
-            last_contact: None,
-            bead_debt: 0.0,
+            jet: Jet::new(Fluid::of(filling.medium), seed.rotate_left(17)),
+            threads: Threads::default(),
+            lumps: SplitMix64::new(seed.rotate_left(29)),
+            clogging: 0.0,
+            shaking: 0.0,
+            tremor: tremor_of(seed),
         }
     }
 
@@ -130,9 +130,14 @@ impl Bottle {
     }
 
     fn restart_thread(&mut self) {
-        self.laying = None;
-        self.last_contact = None;
-        self.falling.clear();
+        self.jet.let_go();
+    }
+
+    pub fn refill(&mut self, paint: Coefficients, medium: f32) {
+        self.paint = paint;
+        self.medium = medium;
+        self.fluid = Fluid::of(medium);
+        self.jet.set_fluid(self.fluid);
     }
 
     pub fn covers(&self, point: Vec2) -> bool {
@@ -143,8 +148,8 @@ impl Bottle {
         point.distance(hole + along * t) <= self.radius
     }
 
-    pub fn thread_end(&self) -> Option<Vec2> {
-        self.last_contact
+    pub fn jet(&self) -> &Jet {
+        &self.jet
     }
 
     pub fn inverse_mass(&self) -> f32 {
@@ -165,8 +170,8 @@ impl Bottle {
         (self.radius * self.radius / self.fluid.kinematic_viscosity()).clamp(QUICKEST_SPIN_SETTLING, SLOWEST_SPIN_SETTLING)
     }
 
-    pub fn forming_drop(&self) -> f32 {
-        self.bead_debt
+    pub fn falling_paint(&self) -> f32 {
+        self.jet.volume() as f32 + self.threads.pending() * METRES_PER_PIXEL.powi(3)
     }
 
     pub fn mass(&self) -> f32 {
@@ -210,64 +215,35 @@ impl Bottle {
         self.held_from = self.held_over;
         self.turned += self.spin * dt;
         self.spin *= (-dt / self.spin_settling()).exp();
-        let kick: f32 = (0..3).map(|_| self.unevenness.range(-1.0, 1.0)).sum();
-        self.surge += -self.surge * dt / SURGE_TIME + SURGE * (2.0 * dt / SURGE_TIME).sqrt() * kick;
-        let flow = if self.pouring { self.flow() * (1.0 + self.surge).max(0.0) } else { 0.0 };
+        let kick: f32 = (0..3).map(|_| self.lumps.range(-1.0, 1.0)).sum();
+        self.clogging += -self.clogging * dt / LUMP_TIME + (2.0 * dt / LUMP_TIME).sqrt() * kick;
+        let lumpiness = LUMPY_STIFF + (LUMPY_RUNNY - LUMPY_STIFF) * self.medium.clamp(0.0, 1.0);
+        let flow = if self.pouring { self.flow() * (1.0 + lumpiness * self.clogging).max(NARROWEST_CLOG) } else { 0.0 };
         let released = f64::from(flow * dt).min(self.volume);
         self.volume -= released;
-        let released = released as f32;
-        let mut out = Released { marks: Vec::new(), droplets: Vec::new(), volume: released };
-        let height = self.pendulum.bob.z;
-        if released <= 0.0 || height <= 0.0 {
-            self.restart_thread();
-            return out;
-        }
-        let thread = falling_thread(flow, height, self.hole_radius, self.fluid);
-        self.lead += (self.pendulum.velocity.truncate() * thread.fall_time - self.lead) * (dt / thread.fall_time).min(1.0);
-        self.falling.push_back(self.pendulum.bob.truncate() + self.lead);
-        let delay = thread.fall_time / dt;
-        while self.falling.len() as f32 > delay.ceil() + 1.0 {
-            self.falling.pop_front();
-        }
-        let back = (delay.min(self.falling.len() as f32 - 1.0)).max(0.0);
-        let newest = self.falling.len() - 1;
-        let (older, newer) = (newest - back.ceil() as usize, newest - back.floor() as usize);
-        let disturbed = thread.breakup_time * (BREAKUP_SPREAD * self.surge / SURGE).exp();
-        if thread.fall_time > disturbed {
-            let diameter = thread.drop_diameter;
-            self.laying = None;
-            self.last_contact = None;
-            self.bead_debt += released;
-            let bead = PI * diameter.powi(3) / 6.0;
-            while self.bead_debt >= bead {
-                self.bead_debt -= bead;
-                out.droplets.push(Droplet {
-                    position: self.pendulum.bob,
-                    velocity: self.pendulum.velocity + Vec3::new(0.0, 0.0, -thread.exit_speed),
-                    diameter,
-                    paint: self.paint,
-                    medium: self.medium,
-                    fluid: self.fluid,
-                });
-            }
-            return out;
-        }
-        let nozzle_velocity = self.pendulum.velocity.truncate();
-        let seed = self.seed;
-        let laying = self.laying.get_or_insert_with(|| Laying::coiling(thread.coil_radius, seed));
-        let landing_below = self.falling[older].lerp(self.falling[newer], back.ceil() - back);
-        let contacts = laying.advance(landing_below, nozzle_velocity, &thread, dt);
-        let laid_speed = thread.landing_speed.max(nozzle_velocity.length());
-        let cross_section = pixels(pixels(flow / laid_speed));
-        let line = strand(cross_section, yield_stress(self.medium), pixels(2.0 * thread.radius));
-        let share = released / contacts.len() as f32 / METRES_PER_PIXEL.powi(3);
-        for contact in contacts {
-            let at = contact / METRES_PER_PIXEL;
-            out.marks.push(Mark { from: self.last_contact.unwrap_or(at), to: at, radius: line.half_width, volume: share, paint: self.paint, medium: self.medium });
-            self.last_contact = Some(at);
-        }
-        out
+        self.shaking += dt;
+        let shake = self.tremor.iter().map(|(hertz, phase, axis)| *axis * (std::f32::consts::TAU * hertz * self.shaking + phase).sin()).sum::<Vec2>() * TREMOR;
+        let source = Source { position: (self.pendulum.bob + shake.extend(0.0)).as_dvec3(), velocity: self.pendulum.velocity.as_dvec3(), hole_radius: f64::from(self.hole_radius), flow: released / f64::from(dt) };
+        let fallen = self.jet.step(f64::from(dt), Some(&source));
+        self.release(&fallen, released as f32)
     }
+
+    pub fn let_fall(&mut self, dt: f32) -> Released {
+        let fallen = self.jet.step(f64::from(dt), None);
+        self.release(&fallen, 0.0)
+    }
+
+    fn release(&mut self, fallen: &Fallen, volume: f32) -> Released {
+        let (paint, medium) = (self.paint, self.medium);
+        let marks = self.threads.lay(&fallen.landed, paint, medium);
+        let droplets = fallen.drops.iter().map(|drop| falling_droplet(drop, self.paint, self.medium)).collect();
+        Released { marks, droplets, volume }
+    }
+}
+
+fn tremor_of(seed: u64) -> [(f32, f32, Vec2); 3] {
+    let mut rng = SplitMix64::new(seed.rotate_left(41));
+    std::array::from_fn(|_| (rng.range(6.0, 12.0), rng.range(0.0, std::f32::consts::TAU), Vec2::from_angle(rng.range(0.0, std::f32::consts::TAU)) * rng.range(0.4, 1.0)))
 }
 
 pub fn capacity(radius: f32) -> f32 {
@@ -277,6 +253,7 @@ pub fn capacity(radius: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glam::Vec3;
 
     const DT: f32 = 1.0 / 240.0;
 
@@ -297,7 +274,8 @@ mod tests {
             laid += f64::from(out.marks.iter().map(|mark| mark.volume).sum::<f32>() * METRES_PER_PIXEL.powi(3) + out.droplets.iter().map(Droplet::volume).sum::<f32>());
         }
         assert!((start - bottle.volume - released).abs() < released * 1e-6);
-        assert!((laid - released).abs() < released * 0.02, "paint out of the bottle {released:e} should all be laid or falling, {laid:e}");
+        let falling = f64::from(bottle.falling_paint());
+        assert!((laid + falling - released).abs() < released * 0.001, "paint out of the bottle {released:e} should all be laid or falling, {laid:e} laid and {falling:e} falling");
     }
 
     fn swing_amplitude(bottle: &mut Bottle, seconds: f32) -> f32 {

@@ -166,8 +166,15 @@ fn shapes(drips: &Drips, hook: Option<Vec2>, pixel: f32) -> Vec<Vertex> {
         let string = if pendulum.taut() { RIG } else { RIG * Vec4::new(1.0, 1.0, 1.0, 0.4) };
         shapes.line(top, pivot, STRING_WIDTH * pixel, string);
         shapes.disc(pivot, PIVOT_RADIUS * pixel, RIG);
-        if let Some(end) = bottle.thread_end() {
-            shapes.line(hole, end, SMALLEST_DOT * pixel * 2.0, paint.truncate().extend(0.9));
+    }
+    let streams = drips.bottles().iter().chain(drips.cut()).map(|bottle| (bottle.jet(), bottle.paint)).chain(drips.dribble().map(|dribble| (dribble.jet(), dribble.paint())));
+    for (jet, paint) in streams {
+        let stream = paint.opaque_reflectance().extend(0.9);
+        for piece in jet.pieces() {
+            for segment in 0..piece.segments() {
+                let [from, to] = [segment, segment + 1].map(|node| piece.nodes[node].position.truncate().as_vec2() / METRES_PER_PIXEL);
+                shapes.line(from, to, (2.0 * pixels(piece.radius(segment) as f32)).max(SMALLEST_DOT * pixel * 2.0), stream);
+            }
         }
     }
     for droplet in drips.droplets() {

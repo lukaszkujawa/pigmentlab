@@ -1,5 +1,5 @@
 use glam::Vec2;
-use pigmentlab_core::paint::Mark;
+use pigmentlab_core::paint::{Mark, Profile};
 use pigmentlab_core::pigment::{Coefficients, by_name};
 use pigmentlab_core::{CanvasSize, Engine, Gpu};
 
@@ -33,7 +33,7 @@ fn marks_land_whole_inside_the_active_window_outside_it_and_across_its_edge() {
     let marks = [
         Mark::dot(Vec2::new(120.0, 140.0), 12.0, 900.0, ultramarine(), 0.0),
         Mark::dot(Vec2::new(1800.0, 1300.0), 20.0, 2500.0, ultramarine(), 0.0),
-        Mark { from: Vec2::new(40.0, 700.0), to: Vec2::new(2000.0, 760.0), radius: 6.0, volume: 30000.0, paint: ultramarine(), medium: 0.0 },
+        Mark { from: Vec2::new(40.0, 700.0), to: Vec2::new(2000.0, 760.0), radius: 6.0, volume: 30000.0, paint: ultramarine(), medium: 0.0, profile: Profile::ROUND },
         Mark::dot(Vec2::new(1000.0, 400.0), 0.4, 0.3, ultramarine(), 0.0),
     ];
     let heights = laid(&marks);
@@ -47,7 +47,7 @@ fn marks_land_whole_inside_the_active_window_outside_it_and_across_its_edge() {
 fn a_dot_is_a_dome_and_a_line_is_an_even_ridge() {
     let radius = 16.0;
     let dot = Mark::dot(Vec2::new(300.5, 300.5), radius, 1500.0, ultramarine(), 0.0);
-    let line = Mark { from: Vec2::new(1000.5, 900.5), to: Vec2::new(1400.5, 900.5), radius: 5.0, volume: 6000.0, paint: ultramarine(), medium: 0.0 };
+    let line = Mark { from: Vec2::new(1000.5, 900.5), to: Vec2::new(1400.5, 900.5), radius: 5.0, volume: 6000.0, paint: ultramarine(), medium: 0.0, profile: Profile::ROUND };
     let heights = laid(&[dot, line]);
     let peak = at(&heights, 300, 300);
     let expected_peak = 1500.0 / (2.0 / 3.0 * std::f32::consts::PI * radius * radius);
@@ -118,4 +118,17 @@ fn runny_marks_level_out_without_losing_paint_inside_the_window_or_out_in_the_st
         assert!((mass - 9000.0).abs() < 1.0, "levelling runny paint around {origin} must keep every drop, {mass:.1} of 9000");
         assert!(heights.iter().cloned().fold(0.0f32, f32::max) < peak * 0.8, "runny dots should slump while they level");
     }
+}
+
+#[test]
+fn levelling_runny_dilute_drops_keeps_their_colour() {
+    let red = by_name("cadmium_red").unwrap().coefficients;
+    let thinned = Coefficients { absorption: red.absorption * 0.005, scattering: red.scattering * 0.005 };
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: HEIGHT as u32 }, 1);
+    engine.advance_exact(0.05);
+    engine.lay(&[Mark::dot(Vec2::new(1000.0, 700.0), 14.0, 1500.0, thinned, 1.0), Mark { from: Vec2::new(500.0, 300.0), to: Vec2::new(520.0, 300.0), radius: 3.0, volume: 60.0, paint: thinned, medium: 1.0, profile: Profile::ROUND }]);
+    engine.advance_exact(6.0);
+    let ratios: Vec<f32> = engine.paint_columns().iter().filter(|column| column[0] > 0.3).map(|column| column[1] / column[0] / thinned.absorption.x).collect();
+    let mean = ratios.iter().sum::<f32>() / ratios.len() as f32;
+    assert!((mean - 1.0).abs() < 0.05, "levelled dilute paint should keep its strength, it averages {mean:.3} of what was laid");
 }

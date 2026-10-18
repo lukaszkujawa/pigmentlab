@@ -112,6 +112,10 @@
   },
   {
    "t": 0.1,
+   "action": "select_bottle"
+  },
+  {
+   "t": 0.1,
    "action": "dip",
    "pigment": "cadmium_red"
   },
@@ -179,6 +183,10 @@
   {
    "t": 0.15,
    "action": "release"
+  },
+  {
+   "t": 0.2,
+   "action": "select_bottle"
   },
   {
    "t": 0.2,

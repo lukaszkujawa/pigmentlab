@@ -27,6 +27,10 @@ pub fn slump_height(yield_stress: f32, reach: f32) -> f32 {
 }
 
 pub fn strand(area: f32, yield_stress: f32, tallest: f32) -> Strand {
+    strand_settling_to(area, yield_stress, tallest, PUDDLE_HEIGHT)
+}
+
+pub fn strand_settling_to(area: f32, yield_stress: f32, tallest: f32, puddle: f32) -> Strand {
     if area <= 0.0 {
         return Strand::default();
     }
@@ -41,7 +45,7 @@ pub fn strand(area: f32, yield_stress: f32, tallest: f32) -> Strand {
         half_width = (2.0 * area / (PI * (2.0 * yield_stress).sqrt())).powf(2.0 / 3.0);
         height = slump_height(yield_stress, half_width);
     }
-    let puddle = PUDDLE_HEIGHT.min(semicircle).min(tallest);
+    let puddle = puddle.min(semicircle).min(tallest);
     if height < puddle {
         height = puddle;
         half_width = 2.0 * area / (PI * puddle);
@@ -50,6 +54,10 @@ pub fn strand(area: f32, yield_stress: f32, tallest: f32) -> Strand {
 }
 
 pub fn mound(volume: f32, yield_stress: f32, tallest: f32) -> Mound {
+    mound_settling_to(volume, yield_stress, tallest, PUDDLE_HEIGHT)
+}
+
+pub fn mound_settling_to(volume: f32, yield_stress: f32, tallest: f32, puddle: f32) -> Mound {
     if volume <= 0.0 {
         return Mound::default();
     }
@@ -64,7 +72,7 @@ pub fn mound(volume: f32, yield_stress: f32, tallest: f32) -> Mound {
         radius = (1.5 * volume / (PI * (2.0 * yield_stress).sqrt())).powf(0.4);
         height = slump_height(yield_stress, radius);
     }
-    let puddle = PUDDLE_HEIGHT.min(hemisphere).min(tallest);
+    let puddle = puddle.min(hemisphere).min(tallest);
     if height < puddle {
         height = puddle;
         radius = (1.5 * volume / (PI * puddle)).sqrt();

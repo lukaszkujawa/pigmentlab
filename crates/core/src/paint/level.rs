@@ -37,6 +37,8 @@ impl WetBounds {
 struct WetUniform {
     origin: [i32; 2],
     size: [u32; 2],
+    step: u32,
+    padding: [u32; 3],
 }
 
 pub struct Levelling {
@@ -47,6 +49,7 @@ pub struct Levelling {
     wet_uniform: wgpu::Buffer,
     region_uniform: wgpu::Buffer,
     canvas_size: (u32, u32),
+    steps: u32,
 }
 
 impl Levelling {
@@ -83,14 +86,16 @@ impl Levelling {
             wet_uniform,
             region_uniform,
             canvas_size: (canvas.size.width, canvas.size.height),
+            steps: 0,
         }
     }
 
-    pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, window: &ActiveWindow, wet: WetBounds) {
+    pub fn encode(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, window: &ActiveWindow, wet: WetBounds) {
         let region = window.region_of(wet.min - NEIGHBOUR_REACH, wet.max + NEIGHBOUR_REACH);
         let (origin, size) = wet.clamped(self.canvas_size.0, self.canvas_size.1);
-        gpu.queue.write_buffer(&self.region_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: region.origin.as_ivec2().to_array(), size: region.size.to_array() }));
-        gpu.queue.write_buffer(&self.wet_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: origin.to_array(), size: size.as_uvec2().to_array() }));
+        self.steps = self.steps.wrapping_add(1);
+        gpu.queue.write_buffer(&self.region_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: region.origin.as_ivec2().to_array(), size: region.size.to_array(), step: self.steps, padding: [0; 3] }));
+        gpu.queue.write_buffer(&self.wet_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: origin.to_array(), size: size.as_uvec2().to_array(), step: self.steps, padding: [0; 3] }));
         if !region.is_empty() {
             self.snapshot.dispatch(encoder, region.groups());
             self.window.dispatch(encoder, region.groups());

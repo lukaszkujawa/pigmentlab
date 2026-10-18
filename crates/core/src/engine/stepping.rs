@@ -1,5 +1,5 @@
 use super::{Engine, FOOTPRINT_SLACK, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
-use crate::paint::{MARK_CAPACITY, Mark, StrokeState, WetBounds};
+use crate::paint::{Mark, Marks, StrokeState, WetBounds};
 use glam::IVec2;
 
 const DEPOSIT_REACH: i32 = 24;
@@ -69,6 +69,7 @@ impl Engine {
                 self.brush.centre_tuft(self.handle_position());
                 self.needs_render |= self.show_bristles;
             }
+            self.drain_brush();
             let mut encoder = self
                 .gpu
                 .device
@@ -158,7 +159,7 @@ impl Engine {
             self.pending_marks.clear();
             return;
         }
-        let laid: Vec<Mark> = self.pending_marks.drain(..self.pending_marks.len().min(MARK_CAPACITY)).collect();
+        let laid: Vec<Mark> = self.pending_marks.drain(..Marks::fitting(&self.pending_marks)).collect();
         let Some(bounds) = self.marks.encode(&self.gpu, encoder, &self.window, &laid) else { return };
         let oiliest = laid.iter().map(|mark| mark.medium).fold(0.0, f32::max).clamp(0.0, 1.0);
         self.levelling_active_until = self.levelling_active_until.max(self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(oiliest));
