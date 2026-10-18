@@ -7,7 +7,7 @@ use crate::input::{Hover, PointerSample, PointerTrack};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Mark, Marks, SMALLEST_WINDOW, Tube, WetBounds};
 use crate::pigment::{Coefficients, Paint};
 use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
-use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, DripOverlay, HeightMap, Lighting, Stage, Target, Viewport};
+use crate::render::{BrushLines, Composite, DripOverlay, HeightMap, Lighting, Stage, Target, Viewport, create_presented_texture, display_view};
 use glam::Vec3;
 
 mod drip;
@@ -120,18 +120,12 @@ impl Engine {
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
-        let display = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("display"),
-            size: size.extent(),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DISPLAY_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let display = create_presented_texture(
+            &gpu,
+            "display",
+            size.extent(),
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+        );
         let history = History::new(&gpu, canvas.paint.size(), UNDO_DEPTH);
         let dry_history = History::new(&gpu, canvas.dry.size(), UNDO_DEPTH);
         let lifted = Vec3::new(size.width as f32 * 0.5, size.height as f32 * 0.5, brush.preset().length * LIFTED_HEIGHT);
@@ -251,7 +245,7 @@ impl Engine {
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
-        let view = self.display.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = display_view(&self.display);
         self.refresh_blur(&mut encoder);
         self.composite.encode(&mut encoder, &view);
         if self.show_bristles && self.tool == Tool::Brush {

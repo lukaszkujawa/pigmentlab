@@ -5,6 +5,24 @@ use super::height_map::HeightMap;
 use crate::paint::ActiveWindow;
 
 pub const DISPLAY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+const PRESENTED_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+pub fn create_presented_texture(gpu: &Gpu, label: &str, size: wgpu::Extent3d, usage: wgpu::TextureUsages) -> wgpu::Texture {
+    gpu.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: PRESENTED_FORMAT,
+        usage,
+        view_formats: &[DISPLAY_FORMAT],
+    })
+}
+
+pub fn display_view(texture: &wgpu::Texture) -> wgpu::TextureView {
+    texture.create_view(&wgpu::TextureViewDescriptor { format: Some(DISPLAY_FORMAT), ..Default::default() })
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

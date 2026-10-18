@@ -1,4 +1,4 @@
-use super::composite::DISPLAY_FORMAT;
+use super::composite::{DISPLAY_FORMAT, create_presented_texture, display_view};
 use super::drip_overlay::Viewport;
 use crate::gpu::Gpu;
 use glam::UVec2;
@@ -60,7 +60,7 @@ impl Stage {
 
     pub fn encode_output(&self, encoder: &mut wgpu::CommandEncoder) {
         let Some(targets) = &self.targets else { return };
-        let output = targets.output.create_view(&wgpu::TextureViewDescriptor::default());
+        let output = display_view(&targets.output);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("unpremultiply"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -84,20 +84,26 @@ impl Stage {
     }
 
     fn make_targets(&self, gpu: &Gpu, size: UVec2) -> Targets {
-        let texture = |label: &str, usage: wgpu::TextureUsages| {
-            gpu.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d { width: size.x.max(1), height: size.y.max(1), depth_or_array_layers: 1 },
+        let extent = wgpu::Extent3d { width: size.x.max(1), height: size.y.max(1), depth_or_array_layers: 1 };
+        let layer = gpu
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("stage layer"),
+                size: extent,
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: DISPLAY_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | usage,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             })
-        };
-        let layer = texture("stage layer", wgpu::TextureUsages::empty()).create_view(&wgpu::TextureViewDescriptor::default());
-        let output = texture("stage", wgpu::TextureUsages::COPY_SRC);
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let output = create_presented_texture(
+            gpu,
+            "stage",
+            extent,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+        );
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("unpremultiply"),
             layout: &self.layout,
