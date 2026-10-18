@@ -32,6 +32,20 @@ pub struct Step {
     pub action: Action,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Zoom {
+    pub centre: [f32; 2],
+    pub scale: f32,
+    pub size: [u32; 2],
+}
+
+impl Zoom {
+    pub fn viewport(self) -> crate::render::Viewport {
+        let size = glam::UVec2::from(self.size);
+        crate::render::Viewport { size, origin: size.as_vec2() * 0.5 - glam::Vec2::from(self.centre) * self.scale, scale: self.scale }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
@@ -71,7 +85,11 @@ pub enum Action {
     Wipe,
     Undo,
     Clear,
-    Checkpoint { name: String },
+    Checkpoint {
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        zoom: Option<Zoom>,
+    },
     Dry,
     Surface { surface: crate::canvas::Surface },
     HangBottle {

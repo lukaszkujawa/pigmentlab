@@ -7,7 +7,7 @@ use crate::input::{Hover, PointerSample, PointerTrack};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Mark, Marks, SMALLEST_WINDOW, Tube, WetBounds};
 use crate::pigment::{Coefficients, Paint};
 use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
-use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, DripOverlay, Guides, HeightMap, Lighting, Stage, Target, Viewport};
+use crate::render::{BrushLines, Composite, DripOverlay, Frame, Guides, HeightMap, Lighting, Stage, Target, ViewFrames, Viewport, create_presented_texture, display_view};
 use glam::Vec3;
 
 mod drip;
@@ -70,7 +70,10 @@ pub struct Engine {
     levelling: Levelling,
     composite: Composite,
     brush_lines: BrushLines,
+    frames: ViewFrames,
     display: wgpu::Texture,
+    display_stale: bool,
+    view_stale: bool,
     pointer: PointerTrack,
     hover: Option<Hover>,
     pose: BrushPose,
@@ -127,20 +130,15 @@ impl Engine {
         let tube = Tube::new(&gpu, &window, &canvas, &height_map.heights, seed, SIMULATION_DT);
         let marks = Marks::new(&gpu, &window, &canvas);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
-        let composite = Composite::new(&gpu, &canvas, &window, &height_map);
-        let brush_lines = BrushLines::new(&gpu, &brush);
-        let display = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("display"),
-            size: size.extent(),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DISPLAY_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let frames = ViewFrames::new(&gpu, glam::UVec2::new(size.width, size.height));
+        let composite = Composite::new(&gpu, &canvas, &window, &height_map, &frames);
+        let brush_lines = BrushLines::new(&gpu, &brush, &frames);
+        let display = create_presented_texture(
+            &gpu,
+            "display",
+            size.extent(),
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+        );
         let history = History::new(&gpu, canvas.paint.size(), UNDO_DEPTH);
         let dry_history = History::new(&gpu, canvas.dry.size(), UNDO_DEPTH);
         let lifted = Vec3::new(size.width as f32 * 0.5, size.height as f32 * 0.5, brush.preset().length * LIFTED_HEIGHT);
@@ -173,7 +171,10 @@ impl Engine {
             levelling,
             composite,
             brush_lines,
+            frames,
             display,
+            display_stale: true,
+            view_stale: false,
             pointer: PointerTrack::default(),
             hover: None,
             pose: BrushPose::upright(lifted),
@@ -256,44 +257,69 @@ impl Engine {
         self.time
     }
 
-    pub fn render(&mut self) -> &wgpu::Texture {
-        if !self.needs_render {
-            return &self.display;
+    pub fn render(&mut self) {
+        if !self.needs_render && !self.view_stale {
+            return;
         }
-        self.needs_render = false;
         let mut encoder = self
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
-        let view = self.display.create_view(&wgpu::TextureViewDescriptor::default());
-        self.refresh_blur(&mut encoder);
-        self.composite.encode(&mut encoder, &view);
-        if self.show_bristles && self.tool == Tool::Brush {
-            self.brush_lines.encode(&mut encoder, &view);
+        if self.needs_render {
+            self.refresh_blur(&mut encoder);
+            self.composite.encode_surface(&mut encoder);
+            self.display_stale = true;
         }
+        self.needs_render = false;
+        self.view_stale = false;
         let splattering = self.tool == Tool::Splatter;
         let guides = Guides { hook: (self.show_bristles && self.tool == Tool::Drip).then_some(self.rig.hook), aim: self.aim.filter(|_| splattering), reach: self.splatter_reach().filter(|_| splattering) };
         let drips = (self.show_bristles || guides.aim.is_some()).then_some(&self.drips);
+        let bristles = self.show_bristles && self.tool == Tool::Brush;
         match self.stage_view {
             Some(stage) => {
                 let layer = self.stage.layer(&self.gpu, stage);
+                self.composite.encode(&mut encoder, layer, Frame::Stage);
+                if bristles {
+                    self.brush_lines.encode(&mut encoder, layer, Frame::Stage);
+                }
                 self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: layer, view: stage, premultiplied: true }, drips, guides);
                 self.stage.encode_output(&mut encoder);
             }
-            None if drips.is_some() => {
-                let canvas = Viewport::canvas(glam::UVec2::new(self.canvas.size.width, self.canvas.size.height));
-                self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: &view, view: canvas, premultiplied: false }, drips, guides);
+            None => {
+                let view = display_view(&self.display);
+                self.composite.encode(&mut encoder, &view, Frame::Canvas);
+                if bristles {
+                    self.brush_lines.encode(&mut encoder, &view, Frame::Canvas);
+                }
+                if let Some(drips) = drips {
+                    let canvas = Viewport::canvas(glam::UVec2::new(self.canvas.size.width, self.canvas.size.height));
+                    self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: &view, view: canvas, premultiplied: false }, Some(drips), guides);
+                }
+                self.display_stale = false;
             }
-            None => {}
         }
         self.gpu.queue.submit(Some(encoder.finish()));
-        &self.display
+    }
+
+    fn refresh_display(&mut self) {
+        self.render();
+        if !self.display_stale {
+            return;
+        }
+        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("display") });
+        self.composite.encode(&mut encoder, &display_view(&self.display), Frame::Canvas);
+        self.gpu.queue.submit(Some(encoder.finish()));
+        self.display_stale = false;
     }
 
     pub fn set_stage(&mut self, view: Option<Viewport>) {
         if self.stage_view != view {
             self.stage_view = view;
-            self.needs_render = true;
+            if let Some(stage) = view {
+                self.frames.set_stage(&self.gpu, stage);
+            }
+            self.view_stale = true;
         }
     }
 
@@ -306,12 +332,13 @@ impl Engine {
     }
 
     pub fn colour_at(&mut self, x: f32, y: f32) -> [u8; 3] {
-        self.render();
+        self.refresh_display();
         let [r, g, b, _] = read_texel(&self.gpu, &self.display, x.max(0.0) as u32, y.max(0.0) as u32);
         [r, g, b]
     }
 
-    pub fn read_back(&self) -> image::RgbaImage {
+    pub fn read_back(&mut self) -> image::RgbaImage {
+        self.refresh_display();
         read_rgba8(&self.gpu, &self.display)
     }
 }
