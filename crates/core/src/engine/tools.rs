@@ -56,6 +56,7 @@ impl Engine {
             "angle" => self.set_brush_angle(value),
             "load" => self.set_paint(PaintSettings { load: value, ..self.paint }),
             "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),
+            "dilution" => self.set_paint(PaintSettings { dilution: value, ..self.paint }),
             "tooth" => {
                 self.canvas.set_tooth(&self.gpu, value);
                 if let Some(watercolour) = &self.watercolour {

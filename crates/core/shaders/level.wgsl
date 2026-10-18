@@ -6,6 +6,9 @@ const SPREAD_MIN_HEIGHT: f32 = 0.08 * PIXELS_PER_CM;
 const SPREAD_MIN_HEIGHT_OILY: f32 = 0.01 * PIXELS_PER_CM;
 const SURFACE_TENSION_OILY: f32 = 0.1;
 const COHESIVE_HEIGHT: f32 = 1.5;
+const WET_FILM: f32 = 0.25;
+const TOP_LAYER: f32 = 0.5;
+const RUNS_FROM_MEDIUM: f32 = 0.75;
 const YIELD_DEPTH: f32 = 0.5 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
@@ -67,8 +70,8 @@ fn shared_medium(paint: f32, medium: f32, other_paint: f32, other_medium: f32) -
 
 fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32, slope: f32, medium: f32) -> f32 {
     let oiliness = clamp(medium, 0.0, 1.0);
-    let both_wet = paint > 0.0 && other_paint > 0.0;
-    if (!both_wet && max(paint, other_paint) <= geometric_mix(SPREAD_MIN_HEIGHT, SPREAD_MIN_HEIGHT_OILY, oiliness)) { return 0.0; }
+    let both_wet = min(paint, other_paint) > WET_FILM;
+    if (!both_wet && max(paint, other_paint) <= geometric_mix(SPREAD_MIN_HEIGHT, SPREAD_MIN_HEIGHT_OILY, smoothstep(RUNS_FROM_MEDIUM, 1.0, oiliness))) { return 0.0; }
     let cohesion = clamp(min(paint, other_paint) / COHESIVE_HEIGHT, 0.0, 1.0);
     let flow = flow_between(surface, other_surface, slope * cohesion, max(paint, other_paint), oiliness, SURFACE_TENSION_OILY * oiliness * cohesion);
     return clamp(flow, -other_paint * MAX_SHARE_PER_NEIGHBOUR, paint * MAX_SHARE_PER_NEIGHBOUR);
@@ -149,20 +152,24 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
     let local = vec2<u32>(column);
     var height = 0.0;
     var medium_mass = 0.0;
+    var top_density = 0.0;
     var top_absorption = vec3<f32>(0.0);
     var top_scattering = vec3<f32>(0.0);
-    for (var z = 0u; z < window.depth; z++) {
-        let base = window_cell(vec3<u32>(local, z));
+    for (var step = 0u; step < window.depth; step++) {
+        let base = window_cell(vec3<u32>(local, window.depth - 1u - step));
         let density = f32(volume[base]) / PAINT_SCALE;
         if (density <= 0.0) { continue; }
         height += density;
         medium_mass += f32(volume[base + 7u]) / PAINT_SCALE;
-        top_absorption = vec3<f32>(f32(volume[base + 1u]), f32(volume[base + 2u]), f32(volume[base + 3u])) / PAINT_SCALE / density;
-        top_scattering = vec3<f32>(f32(volume[base + 4u]), f32(volume[base + 5u]), f32(volume[base + 6u])) / PAINT_SCALE / density;
+        if (top_density < TOP_LAYER) {
+            top_density += density;
+            top_absorption += vec3<f32>(f32(volume[base + 1u]), f32(volume[base + 2u]), f32(volume[base + 3u])) / PAINT_SCALE;
+            top_scattering += vec3<f32>(f32(volume[base + 4u]), f32(volume[base + 5u]), f32(volume[base + 6u])) / PAINT_SCALE;
+        }
     }
     let slot = column_slot(local);
-    columns[slot] = vec4<f32>(height, top_scattering);
-    column_pigment[slot] = vec4<f32>(top_absorption, medium_mass / max(height, 1e-6));
+    columns[slot] = vec4<f32>(height, top_scattering / max(top_density, 1e-6));
+    column_pigment[slot] = vec4<f32>(top_absorption / max(top_density, 1e-6), medium_mass / max(height, 1e-6));
 }
 
 @compute @workgroup_size(16, 16)

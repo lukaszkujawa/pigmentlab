@@ -86,11 +86,12 @@ pub struct Engine {
 pub struct PaintSettings {
     pub load: f32,
     pub medium: f32,
+    pub dilution: f32,
 }
 
 impl Default for PaintSettings {
     fn default() -> Self {
-        Self { load: 1.0, medium: 0.0 }
+        Self { load: 1.0, medium: 0.0, dilution: 0.0 }
     }
 }
 

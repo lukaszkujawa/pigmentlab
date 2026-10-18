@@ -190,6 +190,12 @@
     },
     {
       "t": 4.4,
+      "action": "param",
+      "name": "dilution",
+      "value": 0.25
+    },
+    {
+      "t": 4.4,
       "action": "dip",
       "pigment": "cadmium_red"
     },

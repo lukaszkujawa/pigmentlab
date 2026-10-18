@@ -5,7 +5,7 @@ use crate::paint::{BrushContents, Gauge};
 use crate::pigment::{Coefficients, Paint};
 use glam::{Vec3, Vec4};
 
-const DILUTION_PER_MEDIUM: f32 = 0.9;
+const PIGMENT_AT_FULL_DILUTION: f32 = 0.005;
 const WATERCOLOUR_DILUTION: f32 = 0.95;
 const WATERCOLOUR_DRIEST_LOAD: f32 = 0.2;
 const WATERCOLOUR_PIGMENT: f32 = 0.08;
@@ -16,19 +16,20 @@ impl Engine {
         let paint = paint.into();
         let load = self.paint.load.clamp(0.0, 1.0);
         let medium = self.paint.medium.clamp(0.0, 1.0);
+        let dilution = self.paint.dilution.clamp(0.0, 1.0);
         if self.watercolour.is_some() {
             self.paint_on_tool = paint;
             if self.tool == Tool::Tube {
                 return;
             }
-            let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * medium) / load.max(WATERCOLOUR_DRIEST_LOAD);
+            let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * dilution) / load.max(WATERCOLOUR_DRIEST_LOAD);
             self.brush.dip_watercolour(&self.gpu, paint, load, concentration);
             self.gauge().invalidate();
             self.brush_contents = BrushContents { fill: load, paint: paint.coefficients, concentration };
             return;
         }
-        let dilution = 1.0 - DILUTION_PER_MEDIUM * medium;
-        let thinned = Coefficients { absorption: paint.coefficients.absorption * dilution, scattering: paint.coefficients.scattering * dilution };
+        let strength = PIGMENT_AT_FULL_DILUTION.powf(dilution.sqrt());
+        let thinned = Coefficients { absorption: paint.coefficients.absorption * strength, scattering: paint.coefficients.scattering * strength };
         self.paint_on_tool = Paint { coefficients: thinned, ..paint };
         if self.tool == Tool::Tube {
             return;

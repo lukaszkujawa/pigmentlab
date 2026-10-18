@@ -468,6 +468,7 @@ export component AppWindow inherits Window {
     out property <float> brush-angle <=> angle-slider.value;
     out property <float> paint-load <=> load-slider.value;
     out property <float> paint-medium <=> medium-slider.value;
+    out property <float> paint-dilution <=> dilution-slider.value;
     out property <float> canvas-tooth <=> tooth-slider.value;
     out property <bool> show-bristles <=> bristles-toggle.checked;
     out property <bool> levelling-enabled <=> levelling-toggle.checked;
@@ -766,7 +767,8 @@ export component AppWindow inherits Window {
                             Card {
                                 title: "PAINT";
                                 load-slider := ParamSlider { label: root.watercolour ? "Water" : "Load"; minimum: 0.05; maximum: 1; value: 1; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
-                                medium-slider := ParamSlider { label: root.watercolour ? "Dilution" : "Medium"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                                medium-slider := ParamSlider { visible: !root.watercolour; height: root.watercolour ? 0 : self.preferred-height; label: "Medium"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                                dilution-slider := ParamSlider { label: "Dilution"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
                             }
 
                             Card {

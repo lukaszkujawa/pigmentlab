@@ -8,7 +8,7 @@ use glam::{UVec2, Vec2};
 
 const WATER_PER_SECOND: f32 = 1.5;
 const PIGMENT_PER_WATER: f32 = 20.0;
-const DILUTION_PER_MEDIUM: f32 = 0.9;
+const FULL_DILUTION: f32 = 0.9;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -60,7 +60,7 @@ impl WaterTube {
         }
     }
 
-    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, path: [Vec2; 2], nozzle_radius: f32, pressure: f32, paint: Paint, medium: f32) -> WetBounds {
+    pub fn encode_squeeze(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, path: [Vec2; 2], nozzle_radius: f32, pressure: f32, paint: Paint, dilution: f32) -> WetBounds {
         let [from, to] = path;
         let low = (from.min(to) - nozzle_radius).floor();
         let high = (from.max(to) + nozzle_radius).ceil();
@@ -74,7 +74,7 @@ impl WaterTube {
             cells: self.cells,
             radius: nozzle_radius,
             water: flow,
-            pigment: flow * PIGMENT_PER_WATER * (1.0 - DILUTION_PER_MEDIUM * medium),
+            pigment: flow * PIGMENT_PER_WATER * (1.0 - FULL_DILUTION * dilution),
             padding: [0.0; 3],
             absorption: paint.coefficients.absorption.extend(0.0).to_array(),
             scattering: paint.coefficients.scattering.extend(0.0).to_array(),

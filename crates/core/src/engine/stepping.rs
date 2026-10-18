@@ -107,7 +107,7 @@ impl Engine {
                         let nozzle_radius = self.nozzle_radius();
                         match (&self.water_tube, &mut self.watercolour) {
                             (Some(tube), Some(water)) => {
-                                water.wet(tube.encode_squeeze(&self.gpu, &mut encoder, path, nozzle_radius, self.touch.pressure, self.paint_on_tool, medium));
+                                water.wet(tube.encode_squeeze(&self.gpu, &mut encoder, path, nozzle_radius, self.touch.pressure, self.paint_on_tool, self.paint.dilution.clamp(0.0, 1.0)));
                                 self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
                             }
                             _ => self.tube.encode_squeeze(&self.gpu, &mut encoder, path[1], nozzle_radius, self.touch.pressure, self.paint_on_tool.coefficients, medium),

@@ -25,7 +25,7 @@
   {
    "t": 0.0,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.0
   },
   {
@@ -1007,7 +1007,7 @@
   {
    "t": 73.05,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.5
   },
   {

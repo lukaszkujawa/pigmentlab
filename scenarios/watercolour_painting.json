@@ -25,7 +25,7 @@
   {
    "t": 0.0,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.6
   },
   {
@@ -65,7 +65,7 @@
   {
    "t": 0.8,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.6
   },
   {
@@ -105,7 +105,7 @@
   {
    "t": 1.7,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.0
   },
   {
@@ -278,7 +278,7 @@
   {
    "t": 2.8,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.3
   },
   {
@@ -332,7 +332,7 @@
   {
    "t": 3.6999999999999997,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.0
   },
   {
@@ -372,7 +372,7 @@
   {
    "t": 4.199999999999999,
    "action": "param",
-   "name": "medium",
+   "name": "dilution",
    "value": 0.7
   },
   {

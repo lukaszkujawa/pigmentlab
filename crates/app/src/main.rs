@@ -154,14 +154,7 @@ fn main() -> Result<(), slint::PlatformError> {
         app.set_watercolour(surface.medium() == Medium::Watercolour);
         let mut requests = shared.borrow_mut();
         requests.surface = Some(surface);
-        let active = app.get_active_swatch();
-        requests.dip = Some(match active {
-            index if index < 0 => Dip::Water,
-            index => match (index as usize).checked_sub(PALETTE.len()) {
-                Some(custom_index) => Dip::Colour(colours.borrow()[custom_index]),
-                None => Dip::Pigment(index as usize),
-            },
-        });
+        requests.dip = Some(active_dip(&app, &colours.borrow()));
     });
     let shared = requests.clone();
     let app_weak = app.as_weak();
@@ -212,9 +205,12 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     let shared = requests.clone();
     let app_weak = app.as_weak();
+    let colours = custom.clone();
     app.on_paint_changed(move || {
         let app = app_weak.unwrap();
-        shared.borrow_mut().paint = Some(PaintSettings { load: app.get_paint_load(), medium: app.get_paint_medium() });
+        let mut requests = shared.borrow_mut();
+        requests.paint = Some(PaintSettings { load: app.get_paint_load(), medium: app.get_paint_medium(), dilution: app.get_paint_dilution() });
+        requests.dip = Some(active_dip(&app, &colours.borrow()));
     });
     let shared = requests.clone();
     let app_weak = app.as_weak();
@@ -301,6 +297,11 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
         if let Some(surface) = requests.surface {
             active.surface(now, surface);
         }
+        if let Some(paint) = requests.paint {
+            active.param(now, "load", paint.load);
+            active.param(now, "medium", paint.medium);
+            active.param(now, "dilution", paint.dilution);
+        }
         match requests.dip {
             Some(Dip::Pigment(index)) => active.dip(now, PALETTE[index].name),
             Some(Dip::Colour(colour)) => active.dip_colour(now, colour),
@@ -321,10 +322,6 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, r
             }
             active.param(now, "stiffness", adjustments.stiffness);
             active.param(now, "thickness", adjustments.thickness);
-        }
-        if let Some(paint) = requests.paint {
-            active.param(now, "load", paint.load);
-            active.param(now, "medium", paint.medium);
         }
         if let Some(tooth) = requests.tooth {
             active.param(now, "tooth", tooth);
@@ -360,6 +357,9 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     if let Some(surface) = requests.surface.take() {
         engine.set_surface(surface);
     }
+    if let Some(paint) = requests.paint.take() {
+        engine.set_paint(paint);
+    }
     match requests.dip.take() {
         Some(Dip::Pigment(index)) => engine.dip(PALETTE[index]),
         Some(Dip::Colour(colour)) => engine.dip(Coefficients::from_srgb(colour)),
@@ -374,9 +374,6 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     }
     if let Some((index, adjustments)) = requests.brush.take() {
         engine.configure_brush(tool_name(index), adjustments);
-    }
-    if let Some(paint) = requests.paint.take() {
-        engine.set_paint(paint);
     }
     if let Some(tooth) = requests.tooth.take() {
         engine.set_param("tooth", tooth);
@@ -404,6 +401,16 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     if let Some(hover) = requests.hover.take() {
         engine.hover(hover);
         requests.last_hover = Some(hover);
+    }
+}
+
+fn active_dip(app: &AppWindow, custom: &[[u8; 3]]) -> Dip {
+    match app.get_active_swatch() {
+        index if index < 0 => Dip::Water,
+        index => match (index as usize).checked_sub(PALETTE.len()) {
+            Some(custom_index) => Dip::Colour(custom[custom_index]),
+            None => Dip::Pigment(index as usize),
+        },
     }
 }
 
