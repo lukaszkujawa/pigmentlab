@@ -1,16 +1,19 @@
 slint::include_modules!();
 
+mod bottles;
 mod document;
 mod dock_icon;
 mod tablet;
 
 use pigmentlab_core::brush::{BrushAdjustments, PRESETS};
-use pigmentlab_core::engine::{PaintSettings, TUBE_TOOL, tool_names};
+use pigmentlab_core::engine::{DRIP_TOOL, PaintSettings, TUBE_TOOL, tool_names};
 use pigmentlab_core::paint::NOZZLE_RADIUS;
 use pigmentlab_core::scenario::Recorder;
 use pigmentlab_core::canvas::{Medium, Surface};
 use pigmentlab_core::pigment::{Coefficients, PALETTE};
-use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, Lighting, PointerPhase, PointerSample};
+use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, Lighting, PointerPhase, PointerSample, Viewport};
+use glam::{UVec2, Vec2};
+use bottles::{BOTTLE_PARAMS, BottleAction, Shown, chosen, show_bottles};
 use tablet::{PenState, Tablet};
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings};
 use std::cell::RefCell;
@@ -22,6 +25,7 @@ const DEFAULT_CANVAS: CanvasSize = CanvasSize { width: 2048, height: 1536 };
 const SMALLEST_CANVAS_SIDE: u32 = 256;
 const LARGEST_CANVAS_SIDE: u32 = 4096;
 const SEED: u64 = 1;
+const RIG_PARAMS: [&str; 6] = ["string", "pivot", "hole", "radius", "throw", "pour"];
 
 const MAX_CUSTOM_COLOURS: usize = 12;
 const HOVER: i32 = 3;
@@ -53,6 +57,9 @@ struct Requests {
     surface: Option<Surface>,
     brush: Option<(usize, BrushAdjustments)>,
     paint: Option<PaintSettings>,
+    rig: Option<[f32; 6]>,
+    cut_strings: bool,
+    bottle_actions: Vec<BottleAction>,
     tooth: Option<f32>,
     clear: bool,
     undo: bool,
@@ -101,9 +108,10 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_surface_names(slint::ModelRc::new(slint::VecModel::from(
         Surface::ALL.iter().map(|surface| slint::SharedString::from(surface.name())).collect::<Vec<_>>(),
     )));
-    app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(
-        tool_names().into_iter().map(slint::SharedString::from).collect::<Vec<_>>(),
-    )));
+    let (brushes, procedural): (Vec<&str>, Vec<&str>) = tool_names().into_iter().partition(|name| *name != DRIP_TOOL);
+    app.set_procedural_base(brushes.len() as i32);
+    app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(brushes.into_iter().map(slint::SharedString::from).collect::<Vec<_>>())));
+    app.set_procedural_names(slint::ModelRc::new(slint::VecModel::from(procedural.into_iter().map(slint::SharedString::from).collect::<Vec<_>>())));
 
     let [r, g, b] = PALETTE[2].coefficients.srgb();
     app.invoke_show_in_picker(slint::Color::from_rgb_u8(r, g, b));
@@ -231,6 +239,33 @@ fn main() -> Result<(), slint::PlatformError> {
     let shared = requests.clone();
     app.on_clear(move || shared.borrow_mut().clear = true);
     let shared = requests.clone();
+    app.on_cut_strings(move || shared.borrow_mut().cut_strings = true);
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    app.on_rig_changed(move || {
+        let app = app_weak.unwrap();
+        let rig = [app.get_rig_string(), app.get_rig_pivot(), app.get_rig_hole(), app.get_rig_radius(), app.get_rig_throw(), if app.get_rig_pour() { 1.0 } else { 0.0 }];
+        let mut requests = shared.borrow_mut();
+        requests.rig = Some(rig);
+        if let Some(bottle) = chosen(app.get_selected_bottle()) {
+            requests.bottle_actions.extend(BOTTLE_PARAMS.into_iter().zip(rig).map(|(name, value)| BottleAction::Param(bottle, name, value)));
+        }
+    });
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    app.on_bottle_picked(move |bottle| {
+        let selected = app_weak.unwrap().get_selected_bottle();
+        shared.borrow_mut().bottle_actions.push(BottleAction::Select(if selected == bottle { None } else { chosen(bottle) }));
+    });
+    let shared = requests.clone();
+    app.on_stop_bottles(move |bottle| shared.borrow_mut().bottle_actions.push(BottleAction::Stop(chosen(bottle))));
+    let shared = requests.clone();
+    app.on_remove_bottle(move |bottle| shared.borrow_mut().bottle_actions.extend(chosen(bottle).map(BottleAction::Remove)));
+    let shared = requests.clone();
+    app.on_pour_bottles(move |bottle, pouring| shared.borrow_mut().bottle_actions.push(BottleAction::Pour(chosen(bottle), pouring)));
+    let shared = requests.clone();
+    app.on_pause_toggled(move |paused| shared.borrow_mut().bottle_actions.push(BottleAction::Pause(paused)));
+    let shared = requests.clone();
     app.on_undo(move || shared.borrow_mut().undo = true);
     let document: Rc<RefCell<Option<PathBuf>>> = Rc::default();
     let save_as = {
@@ -291,6 +326,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let mut engine: Option<Engine> = None;
     let mut last_frame = Instant::now();
     let mut recorder: Option<Recorder> = None;
+    let mut shown_bottles = Shown::default();
     let log_frames = std::env::var_os("PIGMENTLAB_LOG_FRAMES").is_some();
     app.window()
         .set_rendering_notifier(move |state, graphics_api| match state {
@@ -321,6 +357,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                     apply_requests(engine, &app, &mut requests.borrow_mut(), &mut custom.borrow_mut());
                     show_brush_contents(engine, &app);
+                    show_bottles(engine, &app, &mut shown_bottles);
                     engine.set_brush_angle(app.get_brush_angle());
                     engine.set_show_bristles(app.get_show_bristles());
                     engine.set_levelling_enabled(app.get_levelling_enabled());
@@ -340,8 +377,12 @@ fn main() -> Result<(), slint::PlatformError> {
                         "Mouse".into()
                     });
                     engine.advance_realtime(started.elapsed().as_secs_f64());
+                    engine.set_stage(Some(stage_view(&app, engine.canvas_size())));
                     let texture = engine.render().clone();
                     app.set_canvas_texture(slint::Image::try_from(texture).unwrap());
+                    if let Some(stage) = engine.stage() {
+                        app.set_stage_texture(slint::Image::try_from(stage.clone()).unwrap());
+                    }
                     let now = Instant::now();
                     let frame_ms = (now - last_frame).as_secs_f32() * 1000.0;
                     app.set_frame_ms(frame_ms);
@@ -358,6 +399,12 @@ fn main() -> Result<(), slint::PlatformError> {
         .expect("cannot register rendering notifier");
 
     app.run()
+}
+
+fn stage_view(app: &AppWindow, canvas: CanvasSize) -> Viewport {
+    let scale = app.window().scale_factor();
+    let size = UVec2::new((app.get_stage_width() * scale).round() as u32, (app.get_stage_height() * scale).round() as u32);
+    Viewport { size, origin: Vec2::new(app.get_canvas_left(), app.get_canvas_top()) * scale, scale: app.get_canvas_shown_width() * scale / canvas.width as f32 }
 }
 
 fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, canvas: CanvasSize, now: f64, requests: &Requests) {
@@ -394,6 +441,17 @@ fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, canvas: Can
         }
         if let Some(tooth) = requests.tooth {
             active.param(now, "tooth", tooth);
+        }
+        if let Some(rig) = requests.rig {
+            for (name, value) in RIG_PARAMS.into_iter().zip(rig) {
+                active.param(now, name, value);
+            }
+        }
+        if requests.cut_strings {
+            active.cut_strings(now);
+        }
+        for action in &requests.bottle_actions {
+            active.bottle(now, action.recorded());
         }
         if requests.clear {
             active.clear(now);
@@ -446,6 +504,17 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     }
     if let Some(tooth) = requests.tooth.take() {
         engine.set_param("tooth", tooth);
+    }
+    if let Some(rig) = requests.rig.take() {
+        for (name, value) in RIG_PARAMS.into_iter().zip(rig) {
+            engine.set_param(name, value);
+        }
+    }
+    if std::mem::take(&mut requests.cut_strings) {
+        engine.cut_strings();
+    }
+    for action in requests.bottle_actions.drain(..) {
+        action.apply(engine);
     }
     if std::mem::take(&mut requests.clear) {
         engine.clear();

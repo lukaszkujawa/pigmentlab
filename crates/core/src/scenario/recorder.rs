@@ -64,6 +64,14 @@ impl Recorder {
         self.push(time, Action::Undo);
     }
 
+    pub fn cut_strings(&mut self, time: f64) {
+        self.push(time, Action::CutStrings);
+    }
+
+    pub fn bottle(&mut self, time: f64, action: Action) {
+        self.push(time, action);
+    }
+
     pub fn clear(&mut self, time: f64) {
         self.push(time, Action::Clear);
     }

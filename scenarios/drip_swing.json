@@ -1,0 +1,64 @@
+{
+  "seed": 1,
+  "canvas": {
+    "width": 2048,
+    "height": 1536
+  },
+  "steps": [
+    {
+      "t": 0,
+      "action": "param",
+      "name": "medium",
+      "value": 0.35
+    },
+    {
+      "t": 0,
+      "action": "param",
+      "name": "string",
+      "value": 100
+    },
+    {
+      "t": 0,
+      "action": "param",
+      "name": "pivot",
+      "value": 120
+    },
+    {
+      "t": 0,
+      "action": "param",
+      "name": "hole",
+      "value": 4
+    },
+    {
+      "t": 0,
+      "action": "dip",
+      "pigment": "cadmium_red"
+    },
+    {
+      "t": 0,
+      "action": "hang_bottle",
+      "pivot": [
+        1024,
+        768
+      ],
+      "release": [
+        1664,
+        768
+      ],
+      "push": [
+        0,
+        1200
+      ]
+    },
+    {
+      "t": 5,
+      "action": "checkpoint",
+      "name": "five_seconds"
+    },
+    {
+      "t": 20,
+      "action": "checkpoint",
+      "name": "twenty_seconds"
+    }
+  ]
+}

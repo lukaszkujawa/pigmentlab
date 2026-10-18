@@ -48,7 +48,7 @@ impl Tube {
         let marks = gpu.storage_buffer("tube marks", canvas.size.pixel_count() * 8);
         let planned = gpu.storage_buffer("tube plan", window.columns() * 8);
         let ledger = gpu.storage_buffer("tube ledger", 8);
-        let shader = gpu.shader("tube", &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/tube.wgsl")]);
+        let shader = gpu.shader("tube", &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/column.wgsl"), include_str!("../../shaders/tube.wgsl")]);
         let bindings = [
             (0, Binding::Uniform(&uniform)),
             (1, Binding::Uniform(&window.uniform)),

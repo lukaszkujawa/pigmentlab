@@ -20,6 +20,10 @@ pub struct Touch {
 }
 
 impl Touch {
+    pub fn velocity(&self) -> Vec2 {
+        self.velocity
+    }
+
     pub fn update(&mut self, state: &PointerState, dt: f32) {
         if state.pressed {
             let position = Vec2::new(state.x, state.y);

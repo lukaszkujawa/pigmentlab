@@ -1,5 +1,6 @@
 pub mod brush;
 pub mod canvas;
+pub mod drip;
 pub mod engine;
 pub mod gpu;
 pub mod history;
@@ -16,4 +17,4 @@ pub use canvas::CanvasSize;
 pub use engine::Engine;
 pub use gpu::Gpu;
 pub use input::{Hover, PointerPhase, PointerSample};
-pub use render::Lighting;
+pub use render::{Lighting, Viewport};

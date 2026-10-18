@@ -64,6 +64,29 @@ pub enum Action {
     Checkpoint { name: String },
     Dry,
     Surface { surface: crate::canvas::Surface },
+    HangBottle {
+        pivot: [f32; 2],
+        release: [f32; 2],
+        #[serde(default)]
+        push: [f32; 2],
+    },
+    CutStrings,
+    SelectBottle {
+        #[serde(default)]
+        bottle: Option<u32>,
+    },
+    BottleParam { bottle: u32, name: String, value: f32 },
+    StopBottles {
+        #[serde(default)]
+        bottle: Option<u32>,
+    },
+    RemoveBottle { bottle: u32 },
+    PourBottles {
+        #[serde(default)]
+        bottle: Option<u32>,
+        pouring: bool,
+    },
+    PauseDrips { paused: bool },
 }
 
 fn default_true() -> bool {

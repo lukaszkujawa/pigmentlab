@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 pigmentlab-core = { path = "../core" }
+glam.workspace = true
 slint = { version = "1.18", features = ["unstable-wgpu-30", "renderer-femtovg-wgpu", "raw-window-handle-06"] }
 rfd = "0.17"
 

@@ -1,14 +1,16 @@
 use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, PRESETS, Touch};
 use crate::canvas::{Canvas, CanvasSize, Medium};
+use crate::drip::{Drips, Rig};
 use crate::gpu::{Gpu, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{Hover, PointerSample, PointerTrack};
-use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, SMALLEST_WINDOW, Tube, WetBounds};
+use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Mark, Marks, SMALLEST_WINDOW, Tube, WetBounds};
 use crate::pigment::{Coefficients, Paint};
 use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
-use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, HeightMap, Lighting};
+use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, DripOverlay, HeightMap, Lighting, Stage, Target, Viewport};
 use glam::Vec3;
 
+mod drip;
 mod hand;
 mod paint;
 mod sheet;
@@ -22,6 +24,7 @@ const UNDO_DEPTH: usize = 6;
 const LIFTED_HEIGHT: f32 = 1.25;
 const SUBSTEPS_PER_WATER_STEP: u64 = 4;
 const WATER_SETTLE_SECONDS: f64 = 90.0;
+pub const DRIP_TOOL: &str = "Drip bottle";
 pub const TUBE_TOOL: &str = "Paint tube";
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
 
@@ -29,10 +32,11 @@ const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
 enum Tool {
     Brush,
     Tube,
+    Drip,
 }
 
 pub fn tool_names() -> Vec<&'static str> {
-    PRESETS.iter().map(|named| named.name).chain(std::iter::once(TUBE_TOOL)).collect()
+    PRESETS.iter().map(|named| named.name).chain([TUBE_TOOL, DRIP_TOOL]).collect()
 }
 
 pub struct Engine {
@@ -43,6 +47,14 @@ pub struct Engine {
     stroke_base: wgpu::Buffer,
     deposit: Deposit,
     tube: Tube,
+    marks: Marks,
+    pending_marks: Vec<Mark>,
+    drips: Drips,
+    drip_overlay: DripOverlay,
+    stage: Stage,
+    stage_view: Option<Viewport>,
+    rig: Rig,
+    holding_hook: bool,
     tool: Tool,
     paint_on_tool: Paint,
     height_map: HeightMap,
@@ -104,6 +116,7 @@ impl Engine {
         let height_map = HeightMap::new(&gpu, &canvas, &window);
         let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base, DEPOSIT_DT);
         let tube = Tube::new(&gpu, &window, &canvas, &height_map.heights, seed, SIMULATION_DT);
+        let marks = Marks::new(&gpu, &window, &canvas);
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let composite = Composite::new(&gpu, &canvas, &window, &height_map);
         let brush_lines = BrushLines::new(&gpu, &brush);
@@ -122,6 +135,8 @@ impl Engine {
         let history = History::new(&gpu, canvas.paint.size(), UNDO_DEPTH);
         let dry_history = History::new(&gpu, canvas.dry.size(), UNDO_DEPTH);
         let lifted = Vec3::new(size.width as f32 * 0.5, size.height as f32 * 0.5, brush.preset().length * LIFTED_HEIGHT);
+        let drip_overlay = DripOverlay::new(&gpu);
+        let stage = Stage::new(&gpu);
         let mut engine = Self {
             gpu,
             canvas,
@@ -130,6 +145,14 @@ impl Engine {
             stroke_base,
             deposit,
             tube,
+            marks,
+            pending_marks: Vec::new(),
+            drips: Drips::new(seed),
+            drip_overlay,
+            stage,
+            stage_view: None,
+            rig: Rig { hook: glam::Vec2::new(size.width as f32, size.height as f32) * 0.5, ..Rig::default() },
+            holding_hook: false,
             tool: Tool::Brush,
             paint_on_tool: Paint::from(Coefficients { absorption: Vec3::ZERO, scattering: Vec3::ZERO }),
             height_map,
@@ -234,8 +257,37 @@ impl Engine {
         if self.show_bristles && self.tool == Tool::Brush {
             self.brush_lines.encode(&mut encoder, &view);
         }
+        let hook = (self.show_bristles && self.tool == Tool::Drip).then_some(self.rig.hook);
+        let drips = self.show_bristles.then_some(&self.drips);
+        match self.stage_view {
+            Some(stage) => {
+                let layer = self.stage.layer(&self.gpu, stage);
+                self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: layer, view: stage, premultiplied: true }, drips, hook);
+                self.stage.encode_output(&mut encoder);
+            }
+            None if self.show_bristles => {
+                let canvas = Viewport::canvas(glam::UVec2::new(self.canvas.size.width, self.canvas.size.height));
+                self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: &view, view: canvas, premultiplied: false }, drips, hook);
+            }
+            None => {}
+        }
         self.gpu.queue.submit(Some(encoder.finish()));
         &self.display
+    }
+
+    pub fn set_stage(&mut self, view: Option<Viewport>) {
+        if self.stage_view != view {
+            self.stage_view = view;
+            self.needs_render = true;
+        }
+    }
+
+    pub fn stage(&self) -> Option<&wgpu::Texture> {
+        self.stage_view.and(self.stage.output())
+    }
+
+    pub fn read_stage(&self) -> Option<image::RgbaImage> {
+        self.stage().map(|texture| read_rgba8(&self.gpu, texture))
     }
 
     pub fn colour_at(&mut self, x: f32, y: f32) -> [u8; 3] {

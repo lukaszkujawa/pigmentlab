@@ -1,3 +1,4 @@
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SplitMix64(u64);
 
 impl SplitMix64 {

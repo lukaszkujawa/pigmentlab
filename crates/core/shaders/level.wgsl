@@ -98,10 +98,20 @@ fn neighbour_pigment(local: vec2<i32>) -> array<f32, 7> {
     return pigment;
 }
 
+fn inside(pixel: vec2<i32>, bounds: WetBounds) -> bool {
+    let offset = pixel - bounds.origin;
+    return all(offset >= vec2<i32>(0)) && all(vec2<u32>(offset) < bounds.size);
+}
+
+fn levelled(pixel: vec2<i32>) -> bool {
+    if (window_contains(pixel)) { return inside(pixel - window.origin, region); }
+    return inside(pixel, wet);
+}
+
 fn column_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, local: vec2<i32>) -> f32 {
     let pixel = local + window.origin;
     let other = height_of(pixel);
-    if (other < 0.0) { return 0.0; }
+    if (other < 0.0 || !levelled(pixel)) { return 0.0; }
     let other_medium = neighbour_pigment(local)[6];
     let slope = 0.5 * (steepness(own) + steepness(pixel));
     return pair_flow(paint, surface, other, other + ground_of(pixel), slope, shared_medium(paint, medium, other, other_medium));
@@ -209,7 +219,7 @@ fn store_medium(pixel: vec2<i32>) -> f32 {
 }
 
 fn store_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, neighbour: vec2<i32>) -> f32 {
-    if (!on_canvas(neighbour)) { return 0.0; }
+    if (!on_canvas(neighbour) || !levelled(neighbour)) { return 0.0; }
     let other = heights[pixel_index(neighbour)];
     let slope = 0.5 * (steepness(own) + steepness(neighbour));
     return pair_flow(paint, surface, other, other + ground_of(neighbour), slope, shared_medium(paint, medium, other, store_medium(neighbour)));

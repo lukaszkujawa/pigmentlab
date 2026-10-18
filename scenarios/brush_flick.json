@@ -1,0 +1,2959 @@
+{
+ "seed": 1,
+ "canvas": {
+  "width": 2048,
+  "height": 1536
+ },
+ "steps": [
+  {
+   "t": 0.0,
+   "action": "tool",
+   "name": "Round"
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "medium",
+   "value": 1.0
+  },
+  {
+   "t": 0.0,
+   "action": "dip",
+   "pigment": "cadmium_red"
+  },
+  {
+   "t": 0.0,
+   "action": "press",
+   "x": 150,
+   "y": 230,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.0167,
+   "action": "move",
+   "x": 156.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.0333,
+   "action": "move",
+   "x": 162.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.05,
+   "action": "move",
+   "x": 168.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.0667,
+   "action": "move",
+   "x": 174.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.0833,
+   "action": "move",
+   "x": 180.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.1,
+   "action": "move",
+   "x": 186.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.1167,
+   "action": "move",
+   "x": 192.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.1333,
+   "action": "move",
+   "x": 198.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.15,
+   "action": "move",
+   "x": 204.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.1667,
+   "action": "move",
+   "x": 210.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.1833,
+   "action": "move",
+   "x": 216.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.2,
+   "action": "move",
+   "x": 222.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.2167,
+   "action": "move",
+   "x": 228.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.2333,
+   "action": "move",
+   "x": 234.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.25,
+   "action": "move",
+   "x": 240.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.2667,
+   "action": "move",
+   "x": 246.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.2833,
+   "action": "move",
+   "x": 252.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.3,
+   "action": "move",
+   "x": 258.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.3167,
+   "action": "move",
+   "x": 264.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.3333,
+   "action": "move",
+   "x": 270.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.35,
+   "action": "move",
+   "x": 276.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.3667,
+   "action": "move",
+   "x": 282.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.3833,
+   "action": "move",
+   "x": 288.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.4,
+   "action": "move",
+   "x": 294.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.4167,
+   "action": "move",
+   "x": 300.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.4333,
+   "action": "move",
+   "x": 306.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.45,
+   "action": "move",
+   "x": 312.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.4667,
+   "action": "move",
+   "x": 318.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.4833,
+   "action": "move",
+   "x": 324.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.5,
+   "action": "move",
+   "x": 330.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.5042,
+   "action": "move",
+   "x": 365.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.5083,
+   "action": "move",
+   "x": 400.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.5125,
+   "action": "move",
+   "x": 435.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.5167,
+   "action": "move",
+   "x": 470.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 0.5208,
+   "action": "release"
+  },
+  {
+   "t": 1.1208,
+   "action": "dip",
+   "pigment": "cadmium_red"
+  },
+  {
+   "t": 1.1208,
+   "action": "press",
+   "x": 630,
+   "y": 230,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.1375,
+   "action": "move",
+   "x": 636.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.1542,
+   "action": "move",
+   "x": 642.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.1708,
+   "action": "move",
+   "x": 648.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.1875,
+   "action": "move",
+   "x": 654.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.2042,
+   "action": "move",
+   "x": 660.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.2208,
+   "action": "move",
+   "x": 666.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.2375,
+   "action": "move",
+   "x": 672.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.2542,
+   "action": "move",
+   "x": 678.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.2708,
+   "action": "move",
+   "x": 684.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.2875,
+   "action": "move",
+   "x": 690.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.3042,
+   "action": "move",
+   "x": 696.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.3208,
+   "action": "move",
+   "x": 702.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.3375,
+   "action": "move",
+   "x": 708.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.3542,
+   "action": "move",
+   "x": 714.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.3708,
+   "action": "move",
+   "x": 720.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.3875,
+   "action": "move",
+   "x": 726.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.4042,
+   "action": "move",
+   "x": 732.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.4208,
+   "action": "move",
+   "x": 738.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.4375,
+   "action": "move",
+   "x": 744.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.4542,
+   "action": "move",
+   "x": 750.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.4708,
+   "action": "move",
+   "x": 756.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.4875,
+   "action": "move",
+   "x": 762.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.5042,
+   "action": "move",
+   "x": 768.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.5208,
+   "action": "move",
+   "x": 774.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.5375,
+   "action": "move",
+   "x": 780.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.5542,
+   "action": "move",
+   "x": 786.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.5708,
+   "action": "move",
+   "x": 792.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.5875,
+   "action": "move",
+   "x": 798.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.6042,
+   "action": "move",
+   "x": 804.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.6208,
+   "action": "move",
+   "x": 810.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.625,
+   "action": "move",
+   "x": 880.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.6292,
+   "action": "move",
+   "x": 950.0,
+   "y": 230.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 1.6333,
+   "action": "release"
+  },
+  {
+   "t": 2.2333,
+   "action": "dip",
+   "pigment": "cadmium_red"
+  },
+  {
+   "t": 2.2333,
+   "action": "press",
+   "x": 1110,
+   "y": 230,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.25,
+   "action": "move",
+   "x": 1115.0,
+   "y": 226.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.2667,
+   "action": "move",
+   "x": 1119.9,
+   "y": 223.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.2833,
+   "action": "move",
+   "x": 1124.9,
+   "y": 219.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.3,
+   "action": "move",
+   "x": 1129.8,
+   "y": 216.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.3167,
+   "action": "move",
+   "x": 1134.8,
+   "y": 213.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.3333,
+   "action": "move",
+   "x": 1139.7,
+   "y": 209.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.35,
+   "action": "move",
+   "x": 1144.7,
+   "y": 206.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.3667,
+   "action": "move",
+   "x": 1149.6,
+   "y": 202.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.3833,
+   "action": "move",
+   "x": 1154.6,
+   "y": 199.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.4,
+   "action": "move",
+   "x": 1159.5,
+   "y": 196.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.4167,
+   "action": "move",
+   "x": 1164.5,
+   "y": 192.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.4333,
+   "action": "move",
+   "x": 1169.4,
+   "y": 189.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.45,
+   "action": "move",
+   "x": 1174.4,
+   "y": 186.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.4667,
+   "action": "move",
+   "x": 1179.3,
+   "y": 182.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.4833,
+   "action": "move",
+   "x": 1184.3,
+   "y": 179.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.5,
+   "action": "move",
+   "x": 1189.2,
+   "y": 175.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.5167,
+   "action": "move",
+   "x": 1194.2,
+   "y": 172.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.5333,
+   "action": "move",
+   "x": 1199.1,
+   "y": 169.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.55,
+   "action": "move",
+   "x": 1204.1,
+   "y": 165.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.5667,
+   "action": "move",
+   "x": 1209.0,
+   "y": 162.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.5833,
+   "action": "move",
+   "x": 1214.0,
+   "y": 158.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.6,
+   "action": "move",
+   "x": 1218.9,
+   "y": 155.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.6167,
+   "action": "move",
+   "x": 1223.9,
+   "y": 152.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.6333,
+   "action": "move",
+   "x": 1228.8,
+   "y": 148.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.65,
+   "action": "move",
+   "x": 1233.8,
+   "y": 145.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.6667,
+   "action": "move",
+   "x": 1238.8,
+   "y": 141.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.6833,
+   "action": "move",
+   "x": 1243.7,
+   "y": 138.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.7,
+   "action": "move",
+   "x": 1248.7,
+   "y": 135.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.7167,
+   "action": "move",
+   "x": 1253.6,
+   "y": 131.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.7333,
+   "action": "move",
+   "x": 1258.6,
+   "y": 128.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.7375,
+   "action": "move",
+   "x": 1316.3,
+   "y": 88.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.7417,
+   "action": "move",
+   "x": 1374.1,
+   "y": 49.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 2.7458,
+   "action": "release"
+  },
+  {
+   "t": 3.3458,
+   "action": "dip",
+   "pigment": "cadmium_red"
+  },
+  {
+   "t": 3.3458,
+   "action": "press",
+   "x": 1590,
+   "y": 230,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.3625,
+   "action": "move",
+   "x": 1585.6,
+   "y": 234.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.3792,
+   "action": "move",
+   "x": 1581.2,
+   "y": 238.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.3958,
+   "action": "move",
+   "x": 1576.7,
+   "y": 242.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.4125,
+   "action": "move",
+   "x": 1572.3,
+   "y": 246.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.4292,
+   "action": "move",
+   "x": 1567.9,
+   "y": 250.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.4458,
+   "action": "move",
+   "x": 1563.5,
+   "y": 254.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.4625,
+   "action": "move",
+   "x": 1559.0,
+   "y": 258.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.4792,
+   "action": "move",
+   "x": 1554.6,
+   "y": 262.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.4958,
+   "action": "move",
+   "x": 1550.2,
+   "y": 266.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.5125,
+   "action": "move",
+   "x": 1545.8,
+   "y": 270.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.5292,
+   "action": "move",
+   "x": 1541.3,
+   "y": 274.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.5458,
+   "action": "move",
+   "x": 1536.9,
+   "y": 278.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.5625,
+   "action": "move",
+   "x": 1532.5,
+   "y": 282.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.5792,
+   "action": "move",
+   "x": 1528.1,
+   "y": 286.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.5958,
+   "action": "move",
+   "x": 1523.6,
+   "y": 290.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.6125,
+   "action": "move",
+   "x": 1519.2,
+   "y": 294.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.6292,
+   "action": "move",
+   "x": 1514.8,
+   "y": 298.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.6458,
+   "action": "move",
+   "x": 1510.4,
+   "y": 303.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.6625,
+   "action": "move",
+   "x": 1505.9,
+   "y": 307.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.6792,
+   "action": "move",
+   "x": 1501.5,
+   "y": 311.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.6958,
+   "action": "move",
+   "x": 1497.1,
+   "y": 315.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.7125,
+   "action": "move",
+   "x": 1492.7,
+   "y": 319.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.7292,
+   "action": "move",
+   "x": 1488.2,
+   "y": 323.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.7458,
+   "action": "move",
+   "x": 1483.8,
+   "y": 327.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.7625,
+   "action": "move",
+   "x": 1479.4,
+   "y": 331.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.7792,
+   "action": "move",
+   "x": 1475.0,
+   "y": 335.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.7958,
+   "action": "move",
+   "x": 1470.5,
+   "y": 339.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.8125,
+   "action": "move",
+   "x": 1466.1,
+   "y": 343.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.8292,
+   "action": "move",
+   "x": 1461.7,
+   "y": 347.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.8458,
+   "action": "move",
+   "x": 1457.3,
+   "y": 351.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.85,
+   "action": "move",
+   "x": 1405.7,
+   "y": 398.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.8542,
+   "action": "move",
+   "x": 1354.0,
+   "y": 446.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 3.8583,
+   "action": "release"
+  },
+  {
+   "t": 4.4583,
+   "action": "param",
+   "name": "medium",
+   "value": 0.6
+  },
+  {
+   "t": 4.4583,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 4.4583,
+   "action": "press",
+   "x": 150,
+   "y": 710,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.475,
+   "action": "move",
+   "x": 156.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.4917,
+   "action": "move",
+   "x": 162.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.5083,
+   "action": "move",
+   "x": 168.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.525,
+   "action": "move",
+   "x": 174.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.5417,
+   "action": "move",
+   "x": 180.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.5583,
+   "action": "move",
+   "x": 186.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.575,
+   "action": "move",
+   "x": 192.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.5917,
+   "action": "move",
+   "x": 198.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.6083,
+   "action": "move",
+   "x": 204.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.625,
+   "action": "move",
+   "x": 210.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.6417,
+   "action": "move",
+   "x": 216.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.6583,
+   "action": "move",
+   "x": 222.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.675,
+   "action": "move",
+   "x": 228.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.6917,
+   "action": "move",
+   "x": 234.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.7083,
+   "action": "move",
+   "x": 240.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.725,
+   "action": "move",
+   "x": 246.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.7417,
+   "action": "move",
+   "x": 252.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.7583,
+   "action": "move",
+   "x": 258.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.775,
+   "action": "move",
+   "x": 264.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.7917,
+   "action": "move",
+   "x": 270.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.8083,
+   "action": "move",
+   "x": 276.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.825,
+   "action": "move",
+   "x": 282.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.8417,
+   "action": "move",
+   "x": 288.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.8583,
+   "action": "move",
+   "x": 294.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.875,
+   "action": "move",
+   "x": 300.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.8917,
+   "action": "move",
+   "x": 306.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9083,
+   "action": "move",
+   "x": 312.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.925,
+   "action": "move",
+   "x": 318.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9417,
+   "action": "move",
+   "x": 324.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9583,
+   "action": "move",
+   "x": 330.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9625,
+   "action": "move",
+   "x": 365.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9667,
+   "action": "move",
+   "x": 400.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9708,
+   "action": "move",
+   "x": 435.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.975,
+   "action": "move",
+   "x": 470.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 4.9792,
+   "action": "release"
+  },
+  {
+   "t": 5.5792,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 5.5792,
+   "action": "press",
+   "x": 630,
+   "y": 710,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.5958,
+   "action": "move",
+   "x": 636.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.6125,
+   "action": "move",
+   "x": 642.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.6292,
+   "action": "move",
+   "x": 648.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.6458,
+   "action": "move",
+   "x": 654.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.6625,
+   "action": "move",
+   "x": 660.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.6792,
+   "action": "move",
+   "x": 666.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.6958,
+   "action": "move",
+   "x": 672.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.7125,
+   "action": "move",
+   "x": 678.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.7292,
+   "action": "move",
+   "x": 684.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.7458,
+   "action": "move",
+   "x": 690.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.7625,
+   "action": "move",
+   "x": 696.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.7792,
+   "action": "move",
+   "x": 702.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.7958,
+   "action": "move",
+   "x": 708.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.8125,
+   "action": "move",
+   "x": 714.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.8292,
+   "action": "move",
+   "x": 720.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.8458,
+   "action": "move",
+   "x": 726.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.8625,
+   "action": "move",
+   "x": 732.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.8792,
+   "action": "move",
+   "x": 738.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.8958,
+   "action": "move",
+   "x": 744.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.9125,
+   "action": "move",
+   "x": 750.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.9292,
+   "action": "move",
+   "x": 756.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.9458,
+   "action": "move",
+   "x": 762.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.9625,
+   "action": "move",
+   "x": 768.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.9792,
+   "action": "move",
+   "x": 774.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 5.9958,
+   "action": "move",
+   "x": 780.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0125,
+   "action": "move",
+   "x": 786.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0292,
+   "action": "move",
+   "x": 792.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0458,
+   "action": "move",
+   "x": 798.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0625,
+   "action": "move",
+   "x": 804.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0792,
+   "action": "move",
+   "x": 810.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0833,
+   "action": "move",
+   "x": 880.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0875,
+   "action": "move",
+   "x": 950.0,
+   "y": 710.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.0917,
+   "action": "release"
+  },
+  {
+   "t": 6.6917,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 6.6917,
+   "action": "press",
+   "x": 1110,
+   "y": 710,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.7083,
+   "action": "move",
+   "x": 1115.0,
+   "y": 706.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.725,
+   "action": "move",
+   "x": 1119.9,
+   "y": 703.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.7417,
+   "action": "move",
+   "x": 1124.9,
+   "y": 699.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.7583,
+   "action": "move",
+   "x": 1129.8,
+   "y": 696.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.775,
+   "action": "move",
+   "x": 1134.8,
+   "y": 693.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.7917,
+   "action": "move",
+   "x": 1139.7,
+   "y": 689.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.8083,
+   "action": "move",
+   "x": 1144.7,
+   "y": 686.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.825,
+   "action": "move",
+   "x": 1149.6,
+   "y": 682.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.8417,
+   "action": "move",
+   "x": 1154.6,
+   "y": 679.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.8583,
+   "action": "move",
+   "x": 1159.5,
+   "y": 676.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.875,
+   "action": "move",
+   "x": 1164.5,
+   "y": 672.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.8917,
+   "action": "move",
+   "x": 1169.4,
+   "y": 669.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.9083,
+   "action": "move",
+   "x": 1174.4,
+   "y": 666.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.925,
+   "action": "move",
+   "x": 1179.3,
+   "y": 662.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.9417,
+   "action": "move",
+   "x": 1184.3,
+   "y": 659.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.9583,
+   "action": "move",
+   "x": 1189.2,
+   "y": 655.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.975,
+   "action": "move",
+   "x": 1194.2,
+   "y": 652.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 6.9917,
+   "action": "move",
+   "x": 1199.1,
+   "y": 649.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.0083,
+   "action": "move",
+   "x": 1204.1,
+   "y": 645.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.025,
+   "action": "move",
+   "x": 1209.0,
+   "y": 642.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.0417,
+   "action": "move",
+   "x": 1214.0,
+   "y": 638.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.0583,
+   "action": "move",
+   "x": 1218.9,
+   "y": 635.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.075,
+   "action": "move",
+   "x": 1223.9,
+   "y": 632.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.0917,
+   "action": "move",
+   "x": 1228.8,
+   "y": 628.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.1083,
+   "action": "move",
+   "x": 1233.8,
+   "y": 625.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.125,
+   "action": "move",
+   "x": 1238.8,
+   "y": 621.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.1417,
+   "action": "move",
+   "x": 1243.7,
+   "y": 618.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.1583,
+   "action": "move",
+   "x": 1248.7,
+   "y": 615.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.175,
+   "action": "move",
+   "x": 1253.6,
+   "y": 611.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.1917,
+   "action": "move",
+   "x": 1258.6,
+   "y": 608.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.1958,
+   "action": "move",
+   "x": 1316.3,
+   "y": 568.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.2,
+   "action": "move",
+   "x": 1374.1,
+   "y": 529.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.2042,
+   "action": "release"
+  },
+  {
+   "t": 7.8042,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 7.8042,
+   "action": "press",
+   "x": 1590,
+   "y": 710,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.8208,
+   "action": "move",
+   "x": 1585.6,
+   "y": 714.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.8375,
+   "action": "move",
+   "x": 1581.2,
+   "y": 718.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.8542,
+   "action": "move",
+   "x": 1576.7,
+   "y": 722.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.8708,
+   "action": "move",
+   "x": 1572.3,
+   "y": 726.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.8875,
+   "action": "move",
+   "x": 1567.9,
+   "y": 730.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.9042,
+   "action": "move",
+   "x": 1563.5,
+   "y": 734.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.9208,
+   "action": "move",
+   "x": 1559.0,
+   "y": 738.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.9375,
+   "action": "move",
+   "x": 1554.6,
+   "y": 742.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.9542,
+   "action": "move",
+   "x": 1550.2,
+   "y": 746.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.9708,
+   "action": "move",
+   "x": 1545.8,
+   "y": 750.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 7.9875,
+   "action": "move",
+   "x": 1541.3,
+   "y": 754.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.0042,
+   "action": "move",
+   "x": 1536.9,
+   "y": 758.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.0208,
+   "action": "move",
+   "x": 1532.5,
+   "y": 762.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.0375,
+   "action": "move",
+   "x": 1528.1,
+   "y": 766.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.0542,
+   "action": "move",
+   "x": 1523.6,
+   "y": 770.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.0708,
+   "action": "move",
+   "x": 1519.2,
+   "y": 774.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.0875,
+   "action": "move",
+   "x": 1514.8,
+   "y": 778.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.1042,
+   "action": "move",
+   "x": 1510.4,
+   "y": 783.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.1208,
+   "action": "move",
+   "x": 1505.9,
+   "y": 787.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.1375,
+   "action": "move",
+   "x": 1501.5,
+   "y": 791.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.1542,
+   "action": "move",
+   "x": 1497.1,
+   "y": 795.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.1708,
+   "action": "move",
+   "x": 1492.7,
+   "y": 799.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.1875,
+   "action": "move",
+   "x": 1488.2,
+   "y": 803.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.2042,
+   "action": "move",
+   "x": 1483.8,
+   "y": 807.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.2208,
+   "action": "move",
+   "x": 1479.4,
+   "y": 811.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.2375,
+   "action": "move",
+   "x": 1475.0,
+   "y": 815.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.2542,
+   "action": "move",
+   "x": 1470.5,
+   "y": 819.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.2708,
+   "action": "move",
+   "x": 1466.1,
+   "y": 823.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.2875,
+   "action": "move",
+   "x": 1461.7,
+   "y": 827.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.3042,
+   "action": "move",
+   "x": 1457.3,
+   "y": 831.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.3083,
+   "action": "move",
+   "x": 1405.7,
+   "y": 878.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.3125,
+   "action": "move",
+   "x": 1354.0,
+   "y": 926.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.3167,
+   "action": "release"
+  },
+  {
+   "t": 8.9167,
+   "action": "param",
+   "name": "medium",
+   "value": 0.0
+  },
+  {
+   "t": 8.9167,
+   "action": "dip",
+   "pigment": "cadmium_yellow"
+  },
+  {
+   "t": 8.9167,
+   "action": "press",
+   "x": 150,
+   "y": 1190,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.9333,
+   "action": "move",
+   "x": 156.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.95,
+   "action": "move",
+   "x": 162.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.9667,
+   "action": "move",
+   "x": 168.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 8.9833,
+   "action": "move",
+   "x": 174.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.0,
+   "action": "move",
+   "x": 180.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.0167,
+   "action": "move",
+   "x": 186.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.0333,
+   "action": "move",
+   "x": 192.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.05,
+   "action": "move",
+   "x": 198.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.0667,
+   "action": "move",
+   "x": 204.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.0833,
+   "action": "move",
+   "x": 210.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.1,
+   "action": "move",
+   "x": 216.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.1167,
+   "action": "move",
+   "x": 222.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.1333,
+   "action": "move",
+   "x": 228.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.15,
+   "action": "move",
+   "x": 234.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.1667,
+   "action": "move",
+   "x": 240.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.1833,
+   "action": "move",
+   "x": 246.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.2,
+   "action": "move",
+   "x": 252.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.2167,
+   "action": "move",
+   "x": 258.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.2333,
+   "action": "move",
+   "x": 264.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.25,
+   "action": "move",
+   "x": 270.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.2667,
+   "action": "move",
+   "x": 276.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.2833,
+   "action": "move",
+   "x": 282.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.3,
+   "action": "move",
+   "x": 288.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.3167,
+   "action": "move",
+   "x": 294.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.3333,
+   "action": "move",
+   "x": 300.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.35,
+   "action": "move",
+   "x": 306.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.3667,
+   "action": "move",
+   "x": 312.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.3833,
+   "action": "move",
+   "x": 318.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.4,
+   "action": "move",
+   "x": 324.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.4167,
+   "action": "move",
+   "x": 330.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.4208,
+   "action": "move",
+   "x": 365.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.425,
+   "action": "move",
+   "x": 400.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.4292,
+   "action": "move",
+   "x": 435.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.4333,
+   "action": "move",
+   "x": 470.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 9.4375,
+   "action": "release"
+  },
+  {
+   "t": 10.0375,
+   "action": "dip",
+   "pigment": "cadmium_yellow"
+  },
+  {
+   "t": 10.0375,
+   "action": "press",
+   "x": 630,
+   "y": 1190,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.0542,
+   "action": "move",
+   "x": 636.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.0708,
+   "action": "move",
+   "x": 642.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.0875,
+   "action": "move",
+   "x": 648.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.1042,
+   "action": "move",
+   "x": 654.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.1208,
+   "action": "move",
+   "x": 660.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.1375,
+   "action": "move",
+   "x": 666.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.1542,
+   "action": "move",
+   "x": 672.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.1708,
+   "action": "move",
+   "x": 678.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.1875,
+   "action": "move",
+   "x": 684.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.2042,
+   "action": "move",
+   "x": 690.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.2208,
+   "action": "move",
+   "x": 696.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.2375,
+   "action": "move",
+   "x": 702.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.2542,
+   "action": "move",
+   "x": 708.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.2708,
+   "action": "move",
+   "x": 714.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.2875,
+   "action": "move",
+   "x": 720.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.3042,
+   "action": "move",
+   "x": 726.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.3208,
+   "action": "move",
+   "x": 732.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.3375,
+   "action": "move",
+   "x": 738.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.3542,
+   "action": "move",
+   "x": 744.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.3708,
+   "action": "move",
+   "x": 750.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.3875,
+   "action": "move",
+   "x": 756.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.4042,
+   "action": "move",
+   "x": 762.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.4208,
+   "action": "move",
+   "x": 768.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.4375,
+   "action": "move",
+   "x": 774.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.4542,
+   "action": "move",
+   "x": 780.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.4708,
+   "action": "move",
+   "x": 786.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.4875,
+   "action": "move",
+   "x": 792.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.5042,
+   "action": "move",
+   "x": 798.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.5208,
+   "action": "move",
+   "x": 804.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.5375,
+   "action": "move",
+   "x": 810.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.5417,
+   "action": "move",
+   "x": 880.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.5458,
+   "action": "move",
+   "x": 950.0,
+   "y": 1190.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 10.55,
+   "action": "release"
+  },
+  {
+   "t": 11.15,
+   "action": "dip",
+   "pigment": "cadmium_yellow"
+  },
+  {
+   "t": 11.15,
+   "action": "press",
+   "x": 1110,
+   "y": 1190,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.1667,
+   "action": "move",
+   "x": 1115.0,
+   "y": 1186.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.1833,
+   "action": "move",
+   "x": 1119.9,
+   "y": 1183.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.2,
+   "action": "move",
+   "x": 1124.9,
+   "y": 1179.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.2167,
+   "action": "move",
+   "x": 1129.8,
+   "y": 1176.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.2333,
+   "action": "move",
+   "x": 1134.8,
+   "y": 1173.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.25,
+   "action": "move",
+   "x": 1139.7,
+   "y": 1169.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.2667,
+   "action": "move",
+   "x": 1144.7,
+   "y": 1166.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.2833,
+   "action": "move",
+   "x": 1149.6,
+   "y": 1162.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.3,
+   "action": "move",
+   "x": 1154.6,
+   "y": 1159.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.3167,
+   "action": "move",
+   "x": 1159.5,
+   "y": 1156.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.3333,
+   "action": "move",
+   "x": 1164.5,
+   "y": 1152.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.35,
+   "action": "move",
+   "x": 1169.4,
+   "y": 1149.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.3667,
+   "action": "move",
+   "x": 1174.4,
+   "y": 1146.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.3833,
+   "action": "move",
+   "x": 1179.3,
+   "y": 1142.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.4,
+   "action": "move",
+   "x": 1184.3,
+   "y": 1139.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.4167,
+   "action": "move",
+   "x": 1189.2,
+   "y": 1135.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.4333,
+   "action": "move",
+   "x": 1194.2,
+   "y": 1132.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.45,
+   "action": "move",
+   "x": 1199.1,
+   "y": 1129.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.4667,
+   "action": "move",
+   "x": 1204.1,
+   "y": 1125.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.4833,
+   "action": "move",
+   "x": 1209.0,
+   "y": 1122.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.5,
+   "action": "move",
+   "x": 1214.0,
+   "y": 1118.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.5167,
+   "action": "move",
+   "x": 1218.9,
+   "y": 1115.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.5333,
+   "action": "move",
+   "x": 1223.9,
+   "y": 1112.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.55,
+   "action": "move",
+   "x": 1228.8,
+   "y": 1108.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.5667,
+   "action": "move",
+   "x": 1233.8,
+   "y": 1105.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.5833,
+   "action": "move",
+   "x": 1238.8,
+   "y": 1101.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.6,
+   "action": "move",
+   "x": 1243.7,
+   "y": 1098.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.6167,
+   "action": "move",
+   "x": 1248.7,
+   "y": 1095.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.6333,
+   "action": "move",
+   "x": 1253.6,
+   "y": 1091.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.65,
+   "action": "move",
+   "x": 1258.6,
+   "y": 1088.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.6542,
+   "action": "move",
+   "x": 1316.3,
+   "y": 1048.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.6583,
+   "action": "move",
+   "x": 1374.1,
+   "y": 1009.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 11.6625,
+   "action": "release"
+  },
+  {
+   "t": 12.2625,
+   "action": "dip",
+   "pigment": "cadmium_yellow"
+  },
+  {
+   "t": 12.2625,
+   "action": "press",
+   "x": 1590,
+   "y": 1190,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.2792,
+   "action": "move",
+   "x": 1585.6,
+   "y": 1194.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.2958,
+   "action": "move",
+   "x": 1581.2,
+   "y": 1198.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.3125,
+   "action": "move",
+   "x": 1576.7,
+   "y": 1202.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.3292,
+   "action": "move",
+   "x": 1572.3,
+   "y": 1206.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.3458,
+   "action": "move",
+   "x": 1567.9,
+   "y": 1210.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.3625,
+   "action": "move",
+   "x": 1563.5,
+   "y": 1214.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.3792,
+   "action": "move",
+   "x": 1559.0,
+   "y": 1218.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.3958,
+   "action": "move",
+   "x": 1554.6,
+   "y": 1222.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.4125,
+   "action": "move",
+   "x": 1550.2,
+   "y": 1226.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.4292,
+   "action": "move",
+   "x": 1545.8,
+   "y": 1230.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.4458,
+   "action": "move",
+   "x": 1541.3,
+   "y": 1234.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.4625,
+   "action": "move",
+   "x": 1536.9,
+   "y": 1238.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.4792,
+   "action": "move",
+   "x": 1532.5,
+   "y": 1242.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.4958,
+   "action": "move",
+   "x": 1528.1,
+   "y": 1246.7,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.5125,
+   "action": "move",
+   "x": 1523.6,
+   "y": 1250.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.5292,
+   "action": "move",
+   "x": 1519.2,
+   "y": 1254.8,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.5458,
+   "action": "move",
+   "x": 1514.8,
+   "y": 1258.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.5625,
+   "action": "move",
+   "x": 1510.4,
+   "y": 1263.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.5792,
+   "action": "move",
+   "x": 1505.9,
+   "y": 1267.0,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.5958,
+   "action": "move",
+   "x": 1501.5,
+   "y": 1271.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.6125,
+   "action": "move",
+   "x": 1497.1,
+   "y": 1275.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.6292,
+   "action": "move",
+   "x": 1492.7,
+   "y": 1279.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.6458,
+   "action": "move",
+   "x": 1488.2,
+   "y": 1283.2,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.6625,
+   "action": "move",
+   "x": 1483.8,
+   "y": 1287.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.6792,
+   "action": "move",
+   "x": 1479.4,
+   "y": 1291.3,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.6958,
+   "action": "move",
+   "x": 1475.0,
+   "y": 1295.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.7125,
+   "action": "move",
+   "x": 1470.5,
+   "y": 1299.4,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.7292,
+   "action": "move",
+   "x": 1466.1,
+   "y": 1303.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.7458,
+   "action": "move",
+   "x": 1461.7,
+   "y": 1307.5,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.7625,
+   "action": "move",
+   "x": 1457.3,
+   "y": 1311.6,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.7667,
+   "action": "move",
+   "x": 1405.7,
+   "y": 1358.9,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.7708,
+   "action": "move",
+   "x": 1354.0,
+   "y": 1406.1,
+   "pressure": 0.6
+  },
+  {
+   "t": 12.775,
+   "action": "release"
+  },
+  {
+   "t": 13.875,
+   "action": "checkpoint",
+   "name": "flicked"
+  }
+ ]
+}

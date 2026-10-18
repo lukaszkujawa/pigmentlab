@@ -80,6 +80,7 @@ component ParamSlider {
 component Toggle {
     in property <string> label;
     in-out property <bool> checked;
+    callback toggled();
     height: 26px;
     HorizontalLayout {
         spacing: 10px;
@@ -101,7 +102,7 @@ component Toggle {
             }
         }
     }
-    TouchArea { clicked => { root.checked = !root.checked; } }
+    TouchArea { clicked => { root.checked = !root.checked; root.toggled(); } }
 }
 
 component ToolButton inherits Rectangle {
@@ -176,6 +177,64 @@ component ToolbarButton inherits Rectangle {
 component ToolbarDivider {
     width: 1px;
     Rectangle { y: (parent.height - self.height) / 2; height: 18px; background: Theme.line; }
+}
+
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked;
+    height: 32px;
+    horizontal-stretch: 1;
+    border-radius: 6px;
+    background: root.selected ? Theme.accent-soft : (area.has-hover ? Theme.track : Theme.card);
+    Text {
+        text: root.label;
+        color: root.selected ? Theme.text : Theme.muted;
+        font-size: 13px;
+        font-weight: root.selected ? 600 : 400;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+}
+
+component BottleItem inherits Rectangle {
+    in property <string> label;
+    in property <color> colour;
+    in property <float> fill;
+    in property <bool> selected;
+    in property <bool> pouring;
+    callback clicked;
+    callback pour-toggled;
+    height: 32px;
+    border-radius: 6px;
+    background: root.selected ? Theme.accent-soft : (area.has-hover ? Theme.track : transparent);
+    area := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        spacing: 10px;
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 8px;
+            background: root.colour;
+            border-width: 1px;
+            border-color: Theme.line;
+        }
+        Text { text: root.label; color: root.selected ? Theme.text : Theme.muted; font-size: 13px; vertical-alignment: center; horizontal-stretch: 1; }
+        Text { text: round(root.fill * 100) + "%"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+        Rectangle {
+            width: 58px;
+            height: 22px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 11px;
+            background: root.pouring ? Theme.accent : Theme.track;
+            Text { text: root.pouring ? "Pouring" : "Corked"; color: Theme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+            TouchArea { clicked => { root.pour-toggled(); } }
+        }
+    }
 }
 
 component PresetRow inherits Rectangle {
@@ -434,6 +493,7 @@ component ColourPicker {
 }
 
 struct SizePreset { name: string, width: int, height: int }
+export struct BottleRow { id: int, label: string, colour: color, fill: float, pouring: bool }
 struct Ground { name: string, colour: color }
 
 component Chip inherits Rectangle {
@@ -663,6 +723,12 @@ export component AppWindow inherits Window {
     background: Theme.window;
 
     in property <image> canvas-texture <=> canvas-image.source;
+    in property <image> stage-texture <=> stage-image.source;
+    out property <length> stage-width: viewport.width;
+    out property <length> stage-height: viewport.height;
+    out property <length> canvas-left: canvas-image.x;
+    out property <length> canvas-top: canvas-image.y;
+    out property <length> canvas-shown-width: canvas-image.width;
     in property <length> canvas-width: 1024px;
     in property <length> canvas-height: 768px;
     in property <float> canvas-scale: 1.0;
@@ -695,16 +761,30 @@ export component AppWindow inherits Window {
     in-out property <int> surface-index: 0;
     in property <bool> watercolour: false;
     in property <bool> tube-selected: false;
+    in property <[string]> procedural-names: [];
+    in property <int> procedural-base: 0;
+    in property <[BottleRow]> bottles: [];
+    in-out property <int> selected-bottle: -1;
+    in-out property <int> panel-tab: 0;
+    in-out property <bool> drips-paused: false;
+    in-out property <int> last-brush-index: 0;
     in property <float> nozzle-radius: 16;
-    out property <float> pressure <=> pressure-slider.value;
-    out property <int> brush-index: 0;
+    in-out property <float> pressure: 0.5;
+    in-out property <int> brush-index: 0;
     in property <bool> brush-has-thickness: false;
     in property <bool> brush-has-length: false;
-    out property <float> brush-thickness <=> thickness-slider.value;
-    out property <float> brush-scale <=> size-slider.value;
-    in-out property <float> brush-bristles <=> bristles-slider.value;
-    out property <float> brush-stiffness <=> stiffness-slider.value;
-    out property <float> brush-angle <=> angle-slider.value;
+    in-out property <float> brush-thickness: 1.0;
+    in-out property <float> brush-scale: 1.0;
+    in-out property <float> brush-bristles: 200;
+    in-out property <float> brush-stiffness: 0.5;
+    in-out property <float> brush-angle: 0;
+    in-out property <float> rig-string: 250;
+    in-out property <float> rig-pivot: 265;
+    in-out property <float> rig-hole: 4;
+    in-out property <float> rig-radius: 2.0;
+    in-out property <float> rig-throw: 1;
+    in-out property <bool> rig-pour: false;
+    in property <bool> selected-pouring: false;
     out property <float> paint-load <=> load-slider.value;
     out property <float> paint-medium <=> medium-slider.value;
     out property <float> paint-dilution <=> dilution-slider.value;
@@ -735,6 +815,13 @@ export component AppWindow inherits Window {
     callback brush-selected(index: int);
     callback brush-adjusted();
     callback paint-changed();
+    callback rig-changed();
+    callback cut-strings();
+    callback bottle-picked(int);
+    callback stop-bottles(int);
+    callback remove-bottle(int);
+    callback pour-bottles(int, bool);
+    callback pause-toggled(bool);
     callback canvas-changed();
     callback clear();
     callback undo();
@@ -797,7 +884,7 @@ export component AppWindow inherits Window {
             MenuItem { title: "Fit to Window"; shortcut: @keys(Control + "0"); activated => { root.fit-canvas(); } }
             MenuItem { title: "Actual Size"; shortcut: @keys(Control + "1"); activated => { root.actual-size(); } }
             MenuSeparator { }
-            MenuItem { title: "Show Bristles"; checkable: true; checked <=> bristles-toggle.checked; }
+            MenuItem { title: "Show Tools"; checkable: true; checked <=> bristles-toggle.checked; }
         }
     }
 
@@ -833,6 +920,10 @@ export component AppWindow inherits Window {
                         y: (viewport.height - self.height) / 2 + root.pan-y;
                         width: root.canvas-width * root.zoom;
                         height: root.canvas-height * root.zoom;
+                    }
+                    stage-image := Image {
+                        width: viewport.width;
+                        height: viewport.height;
                     }
 
                     canvas-area := TouchArea {
@@ -951,7 +1042,13 @@ export component AppWindow inherits Window {
                             spacing: 10px;
                             alignment: start;
 
-                            Card {
+                            HorizontalLayout {
+                                spacing: 4px;
+                                TabButton { label: "Brushes"; selected: root.panel-tab == 0; clicked => { root.panel-tab = 0; root.brush-index = root.last-brush-index; root.brush-selected(root.brush-index); } }
+                                TabButton { label: "Procedural"; selected: root.panel-tab == 1; clicked => { root.panel-tab = 1; root.brush-index = root.procedural-base; root.brush-selected(root.brush-index); } }
+                            }
+
+                            if root.panel-tab == 0: Card {
                                 title: "BRUSH";
                                 Rectangle {
                                     height: ceil(root.brush-names.length / 2) * 32px - 2px;
@@ -961,17 +1058,82 @@ export component AppWindow inherits Window {
                                         width: (parent.width - 4px) / 2;
                                         label: name;
                                         selected: index == root.brush-index;
-                                        clicked => { root.brush-index = index; root.brush-selected(index); }
+                                        clicked => { root.brush-index = index; root.last-brush-index = index; root.brush-selected(index); }
                                     }
                                 }
                                 Rectangle { height: 1px; background: Theme.line; }
-                                size-slider := ParamSlider { label: root.brush-has-thickness ? "Width" : "Size"; minimum: 0.13; maximum: 5; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
-                                thickness-slider := ParamSlider { visible: root.brush-has-thickness || root.brush-has-length; height: root.brush-has-thickness || root.brush-has-length ? self.preferred-height : 0; label: root.brush-has-length ? "Length" : "Thickness"; minimum: 0.25; maximum: 3; value: 1.0; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
-                                bristles-slider := ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value: 200; value-text: round(self.value); released => { root.brush-adjusted(); } }
-                                stiffness-slider := ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
-                                angle-slider := ParamSlider { label: "Angle"; minimum: 0; maximum: 360; value: 0; value-text: round(self.value) + "°"; }
-                                pressure-slider := ParamSlider { label: "Pressure"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
+                                ParamSlider { label: root.brush-has-thickness ? "Width" : "Size"; minimum: 0.13; maximum: 5; value <=> root.brush-scale; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
+                                ParamSlider { visible: root.brush-has-thickness || root.brush-has-length; height: root.brush-has-thickness || root.brush-has-length ? self.preferred-height : 0; label: root.brush-has-length ? "Length" : "Thickness"; minimum: 0.25; maximum: 3; value <=> root.brush-thickness; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
+                                ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value <=> root.brush-bristles; value-text: round(self.value); released => { root.brush-adjusted(); } }
+                                ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value <=> root.brush-stiffness; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
+                                ParamSlider { label: "Angle"; minimum: 0; maximum: 360; value <=> root.brush-angle; value-text: round(self.value) + "°"; }
+                                ParamSlider { label: "Pressure"; minimum: 0; maximum: 1; value <=> root.pressure; value-text: round(self.value * 100) + "%"; }
                                 if root.pen-seen: ParamSlider { label: "Pen firmness"; minimum: 0.2; maximum: 1; value <=> root.pen-firmness; value-text: round(self.value * 100) + "%"; }
+                            }
+
+                            if root.panel-tab == 1: Card {
+                                title: "PROCEDURAL";
+                                for name[index] in root.procedural-names: PresetRow {
+                                    label: name;
+                                    selected: root.procedural-base + index == root.brush-index;
+                                    clicked => { root.brush-index = root.procedural-base + index; root.brush-selected(root.brush-index); }
+                                }
+                            }
+
+                            if root.panel-tab == 1: Card {
+                                title: "BOTTLES";
+                                if root.bottles.length == 0: Text {
+                                    text: "Press the canvas to hang a corked bottle from the hook (orange ring) and hold it. Drag and let go to throw it, then switch on its flow. Drag the ring to move the hook.";
+                                    color: Theme.muted;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                                for bottle in root.bottles: BottleItem {
+                                    label: bottle.label;
+                                    colour: bottle.colour;
+                                    fill: bottle.fill;
+                                    pouring: bottle.pouring;
+                                    selected: bottle.id == root.selected-bottle;
+                                    clicked => { root.bottle-picked(bottle.id); }
+                                    pour-toggled => { root.pour-bottles(bottle.id, !bottle.pouring); }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    ToolButton { label: root.drips-paused ? "Resume" : "Pause"; clicked => { root.drips-paused = !root.drips-paused; root.pause-toggled(root.drips-paused); } }
+                                    ToolButton { label: "Pour all"; clicked => { root.pour-bottles(-1, true); } }
+                                    ToolButton { label: "Cork all"; clicked => { root.pour-bottles(-1, false); } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    ToolButton { label: "Stop all"; clicked => { root.stop-bottles(-1); } }
+                                    ToolButton { label: "Cut strings"; danger: true; clicked => { root.cut-strings(); } }
+                                }
+                            }
+
+                            if root.panel-tab == 1: Card {
+                                title: root.selected-bottle >= 0 ? "SELECTED BOTTLE" : "NEXT BOTTLE";
+                                Text {
+                                    text: root.selected-bottle >= 0 ? "String, hook height, size and hole change this bottle now." : "Settings for the next bottle you hang.";
+                                    color: Theme.muted;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                                ParamSlider { label: "String"; minimum: 20; maximum: 400; value <=> root.rig-string; value-text: round(self.value) + " cm"; released => { root.rig-changed(); } }
+                                ParamSlider { label: "Hook height"; minimum: 30; maximum: 450; value <=> root.rig-pivot; value-text: round(self.value) + " cm"; released => { root.rig-changed(); } }
+                                ParamSlider { label: "Bottle radius"; minimum: 0.5; maximum: 4; value <=> root.rig-radius; value-text: round(self.value * 10) / 10 + " cm"; released => { root.rig-changed(); } }
+                                ParamSlider { label: "Hole"; minimum: 1; maximum: 8; value <=> root.rig-hole; value-text: round(self.value * 10) / 10 + " mm"; released => { root.rig-changed(); } }
+                                ParamSlider { label: "Throw strength"; minimum: 0.25; maximum: 3; value <=> root.rig-throw; value-text: "×" + round(self.value * 100) / 100; released => { root.rig-changed(); } }
+                                Toggle { label: "Pour as soon as hung"; checked <=> root.rig-pour; toggled => { root.rig-changed(); } }
+                                if root.selected-bottle >= 0: HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    ToolButton { label: root.selected-pouring ? "Cork" : "Pour"; clicked => { root.pour-bottles(root.selected-bottle, !root.selected-pouring); } }
+                                    ToolButton { label: "Stop"; clicked => { root.stop-bottles(root.selected-bottle); } }
+                                    ToolButton { label: "Remove"; danger: true; clicked => { root.remove-bottle(root.selected-bottle); } }
+                                    ToolButton { label: "Done"; clicked => { root.bottle-picked(root.selected-bottle); } }
+                                }
                             }
 
                             Card {
@@ -1090,7 +1252,7 @@ export component AppWindow inherits Window {
                             Card {
                                 title: "SIMULATION";
                                 levelling-toggle := Toggle { label: "Paint levelling"; checked: true; }
-                                bristles-toggle := Toggle { label: "Show bristles"; checked: true; }
+                                bristles-toggle := Toggle { label: "Show tools"; checked: true; }
                                 record-toggle := Toggle { label: "Record scenario"; }
                             }
                         }

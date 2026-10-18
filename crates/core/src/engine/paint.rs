@@ -19,7 +19,7 @@ impl Engine {
         let dilution = self.paint.dilution.clamp(0.0, 1.0);
         if self.watercolour.is_some() {
             self.paint_on_tool = paint;
-            if self.tool == Tool::Tube {
+            if self.tool != Tool::Brush {
                 return;
             }
             let concentration = WATERCOLOUR_PIGMENT * (1.0 - WATERCOLOUR_DILUTION * dilution) / load.max(WATERCOLOUR_DRIEST_LOAD);
@@ -31,7 +31,7 @@ impl Engine {
         let strength = PIGMENT_AT_FULL_DILUTION.powf(dilution.sqrt());
         let thinned = Coefficients { absorption: paint.coefficients.absorption * strength, scattering: paint.coefficients.scattering * strength };
         self.paint_on_tool = Paint { coefficients: thinned, ..paint };
-        if self.tool == Tool::Tube {
+        if self.tool != Tool::Brush {
             return;
         }
         self.brush.dip(&self.gpu, thinned, load, medium);
@@ -80,10 +80,14 @@ impl Engine {
     }
 
     pub fn wipe(&mut self) {
-        let wiped: Vec<f32> = read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| load * LOAD_KEPT_AFTER_WIPE).collect();
-        self.gpu.queue.write_buffer(&self.brush.sample_load, 0, bytemuck::cast_slice(&wiped));
+        self.keep_brush_load(LOAD_KEPT_AFTER_WIPE);
+    }
+
+    pub(super) fn keep_brush_load(&mut self, kept: f32) {
+        let scaled: Vec<f32> = read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| load * kept).collect();
+        self.gpu.queue.write_buffer(&self.brush.sample_load, 0, bytemuck::cast_slice(&scaled));
         self.gauge().invalidate();
-        self.brush_contents = BrushContents { fill: self.brush_contents.fill * LOAD_KEPT_AFTER_WIPE, ..self.brush_contents };
+        self.brush_contents = BrushContents { fill: self.brush_contents.fill * kept, ..self.brush_contents };
     }
 
     pub fn brush_load(&self) -> f32 {

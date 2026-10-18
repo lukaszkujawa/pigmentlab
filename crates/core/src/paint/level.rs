@@ -88,16 +88,16 @@ impl Levelling {
 
     pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, window: &ActiveWindow, wet: WetBounds) {
         let region = window.region_of(wet.min - NEIGHBOUR_REACH, wet.max + NEIGHBOUR_REACH);
+        let (origin, size) = wet.clamped(self.canvas_size.0, self.canvas_size.1);
+        gpu.queue.write_buffer(&self.region_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: region.origin.as_ivec2().to_array(), size: region.size.to_array() }));
+        gpu.queue.write_buffer(&self.wet_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: origin.to_array(), size: size.as_uvec2().to_array() }));
         if !region.is_empty() {
-            gpu.queue.write_buffer(&self.region_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: region.origin.as_ivec2().to_array(), size: region.size.to_array() }));
             self.snapshot.dispatch(encoder, region.groups());
             self.window.dispatch(encoder, region.groups());
         }
-        let (origin, size) = wet.clamped(self.canvas_size.0, self.canvas_size.1);
         if size.x == 0 || size.y == 0 {
             return;
         }
-        gpu.queue.write_buffer(&self.wet_uniform, 0, bytemuck::bytes_of(&WetUniform { origin: origin.to_array(), size: size.as_uvec2().to_array() }));
         let store_groups = [(size.x as u32).div_ceil(32), (size.y as u32).div_ceil(16), 1];
         self.store_even.dispatch(encoder, store_groups);
         self.store_odd.dispatch(encoder, store_groups);

@@ -1,6 +1,8 @@
 use super::compare::{Comparison, compare, difference_image};
 use super::{Action, Scenario};
+use crate::drip::Hanging;
 use crate::engine::{Engine, SIMULATION_DT};
+use glam::Vec2;
 use crate::gpu::Gpu;
 use crate::input::{PointerPhase, PointerSample};
 use serde::Serialize;
@@ -80,6 +82,16 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
             Action::Clear => engine.clear(),
             Action::Dry => engine.dry(),
             Action::Surface { surface } => engine.set_surface(*surface),
+            Action::HangBottle { pivot, release, push } => engine.hang_bottle(Hanging { pivot: Vec2::from(*pivot), release: Vec2::from(*release), push: Vec2::from(*push) }),
+            Action::CutStrings => engine.cut_strings(),
+            Action::SelectBottle { bottle } => engine.select_bottle(*bottle),
+            Action::BottleParam { bottle, name, value } => {
+                assert!(engine.set_bottle_param(*bottle, name, *value), "unknown bottle parameter {name}");
+            }
+            Action::StopBottles { bottle } => engine.stop_bottles(*bottle),
+            Action::RemoveBottle { bottle } => engine.remove_bottle(*bottle),
+            Action::PourBottles { bottle, pouring } => engine.set_pouring(*bottle, *pouring),
+            Action::PauseDrips { paused } => engine.set_drips_paused(*paused),
             Action::Tool { name } => {
                 assert!(engine.select_brush(name), "unknown brush {name}");
             }

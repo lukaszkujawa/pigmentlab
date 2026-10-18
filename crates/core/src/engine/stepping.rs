@@ -1,5 +1,5 @@
 use super::{Engine, FOOTPRINT_SLACK, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
-use crate::paint::{StrokeState, WetBounds};
+use crate::paint::{MARK_CAPACITY, Mark, StrokeState, WetBounds};
 use glam::IVec2;
 
 const DEPOSIT_REACH: i32 = 24;
@@ -31,9 +31,13 @@ impl Engine {
         for _ in 0..steps {
             self.time += dt;
             if let Some(state) = self.pointer.state_at(self.time) {
+                let lifted = self.pressed && !state.pressed;
                 self.touch.update(&state, SIMULATION_DT);
                 self.pose = self.pose_for();
                 self.pressed = state.pressed;
+                if lifted && self.tool == Tool::Brush {
+                    self.flick_brush();
+                }
                 if self.touch.engaged() {
                     self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(self.paint.medium.clamp(0.0, 1.0));
                 }
@@ -53,6 +57,9 @@ impl Engine {
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
                 self.needs_render |= self.touch.engaged() || self.show_bristles;
+                if self.tool == Tool::Drip {
+                    self.steer_bottles(&state);
+                }
             }
             if let Some(hover) = self.hover.filter(|_| !self.pressed && !self.touch.engaged()) {
                 self.touch.position = glam::Vec2::new(hover.x, hover.y);
@@ -70,11 +77,12 @@ impl Engine {
             let (focus, footprint_radius) = match self.tool {
                 Tool::Brush => (self.brush.tuft_centre(), preset.reach_from_handle() + FOOTPRINT_SLACK),
                 Tool::Tube => (self.tool_tip().truncate(), self.tube_reach() + FOOTPRINT_SLACK),
+                Tool::Drip => (self.tool_tip().truncate(), FOOTPRINT_SLACK),
             };
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
-            if self.touch.engaged() {
+            if self.touch.engaged() && self.tool != Tool::Drip {
                 let touched = WetBounds::around(self.tool_tip().truncate().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
                 match &mut self.watercolour {
                     Some(watercolour) => {
@@ -115,7 +123,10 @@ impl Engine {
                     }
                     self.position_at_last_deposit = self.tool_tip();
                 }
+                Tool::Drip => {}
             }
+            self.step_drips();
+            self.lay_pending_marks(&mut encoder);
             if let Some(watercolour) = self.watercolour.as_mut().filter(|water| water.is_wet() && self.substeps.is_multiple_of(SUBSTEPS_PER_WATER_STEP)) {
                 let settled = self.time > self.water_settles_at;
                 watercolour.encode_step(&self.gpu, &mut encoder, settled);
@@ -136,6 +147,24 @@ impl Engine {
             self.gauge().after_submit();
             self.collect_brush_contents();
         }
+    }
+
+    pub fn lay(&mut self, marks: &[Mark]) {
+        self.pending_marks.extend_from_slice(marks);
+    }
+
+    fn lay_pending_marks(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.watercolour.is_some() {
+            self.pending_marks.clear();
+            return;
+        }
+        let laid: Vec<Mark> = self.pending_marks.drain(..self.pending_marks.len().min(MARK_CAPACITY)).collect();
+        let Some(bounds) = self.marks.encode(&self.gpu, encoder, &self.window, &laid) else { return };
+        let oiliest = laid.iter().map(|mark| mark.medium).fold(0.0, f32::max).clamp(0.0, 1.0);
+        self.levelling_active_until = self.levelling_active_until.max(self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(oiliest));
+        let wet = bounds.expand(WET_MARGIN);
+        self.wet_bounds = Some(self.wet_bounds.map_or(wet, |bounds| bounds.include(wet)));
+        self.mark_stale(bounds.expand(1));
     }
 
     pub(super) fn request_gauge_reading(&mut self, encoder: &mut wgpu::CommandEncoder) {

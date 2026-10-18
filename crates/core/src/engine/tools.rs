@@ -1,6 +1,6 @@
-use super::{DEPOSIT_DT, Engine, FOOTPRINT_SLACK, PaintSettings, SIMULATION_DT, TUBE_TOOL, Tool};
+use super::{DEPOSIT_DT, DRIP_TOOL, Engine, FOOTPRINT_SLACK, PaintSettings, SIMULATION_DT, TUBE_TOOL, Tool};
 use crate::brush::{Brush, BrushAdjustments, BrushPreset, preset_by_name};
-use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Tube};
+use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Marks, Tube};
 use crate::render::{BrushLines, Composite, HeightMap};
 use crate::watercolour::WaterBrush;
 
@@ -23,8 +23,8 @@ impl Engine {
     }
 
     pub fn configure_brush(&mut self, name: &str, adjustments: BrushAdjustments) -> bool {
-        if name.eq_ignore_ascii_case(TUBE_TOOL) {
-            self.tool = Tool::Tube;
+        if name.eq_ignore_ascii_case(TUBE_TOOL) || name.eq_ignore_ascii_case(DRIP_TOOL) {
+            self.tool = if name.eq_ignore_ascii_case(TUBE_TOOL) { Tool::Tube } else { Tool::Drip };
             self.adjustments = adjustments;
             return true;
         }
@@ -64,7 +64,7 @@ impl Engine {
                 }
                 self.mark_whole_canvas_stale();
             }
-            _ => return false,
+            _ => return self.set_rig_param(name, value),
         }
         true
     }
@@ -104,6 +104,7 @@ impl Engine {
         self.composite.set_lighting(&self.gpu, self.lighting);
         self.composite.attach_watercolour(&self.gpu, &self.canvas, &self.height_map, self.watercolour.as_ref());
         self.tube = Tube::new(&self.gpu, &self.window, &self.canvas, &self.height_map.heights, self.seed, SIMULATION_DT);
+        self.marks = Marks::new(&self.gpu, &self.window, &self.canvas);
         self.mark_whole_canvas_stale();
     }
 
