@@ -48,6 +48,7 @@ pub struct Canvas {
     refresh_ground: ComputePass,
     relief_pattern: Vec<f32>,
     surface: Surface,
+    ground_colour: Option<[f32; 3]>,
     tooth: f32,
     seed: u64,
 }
@@ -80,6 +81,7 @@ impl Canvas {
             refresh_ground,
             relief_pattern: Surface::Linen.relief(size, seed),
             surface: Surface::Linen,
+            ground_colour: None,
             tooth: DEFAULT_TOOTH,
             seed,
         };
@@ -100,12 +102,16 @@ impl Canvas {
         self.set_tooth(gpu, surface.tooth());
     }
 
+    pub fn set_ground_colour(&mut self, colour: Option<[f32; 3]>) {
+        self.ground_colour = colour;
+    }
+
     pub fn paper_heights(&self) -> &[f32] {
         &self.relief_pattern
     }
 
     fn write_paper(&self, gpu: &Gpu) {
-        let layer = self.surface.colour_layer(&self.relief_pattern, self.size, self.seed);
+        let layer = self.surface.colour_layer(self.ground_colour.unwrap_or(self.surface.colour()), &self.relief_pattern, self.size, self.seed);
         gpu.queue.write_buffer(&self.dry, 0, bytemuck::cast_slice(&layer));
     }
 

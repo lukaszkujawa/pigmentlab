@@ -1,5 +1,6 @@
 slint::include_modules!();
 
+mod document;
 mod dock_icon;
 mod tablet;
 
@@ -13,10 +14,13 @@ use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, Lighting, PointerPhase, Po
 use tablet::{PenState, Tablet};
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
-const CANVAS: CanvasSize = CanvasSize { width: 2048, height: 1536 };
+const DEFAULT_CANVAS: CanvasSize = CanvasSize { width: 2048, height: 1536 };
+const SMALLEST_CANVAS_SIDE: u32 = 256;
+const LARGEST_CANVAS_SIDE: u32 = 4096;
 const SEED: u64 = 1;
 
 const MAX_CUSTOM_COLOURS: usize = 12;
@@ -27,6 +31,13 @@ enum Dip {
     Pigment(usize),
     Colour([u8; 3]),
     Water,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CanvasSpec {
+    size: CanvasSize,
+    surface: Surface,
+    ground: Option<[u8; 3]>,
 }
 
 #[derive(Default)]
@@ -45,7 +56,8 @@ struct Requests {
     tooth: Option<f32>,
     clear: bool,
     undo: bool,
-    save: bool,
+    save: Option<PathBuf>,
+    new_canvas: Option<CanvasSpec>,
     dry: bool,
 }
 
@@ -79,11 +91,10 @@ fn main() -> Result<(), slint::PlatformError> {
         .select()?;
 
     let app = AppWindow::new()?;
-    dock_icon::install();
-    let scale = app.window().scale_factor().max(1.0);
-    app.set_canvas_width(CANVAS.width as f32 / scale);
-    app.set_canvas_height(CANVAS.height as f32 / scale);
-    app.set_canvas_scale(scale);
+    app.set_canvas_scale(app.window().scale_factor().max(1.0));
+    show_canvas_size(&app, DEFAULT_CANVAS);
+    app.set_smallest_canvas_side(SMALLEST_CANVAS_SIDE as i32);
+    app.set_largest_canvas_side(LARGEST_CANVAS_SIDE as i32);
     app.set_nozzle_radius(NOZZLE_RADIUS);
     let custom: Rc<RefCell<Vec<[u8; 3]>>> = Rc::default();
     app.set_swatches(swatches(&custom.borrow()));
@@ -209,7 +220,7 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_paint_changed(move || {
         let app = app_weak.unwrap();
         let mut requests = shared.borrow_mut();
-        requests.paint = Some(PaintSettings { load: app.get_paint_load(), medium: app.get_paint_medium(), dilution: app.get_paint_dilution() });
+        requests.paint = Some(paint_settings_of(&app));
         requests.dip = Some(active_dip(&app, &colours.borrow()));
     });
     let shared = requests.clone();
@@ -221,8 +232,58 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_clear(move || shared.borrow_mut().clear = true);
     let shared = requests.clone();
     app.on_undo(move || shared.borrow_mut().undo = true);
+    let document: Rc<RefCell<Option<PathBuf>>> = Rc::default();
+    let save_as = {
+        let app_weak = app.as_weak();
+        let shared = requests.clone();
+        let document = document.clone();
+        Rc::new(move || {
+            let app = app_weak.unwrap();
+            let chosen = document::choose_save_path(app.window(), document.borrow().as_deref());
+            let shared = shared.clone();
+            let document = document.clone();
+            let spawned = slint::spawn_local(async move {
+                let Some(path) = chosen.await else { return };
+                app.set_document_name(document::display_name(&path).into());
+                *document.borrow_mut() = Some(path.clone());
+                shared.borrow_mut().save = Some(path);
+            });
+            if let Err(error) = spawned {
+                app_weak.unwrap().set_status(format!("cannot open the save dialog: {error}").into());
+            }
+        })
+    };
     let shared = requests.clone();
-    app.on_save(move || shared.borrow_mut().save = true);
+    let path = document.clone();
+    let choose = save_as.clone();
+    app.on_save(move || match path.borrow().clone() {
+        Some(path) => shared.borrow_mut().save = Some(path),
+        None => choose(),
+    });
+    app.on_save_as(move || save_as());
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    let colours = custom.clone();
+    app.on_new_canvas(move |width, height, surface_index, ground, natural_ground| {
+        let app = app_weak.unwrap();
+        let surface = Surface::ALL[surface_index.clamp(0, Surface::ALL.len() as i32 - 1) as usize];
+        let side = |pixels: i32| (pixels.max(0) as u32).clamp(SMALLEST_CANVAS_SIDE, LARGEST_CANVAS_SIDE);
+        let spec = CanvasSpec {
+            size: CanvasSize { width: side(width), height: side(height) },
+            surface,
+            ground: (!natural_ground).then(|| [ground.red(), ground.green(), ground.blue()]),
+        };
+        *document.borrow_mut() = None;
+        app.set_document_name(document::UNTITLED.into());
+        app.set_recording(false);
+        app.set_surface_index(surface_index);
+        app.set_watercolour(surface.medium() == Medium::Watercolour);
+        let mut requests = shared.borrow_mut();
+        requests.new_canvas = Some(spec);
+        requests.brush = Some((app.get_brush_index().max(0) as usize, adjustments_of(&app, Some(app.get_brush_bristles().round() as u32))));
+        requests.paint = Some(paint_settings_of(&app));
+        requests.dip = Some(active_dip(&app, &colours.borrow()));
+    });
     let shared = requests.clone();
     app.on_dry(move || shared.borrow_mut().dry = true);
 
@@ -234,11 +295,12 @@ fn main() -> Result<(), slint::PlatformError> {
     app.window()
         .set_rendering_notifier(move |state, graphics_api| match state {
             slint::RenderingState::RenderingSetup => {
+                dock_icon::install();
                 if let Some(app) = app_weak.upgrade() {
                     tablet.attach(app.window());
                 }
                 if let slint::GraphicsAPI::WGPU30 { device, queue, .. } = graphics_api {
-                    let mut created = Engine::new(Gpu::shared(device, queue), CANVAS, SEED);
+                    let mut created = Engine::new(Gpu::shared(device, queue), DEFAULT_CANVAS, SEED);
                     created.dip(PALETTE[2]);
                     engine = Some(created);
                 }
@@ -249,7 +311,14 @@ fn main() -> Result<(), slint::PlatformError> {
                     let pen = tablet.state();
                     requests.borrow_mut().follow_held_pen(pen, app.get_pen_firmness(), now);
                     requests.borrow_mut().follow_hovering_pen(pen);
-                    update_recorder(&mut recorder, &app, now, &requests.borrow());
+                    update_recorder(&mut recorder, &app, engine.canvas_size(), now, &requests.borrow());
+                    if let Some(spec) = requests.borrow_mut().new_canvas.take() {
+                        *engine = Engine::new(engine.gpu().clone(), spec.size, SEED);
+                        engine.set_sheet(spec.surface, spec.ground);
+                        show_canvas_size(&app, spec.size);
+                        app.invoke_fit_canvas();
+                        app.set_status(format!("new {} × {} canvas", spec.size.width, spec.size.height).into());
+                    }
                     apply_requests(engine, &app, &mut requests.borrow_mut(), &mut custom.borrow_mut());
                     show_brush_contents(engine, &app);
                     engine.set_brush_angle(app.get_brush_angle());
@@ -291,9 +360,9 @@ fn main() -> Result<(), slint::PlatformError> {
     app.run()
 }
 
-fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, now: f64, requests: &Requests) {
+fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, canvas: CanvasSize, now: f64, requests: &Requests) {
     if app.get_recording() {
-        let active = recorder.get_or_insert_with(|| Recorder::start(CANVAS, SEED, now));
+        let active = recorder.get_or_insert_with(|| Recorder::start(canvas, SEED, now));
         if let Some(surface) = requests.surface {
             active.surface(now, surface);
         }
@@ -388,9 +457,8 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
         let restored = engine.undo();
         app.set_status(if restored { "undone".into() } else { "nothing to undo".into() });
     }
-    if std::mem::take(&mut requests.save) {
-        let path = save_path();
-        match engine.save_png(&path) {
+    if let Some(path) = requests.save.take() {
+        match engine.save_image(&path) {
             Ok(()) => app.set_status(format!("saved {}", path.display()).into()),
             Err(error) => app.set_status(format!("save failed: {error}").into()),
         }
@@ -418,8 +486,12 @@ fn stamp() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-fn save_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(format!("pigmentlab-{}.png", stamp()))
+fn show_canvas_size(app: &AppWindow, size: CanvasSize) {
+    let scale = app.get_canvas_scale();
+    app.set_canvas_width(size.width as f32 / scale);
+    app.set_canvas_height(size.height as f32 / scale);
+    app.set_canvas_pixel_width(size.width as i32);
+    app.set_canvas_pixel_height(size.height as i32);
 }
 
 fn swatches(custom: &[[u8; 3]]) -> slint::ModelRc<slint::Color> {
@@ -473,6 +545,10 @@ fn phase(kind: i32) -> PointerPhase {
 fn tool_name(index: usize) -> &'static str {
     let names = tool_names();
     names[index.min(names.len() - 1)]
+}
+
+fn paint_settings_of(app: &AppWindow) -> PaintSettings {
+    PaintSettings { load: app.get_paint_load(), medium: app.get_paint_medium(), dilution: app.get_paint_dilution() }
 }
 
 fn adjustments_of(app: &AppWindow, bristle_count: Option<u32>) -> BrushAdjustments {

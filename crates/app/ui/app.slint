@@ -340,18 +340,15 @@ component IconSwatch inherits Rectangle {
     area := TouchArea { clicked => { root.clicked(); } }
 }
 
-component ColourPicker {
+component ColourField {
     in-out property <float> hue: 20;
     in-out property <float> saturation: 0.8;
     in-out property <float> value: 0.8;
-    in property <string> hex;
     out property <color> colour: Colors.hsv(root.hue, root.saturation, root.value);
-    callback hex-entered(string);
-    callback use-colour(color);
 
     VerticalLayout {
         spacing: 10px;
-        field := Rectangle {
+        Rectangle {
             height: 140px;
             border-radius: 6px;
             clip: true;
@@ -379,7 +376,7 @@ component ColourPicker {
                 moved => { if (self.pressed) { self.pick(); } }
             }
         }
-        hue-bar := Rectangle {
+        Rectangle {
             height: 14px;
             border-radius: 7px;
             background: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%);
@@ -401,29 +398,265 @@ component ColourPicker {
                 moved => { if (self.pressed) { self.pick(); } }
             }
         }
+    }
+}
+
+component ColourPicker {
+    in-out property <float> hue: 20;
+    in-out property <float> saturation: 0.8;
+    in-out property <float> value: 0.8;
+    in property <string> hex;
+    callback hex-entered(string);
+    callback use-colour(color);
+
+    VerticalLayout {
+        spacing: 10px;
+        field := ColourField { hue <=> root.hue; saturation <=> root.saturation; value <=> root.value; }
         HorizontalLayout {
             spacing: 10px;
             Rectangle {
                 width: 30px;
                 height: 30px;
                 border-radius: 15px;
-                background: root.colour;
+                background: field.colour;
                 border-width: 1px;
                 border-color: #ffffff26;
             }
-            hex-field := LineEdit {
+            LineEdit {
                 text: root.hex;
                 font-size: 13px;
                 horizontal-stretch: 1;
                 accepted(text) => { root.hex-entered(text); }
             }
-            ToolButton { label: "Use"; clicked => { root.use-colour(root.colour); } }
+            ToolButton { label: "Use"; clicked => { root.use-colour(field.colour); } }
+        }
+    }
+}
+
+struct SizePreset { name: string, width: int, height: int }
+struct Ground { name: string, colour: color }
+
+component Chip inherits Rectangle {
+    in property <string> label;
+    in property <string> detail;
+    in property <bool> selected;
+    callback clicked;
+    height: 44px;
+    border-radius: 6px;
+    background: root.selected ? Theme.accent-soft : (area.has-hover ? Theme.track : Theme.card);
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.line;
+    VerticalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+        Text { text: root.label; color: Theme.text; font-size: 13px; overflow: elide; }
+        Text { text: root.detail; color: Theme.muted; font-size: 11px; overflow: elide; }
+    }
+    area := TouchArea { clicked => { root.clicked(); } }
+}
+
+component PrimaryButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 32px;
+    width: caption.preferred-width + 32px;
+    border-radius: 6px;
+    background: !root.enabled ? Theme.track : (area.pressed ? Theme.accent.darker(20%) : (area.has-hover ? Theme.accent.brighter(10%) : Theme.accent));
+    caption := Text {
+        text: root.label;
+        color: root.enabled ? white : Theme.muted;
+        font-size: 13px;
+        font-weight: 600;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+    area := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+}
+
+component NewCanvasDialog inherits Rectangle {
+    in property <[string]> surface-names;
+    in property <int> initial-width;
+    in property <int> initial-height;
+    in property <int> initial-surface;
+    in property <int> largest-side;
+    in property <int> smallest-side;
+    callback create(width: int, height: int, surface: int, ground: color, natural-ground: bool);
+    callback cancel();
+
+    property <[SizePreset]> presets: [
+        { name: "Sketch", width: 1024, height: 768 },
+        { name: "Standard", width: 2048, height: 1536 },
+        { name: "Full HD", width: 1920, height: 1080 },
+        { name: "QHD", width: 2560, height: 1440 },
+        { name: "4K UHD", width: 3840, height: 2160 },
+        { name: "Square", width: 2048, height: 2048 },
+        { name: "Portrait", width: 1536, height: 2048 },
+        { name: "Large", width: 4096, height: 3072 },
+    ];
+    property <[Ground]> grounds: [
+        { name: "Natural", colour: #f6f3ec },
+        { name: "Titanium white", colour: #fbfbf8 },
+        { name: "Warm grey", colour: #a39e93 },
+        { name: "Cool grey", colour: #8e959c },
+        { name: "Yellow ochre", colour: #c49a4a },
+        { name: "Burnt sienna", colour: #9c5a3c },
+        { name: "Raw umber", colour: #6b5a45 },
+        { name: "Payne's grey", colour: #3f4650 },
+        { name: "Ivory black", colour: #1f1f21 },
+    ];
+    property <int> ground-index: 0;
+    property <bool> custom-ground: false;
+    property <int> surface-index: root.initial-surface;
+    property <int> width-value: width-field.text.is-float() ? round(width-field.text.to-float()) : 0;
+    property <int> height-value: height-field.text.is-float() ? round(height-field.text.to-float()) : 0;
+    property <bool> valid: root.width-value >= root.smallest-side && root.width-value <= root.largest-side && root.height-value >= root.smallest-side && root.height-value <= root.largest-side;
+    property <color> chosen-ground: root.custom-ground ? custom-field.colour : root.grounds[root.ground-index].colour;
+
+    function choose-size(width: int, height: int) {
+        width-field.text = width;
+        height-field.text = height;
+    }
+
+    function submit() {
+        if (root.valid) {
+            root.create(root.width-value, root.height-value, root.surface-index, root.chosen-ground, !root.custom-ground && root.ground-index == 0);
+        }
+    }
+
+    background: #000000a0;
+    TouchArea { }
+
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: max(16px, (parent.height - self.height) / 2);
+        width: min(640px, parent.width - 32px);
+        height: layout.preferred-height;
+        background: Theme.panel;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.line;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000c0;
+
+        layout := VerticalLayout {
+            padding: 24px;
+            spacing: 18px;
+
+            HorizontalLayout {
+                spacing: 12px;
+                Image { source: @image-url("icons/logo.svg"); width: 28px; height: 28px; }
+                VerticalLayout {
+                    Text { text: "New Canvas"; color: Theme.text; font-size: 18px; font-weight: 600; }
+                    Text { text: "Choose the size, surface and ground for a fresh painting."; color: Theme.muted; font-size: 12px; }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                SectionTitle { text: "SIZE"; }
+                Rectangle {
+                    height: 2 * 50px - 6px;
+                    for preset[index] in root.presets: Chip {
+                        x: mod(index, 4) * (parent.width + 8px) / 4;
+                        y: floor(index / 4) * 50px;
+                        width: (parent.width - 24px) / 4;
+                        label: preset.name;
+                        detail: preset.width + " × " + preset.height;
+                        selected: root.width-value == preset.width && root.height-value == preset.height;
+                        clicked => { root.choose-size(preset.width, preset.height); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Text { text: "Width"; color: Theme.muted; font-size: 13px; vertical-alignment: center; }
+                    width-field := LineEdit { text: root.initial-width; input-type: number; width: 96px; accepted => { root.submit(); } }
+                    ToolbarButton {
+                        icon: "M 2.5 5.5 L 13.5 5.5 M 10.5 2.5 L 13.5 5.5 L 10.5 8.5 M 13.5 10.5 L 2.5 10.5 M 5.5 7.5 L 2.5 10.5 L 5.5 13.5";
+                        tooltip: "Swap orientation";
+                        clicked => { root.choose-size(root.height-value, root.width-value); }
+                    }
+                    Text { text: "Height"; color: Theme.muted; font-size: 13px; vertical-alignment: center; }
+                    height-field := LineEdit { text: root.initial-height; input-type: number; width: 96px; accepted => { root.submit(); } }
+                    Text { text: "px"; color: Theme.muted; font-size: 13px; vertical-alignment: center; }
+                    Text {
+                        horizontal-stretch: 1;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                        font-size: 12px;
+                        color: root.valid ? Theme.muted : Theme.danger;
+                        text: root.valid
+                            ? round(root.width-value / 8) / 10 + " × " + round(root.height-value / 8) / 10 + " cm"
+                            : "Each side must be " + root.smallest-side + "–" + root.largest-side + " px";
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                SectionTitle { text: "SURFACE"; }
+                Rectangle {
+                    height: ceil(root.surface-names.length / 3) * 38px - 6px;
+                    for name[index] in root.surface-names: PresetRow {
+                        x: mod(index, 3) * (parent.width + 6px) / 3;
+                        y: floor(index / 3) * 38px;
+                        width: (parent.width - 12px) / 3;
+                        height: 32px;
+                        label: name;
+                        selected: index == root.surface-index;
+                        clicked => { root.surface-index = index; }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 8px;
+                HorizontalLayout {
+                    SectionTitle { text: "GROUND"; horizontal-stretch: 1; }
+                    Text {
+                        text: root.custom-ground ? "Custom" : root.grounds[root.ground-index].name;
+                        color: Theme.text;
+                        font-size: 12px;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    for ground[index] in root.grounds: Swatch {
+                        paint: ground.colour;
+                        active: !root.custom-ground && index == root.ground-index;
+                        clicked => { root.ground-index = index; root.custom-ground = false; }
+                    }
+                    IconSwatch {
+                        glyph: "+";
+                        active: root.custom-ground;
+                        clicked => { root.custom-ground = true; }
+                    }
+                }
+                custom-field := ColourField {
+                    visible: root.custom-ground;
+                    height: root.custom-ground ? self.preferred-height : 0;
+                    hue: 30;
+                    saturation: 0.35;
+                    value: 0.55;
+                }
+            }
+
+            Rectangle { height: 1px; background: Theme.line; }
+
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: end;
+                ToolButton { label: "Cancel"; height: 32px; clicked => { root.cancel(); } }
+                PrimaryButton { label: "Create Canvas"; enabled: root.valid; clicked => { root.submit(); } }
+            }
         }
     }
 }
 
 export component AppWindow inherits Window {
-    title: "PigmentLab";
+    title: root.document-name + " — PigmentLab";
     icon: @image-url("icons/icon.png");
     preferred-width: 1440px;
     preferred-height: 900px;
@@ -433,6 +666,12 @@ export component AppWindow inherits Window {
     in property <length> canvas-width: 1024px;
     in property <length> canvas-height: 768px;
     in property <float> canvas-scale: 1.0;
+    in property <int> canvas-pixel-width: 0;
+    in property <int> canvas-pixel-height: 0;
+    in property <int> largest-canvas-side: 4096;
+    in property <int> smallest-canvas-side: 256;
+    in property <string> document-name: "Untitled";
+    in-out property <bool> new-canvas-open: false;
     in property <[color]> swatches: [];
     in-out property <int> active-swatch: 2;
     in property <float> brush-fill: 0;
@@ -472,7 +711,7 @@ export component AppWindow inherits Window {
     out property <float> canvas-tooth <=> tooth-slider.value;
     out property <bool> show-bristles <=> bristles-toggle.checked;
     out property <bool> levelling-enabled <=> levelling-toggle.checked;
-    out property <bool> recording <=> record-toggle.checked;
+    in-out property <bool> recording <=> record-toggle.checked;
     out property <float> light-azimuth <=> azimuth-slider.value;
     out property <float> light-elevation <=> elevation-slider.value;
     out property <float> gloss <=> gloss-slider.value;
@@ -501,6 +740,66 @@ export component AppWindow inherits Window {
     callback undo();
     callback save();
     callback dry();
+    callback save-as();
+    callback new-canvas(width: int, height: int, surface: int, ground: color, natural-ground: bool);
+
+    public function fit-canvas() {
+        root.pan-x = 0;
+        root.pan-y = 0;
+        root.zoom = clamp(min((viewport.width - 64px) / root.canvas-width, (viewport.height - 64px) / root.canvas-height), 0.1, 1.0);
+    }
+
+    function zoom-by(factor: float) {
+        let anchor-x = (viewport.width / 2 - canvas-image.x) / root.zoom;
+        let anchor-y = (viewport.height / 2 - canvas-image.y) / root.zoom;
+        root.zoom = clamp(root.zoom * factor, 0.1, 5.0);
+        root.pan-x = viewport.width / 2 - anchor-x * root.zoom - (viewport.width - root.canvas-width * root.zoom) / 2;
+        root.pan-y = viewport.height / 2 - anchor-y * root.zoom - (viewport.height - root.canvas-height * root.zoom) / 2;
+    }
+
+    function actual-size() {
+        root.pan-x = 0;
+        root.pan-y = 0;
+        root.zoom = 1;
+    }
+
+    MenuBar {
+        Menu {
+            title: "File";
+            MenuItem { title: "New Canvas…"; shortcut: @keys(Control + N); activated => { root.new-canvas-open = true; } }
+            MenuSeparator { }
+            MenuItem { title: "Save"; shortcut: @keys(Control + S); activated => { root.save(); } }
+            MenuItem { title: "Save As…"; shortcut: @keys(Control + Shift + S); activated => { root.save-as(); } }
+            MenuSeparator { }
+            MenuItem { title: "Record Scenario"; checkable: true; checked <=> record-toggle.checked; }
+        }
+        Menu {
+            title: "Edit";
+            MenuItem { title: "Undo"; shortcut: @keys(Control + Z); activated => { root.undo(); } }
+            MenuSeparator { }
+            MenuItem { title: "Clear Canvas"; shortcut: @keys(Control + Backspace); activated => { root.clear(); } }
+        }
+        Menu {
+            title: "Paint";
+            MenuItem { title: "Dry Paint"; shortcut: @keys(Control + D); activated => { root.dry(); } }
+            MenuSeparator { }
+            MenuItem { title: "Wipe Brush"; shortcut: @keys(Control + W); activated => { root.wipe(); } }
+            MenuItem { title: "Clean Brush"; shortcut: @keys(Control + K); activated => { root.clean(); } }
+            MenuItem { title: "Pick Colour from Canvas"; shortcut: @keys(Control + I); activated => { root.eyedropper = true; } }
+            MenuItem { title: "Mix a Colour…"; activated => { picker-popup.show(); } }
+            MenuSeparator { }
+            MenuItem { title: "Paint Levelling"; checkable: true; checked <=> levelling-toggle.checked; }
+        }
+        Menu {
+            title: "View";
+            MenuItem { title: "Zoom In"; shortcut: @keys(Control + Shift? + "="); activated => { root.zoom-by(1.25); } }
+            MenuItem { title: "Zoom Out"; shortcut: @keys(Control + "-"); activated => { root.zoom-by(0.8); } }
+            MenuItem { title: "Fit to Window"; shortcut: @keys(Control + "0"); activated => { root.fit-canvas(); } }
+            MenuItem { title: "Actual Size"; shortcut: @keys(Control + "1"); activated => { root.actual-size(); } }
+            MenuSeparator { }
+            MenuItem { title: "Show Bristles"; checkable: true; checked <=> bristles-toggle.checked; }
+        }
+    }
 
     property <float> zoom: 1.0;
     property <length> shadow-margin: 48px;
@@ -510,21 +809,7 @@ export component AppWindow inherits Window {
     property <length> pan-grab-x: 0;
     property <length> pan-grab-y: 0;
 
-    forward-focus: keys;
-
-    keys := FocusScope {
-        key-pressed(event) => {
-            if (event.text == "z" && (event.modifiers.meta || event.modifiers.control)) {
-                root.undo();
-                return accept;
-            }
-            if (event.text == "s" && (event.modifiers.meta || event.modifiers.control)) {
-                root.save();
-                return accept;
-            }
-            return reject;
-        }
-
+    Rectangle {
         VerticalLayout {
             Rectangle { height: 48px; }
 
@@ -627,16 +912,29 @@ export component AppWindow inherits Window {
                     Rectangle {
                         x: 12px;
                         y: parent.height - self.height - 12px;
-                        width: zoom-label.preferred-width + 16px;
-                        height: 24px;
-                        border-radius: 6px;
-                        background: #00000088;
-                        zoom-label := Text {
-                            text: round(root.zoom * 100) + "%";
-                            color: Theme.text;
-                            font-size: 12px;
-                            vertical-alignment: center;
-                            horizontal-alignment: center;
+                        width: zoom-bar.preferred-width;
+                        height: 32px;
+                        border-radius: 8px;
+                        background: #101215e0;
+                        border-width: 1px;
+                        border-color: Theme.line;
+                        zoom-bar := HorizontalLayout {
+                            padding-left: 2px;
+                            padding-right: 2px;
+                            ToolbarButton { icon: "M 3.5 8 L 12.5 8"; tooltip: "Zoom out  ⌘−"; clicked => { root.zoom-by(0.8); } }
+                            TouchArea {
+                                width: 52px;
+                                clicked => { root.actual-size(); }
+                                Text {
+                                    text: round(root.zoom * 100) + "%";
+                                    color: Theme.text;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                            }
+                            ToolbarButton { icon: "M 3.5 8 L 12.5 8 M 8 3.5 L 8 12.5"; tooltip: "Zoom in  ⌘+"; clicked => { root.zoom-by(1.25); } }
+                            ToolbarButton { icon: "M 2.5 6 L 2.5 2.5 L 6 2.5 M 10 2.5 L 13.5 2.5 L 13.5 6 M 13.5 10 L 13.5 13.5 L 10 13.5 M 6 13.5 L 2.5 13.5 L 2.5 10"; tooltip: "Fit to window  ⌘0"; clicked => { root.fit-canvas(); } }
                         }
                     }
                 }
@@ -688,14 +986,12 @@ export component AppWindow inherits Window {
                                         vertical-alignment: center;
                                         horizontal-stretch: 1;
                                     }
-                                    VerticalLayout {
-                                        alignment: center;
-                                        HorizontalLayout {
-                                            spacing: 6px;
-                                            ToolButton { label: "Wipe"; clicked => { root.wipe(); } }
-                                            ToolButton { label: "Clean"; clicked => { root.clean(); } }
-                                        }
-                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    ToolButton { label: "Wipe"; clicked => { root.wipe(); } }
+                                    ToolButton { label: "Clean"; clicked => { root.clean(); } }
                                 }
                                 Rectangle {
                                     height: ceil((root.swatches.length + (root.watercolour ? 3 : 2)) / root.swatch-columns) * root.swatch-cell - 8px;
@@ -810,6 +1106,8 @@ export component AppWindow inherits Window {
                     padding-left: 16px;
                     padding-right: 16px;
                     spacing: 24px;
+                    Text { text: root.canvas-pixel-width + " × " + root.canvas-pixel-height + " px  ·  " + round(root.canvas-pixel-width / 8) / 10 + " × " + round(root.canvas-pixel-height / 8) / 10 + " cm"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                    Text { text: root.surface-names.length > root.surface-index ? root.surface-names[root.surface-index] : ""; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
                     Text { text: root.pen-status; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
                     Text { text: root.status; color: Theme.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                     Text { text: round(root.frame-ms * 10) / 10 + " ms"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
@@ -836,27 +1134,55 @@ export component AppWindow inherits Window {
                 }
                 Rectangle { width: 6px; }
                 Text { text: "PigmentLab"; color: Theme.text; font-size: 15px; font-weight: 600; letter-spacing: 0.2px; vertical-alignment: center; }
+                Rectangle { width: 10px; }
+                ToolbarDivider { }
+                Rectangle { width: 10px; }
+                Text { text: root.document-name; color: Theme.muted; font-size: 13px; vertical-alignment: center; overflow: elide; }
                 Rectangle { horizontal-stretch: 1; }
+                ToolbarButton {
+                    icon: "M 3.5 1.5 L 9.5 1.5 L 12.5 4.5 L 12.5 14.5 L 3.5 14.5 Z M 9.5 1.5 L 9.5 4.5 L 12.5 4.5 M 8 7.5 L 8 12 M 5.75 9.75 L 10.25 9.75";
+                    tooltip: "New canvas  ⌘N";
+                    clicked => { root.new-canvas-open = true; }
+                }
+                ToolbarButton {
+                    icon: "M 8 2.5 L 8 10 M 5 7 L 8 10 L 11 7 M 2.5 10.5 L 2.5 13.5 L 13.5 13.5 L 13.5 10.5";
+                    tooltip: "Save  ⌘S";
+                    clicked => { root.save(); }
+                }
+                Rectangle { width: 6px; }
+                ToolbarDivider { }
+                Rectangle { width: 6px; }
                 ToolbarButton {
                     icon: "M 5.5 2.5 L 2.5 5.5 L 5.5 8.5 M 2.5 5.5 L 10 5.5 C 12 5.5 13.5 7.2 13.5 9.5 C 13.5 11.8 12 13.5 10 13.5 L 6 13.5";
                     tooltip: "Undo  ⌘Z";
                     clicked => { root.undo(); }
                 }
-                ToolbarButton { label: "Dry"; tooltip: "Dry the wet paint"; clicked => { root.dry(); } }
+                ToolbarButton { label: "Dry"; tooltip: "Dry the wet paint  ⌘D"; clicked => { root.dry(); } }
                 Rectangle { width: 6px; }
                 ToolbarDivider { }
                 Rectangle { width: 6px; }
                 ToolbarButton {
-                    icon: "M 8 2.5 L 8 10 M 5 7 L 8 10 L 11 7 M 2.5 10.5 L 2.5 13.5 L 13.5 13.5 L 13.5 10.5";
-                    tooltip: "Save PNG  ⌘S";
-                    clicked => { root.save(); }
-                }
-                ToolbarButton {
                     icon: "M 2.5 4.5 L 13.5 4.5 M 6 4.5 L 6 2.5 L 10 2.5 L 10 4.5 M 4 4.5 L 4.8 13.5 L 11.2 13.5 L 12 4.5 M 6.8 7 L 6.8 11 M 9.2 7 L 9.2 11";
-                    tooltip: "Clear canvas";
+                    tooltip: "Clear canvas  ⌘⌫";
                     danger: true;
                     clicked => { root.clear(); }
                 }
+            }
+        }
+
+        if root.new-canvas-open: NewCanvasDialog {
+            width: parent.width;
+            height: parent.height;
+            surface-names: root.surface-names;
+            initial-width: root.canvas-pixel-width;
+            initial-height: root.canvas-pixel-height;
+            initial-surface: root.surface-index;
+            largest-side: root.largest-canvas-side;
+            smallest-side: root.smallest-canvas-side;
+            cancel => { root.new-canvas-open = false; }
+            create(width, height, surface, ground, natural) => {
+                root.new-canvas-open = false;
+                root.new-canvas(width, height, surface, ground, natural);
             }
         }
     }

@@ -89,8 +89,7 @@ impl Surface {
         }
     }
 
-    pub fn colour_layer(self, relief: &[f32], size: CanvasSize, seed: u64) -> Vec<[f32; 4]> {
-        let base = self.colour();
+    pub fn colour_layer(self, base: [f32; 3], relief: &[f32], size: CanvasSize, seed: u64) -> Vec<[f32; 4]> {
         let sheen = if self == Surface::Rice { FIBRE_SHEEN } else { 0.0 };
         relief
             .iter()
@@ -152,10 +151,20 @@ mod tests {
     fn the_colour_layer_is_a_pale_dry_layer() {
         for surface in Surface::ALL {
             let relief = surface.relief(SIZE, 5);
-            for pixel in surface.colour_layer(&relief, SIZE, 5) {
+            for pixel in surface.colour_layer(surface.colour(), &relief, SIZE, 5) {
                 assert_eq!(pixel[0], 0.0);
                 assert!(pixel[1] > 0.85 && pixel[3] > 0.8, "{surface:?} {pixel:?}");
             }
+        }
+    }
+
+    #[test]
+    fn the_colour_layer_carries_the_chosen_ground() {
+        let relief = Surface::Linen.relief(SIZE, 5);
+        let layer = Surface::Linen.colour_layer([0.2, 0.1, 0.05], &relief, SIZE, 5);
+        let mean = layer.iter().fold([0.0f32; 3], |sum, pixel| [sum[0] + pixel[1], sum[1] + pixel[2], sum[2] + pixel[3]]).map(|total| total / layer.len() as f32);
+        for (channel, expected) in mean.iter().zip([0.2, 0.1, 0.05]) {
+            assert!((channel - expected).abs() < expected * 0.01, "{mean:?}");
         }
     }
 }

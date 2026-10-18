@@ -1,6 +1,7 @@
 use super::{DEPOSIT_DT, Engine, SIMULATION_DT, SUBSTEPS_PER_WATER_STEP, WATER_SETTLE_SECONDS};
 use crate::canvas::{Medium, Surface};
 use crate::gpu::read_buffer;
+use crate::pigment::srgb_to_linear;
 use crate::watercolour::{WaterTube, Watercolour};
 use glam::Vec4;
 
@@ -53,6 +54,11 @@ impl Engine {
         self.mark_whole_canvas_stale();
     }
 
+    pub fn set_sheet(&mut self, surface: Surface, ground: Option<[u8; 3]>) {
+        self.canvas.set_ground_colour(ground.map(|srgb| srgb.map(|channel| srgb_to_linear(f32::from(channel) / 255.0))));
+        self.set_surface(surface);
+    }
+
     pub fn clear(&mut self) {
         if let Some(watercolour) = &mut self.watercolour {
             watercolour.clear(&self.gpu);
@@ -100,8 +106,8 @@ impl Engine {
         restored
     }
 
-    pub fn save_png(&mut self, path: &std::path::Path) -> Result<(), image::ImageError> {
+    pub fn save_image(&mut self, path: &std::path::Path) -> Result<(), image::ImageError> {
         self.render();
-        self.read_back().save(path)
+        image::DynamicImage::ImageRgba8(self.read_back()).to_rgb8().save(path)
     }
 }
