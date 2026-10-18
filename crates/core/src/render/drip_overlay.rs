@@ -95,10 +95,6 @@ impl DripOverlay {
 
     pub fn encode(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, target: &Target, drips: Option<&Drips>, hook: Option<Vec2>) {
         let vertices = drips.map(|drips| shapes(drips, hook, 1.0 / target.view.scale)).unwrap_or_default();
-        let load = match target.premultiplied {
-            true => wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-            false => wgpu::LoadOp::Load,
-        };
         let bytes: &[u8] = bytemuck::cast_slice(&vertices);
         if self.vertices.as_ref().is_none_or(|buffer| buffer.size() < bytes.len() as u64) {
             self.vertices = Some(gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -118,7 +114,7 @@ impl DripOverlay {
                 view: target.texture,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,

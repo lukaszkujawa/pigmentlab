@@ -82,7 +82,7 @@ impl Engine {
         self.fit_window(preset.reach_from_handle() + FOOTPRINT_SLACK);
         self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.canvas, &self.stroke_base);
         self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.canvas, &self.stroke_base, DEPOSIT_DT);
-        self.brush_lines = BrushLines::new(&self.gpu, &self.brush);
+        self.brush_lines = BrushLines::new(&self.gpu, &self.brush, &self.frames);
         self.brush.teleport(&self.gpu, &self.pose);
         self.rebuild_water_brush();
         self.brush_contents = BrushContents::empty();
@@ -100,7 +100,7 @@ impl Engine {
         self.window = ActiveWindow::new(&self.gpu, &self.canvas, size);
         self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window);
         self.levelling = Levelling::new(&self.gpu, &self.canvas, &self.window, &self.height_map);
-        self.composite = Composite::new(&self.gpu, &self.canvas, &self.window, &self.height_map);
+        self.composite = Composite::new(&self.gpu, &self.canvas, &self.window, &self.height_map, &self.frames);
         self.composite.set_lighting(&self.gpu, self.lighting);
         self.composite.attach_watercolour(&self.gpu, &self.canvas, &self.height_map, self.watercolour.as_ref());
         self.tube = Tube::new(&self.gpu, &self.window, &self.canvas, &self.height_map.heights, self.seed, SIMULATION_DT);

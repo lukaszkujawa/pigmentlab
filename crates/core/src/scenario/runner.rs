@@ -1,6 +1,6 @@
 use super::compare::{Comparison, compare, difference_image};
 use super::fractal::box_counting_dimension;
-use super::{Action, Scenario};
+use super::{Action, Scenario, Zoom};
 use crate::drip::Hanging;
 use crate::engine::{Engine, SIMULATION_DT};
 use glam::Vec2;
@@ -61,9 +61,11 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
                 engine.pointer(sample(PointerPhase::Up, x, y, 0.0, [0.0; 2], 0.0, step.t));
             }
             Action::Hover { x, y, tilt, rotation } => engine.hover(Hover { x: *x, y: *y, tilt: *tilt, rotation: *rotation }),
-            Action::Checkpoint { name } => {
-                engine.render();
-                let actual = engine.read_back();
+            Action::Checkpoint { name, zoom } => {
+                let actual = match zoom {
+                    Some(zoom) => zoomed(&mut engine, *zoom),
+                    None => engine.read_back(),
+                };
                 let comparison = check(&actual, baseline_dir, name, scenario, update_baselines);
                 let fractal_dimension = box_counting_dimension(&engine.paint_heights(), scenario.canvas.width as usize, scenario.canvas.height as usize);
                 checkpoints.push(CheckpointResult {
@@ -108,6 +110,14 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
 
     let steps_simulated = (engine.time() / f64::from(SIMULATION_DT)).round() as u64;
     Report { total_ms: started.elapsed().as_secs_f64() * 1000.0, steps_simulated, checkpoints }
+}
+
+fn zoomed(engine: &mut Engine, zoom: Zoom) -> image::RgbaImage {
+    engine.set_stage(Some(zoom.viewport()));
+    engine.render();
+    let image = engine.read_stage().expect("a zoomed checkpoint draws the stage");
+    engine.set_stage(None);
+    image
 }
 
 fn sample(phase: PointerPhase, x: f32, y: f32, pressure: f32, tilt: [f32; 2], rotation: f32, time: f64) -> PointerSample {

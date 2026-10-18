@@ -24,6 +24,7 @@ struct BrushUniform {
 @group(0) @binding(0) var<uniform> brush: BrushUniform;
 @group(0) @binding(1) var<storage, read> positions: array<vec4<f32>>;
 @group(0) @binding(2) var<storage, read> solids: array<u32>;
+@group(0) @binding(3) var<uniform> view: ViewUniform;
 
 const SILICONE_FLAG: u32 = 0x40000000u;
 const WORKING_FACE_FLAG: u32 = 0x20000000u;
@@ -47,7 +48,7 @@ fn vs_hair(@builtin(vertex_index) index: u32) -> VertexOutput {
     let vertex = segment % DRAWN_SEGMENTS + 1u + (index & 1u);
     let canvas = to_canvas(positions[bristle * VERTICES + vertex].xyz);
     let seen = vec2<f32>(canvas.x, canvas.y - canvas.z * OBLIQUE);
-    let ndc = vec2<f32>(seen.x / brush.canvas_width * 2.0 - 1.0, 1.0 - seen.y / brush.canvas_height * 2.0);
+    let ndc = canvas_to_clip(seen.xy);
     let contact = clamp(1.0 - canvas.z / 4.0, 0.0, 1.0);
     let along = f32(vertex - 1u) / f32(DRAWN_SEGMENTS);
     let hair = mix(vec3<f32>(0.42, 0.33, 0.22), vec3<f32>(0.93, 0.86, 0.70), along);
@@ -59,7 +60,7 @@ fn vs_hair(@builtin(vertex_index) index: u32) -> VertexOutput {
 
 fn seen_from_above(canvas: vec3<f32>) -> vec4<f32> {
     let seen = vec2<f32>(canvas.x, canvas.y - canvas.z * OBLIQUE);
-    return vec4<f32>(seen.x / brush.canvas_width * 2.0 - 1.0, 1.0 - seen.y / brush.canvas_height * 2.0, 0.0, 1.0);
+    return vec4<f32>(canvas_to_clip(seen.xy), 0.0, 1.0);
 }
 
 fn blade_colour(silicone: bool, along: f32) -> vec3<f32> {

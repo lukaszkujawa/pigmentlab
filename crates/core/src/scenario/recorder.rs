@@ -107,7 +107,7 @@ impl Recorder {
     }
 
     pub fn finish(mut self, time: f64) -> Scenario {
-        self.push(time + 0.5, Action::Checkpoint { name: "final".into() });
+        self.push(time + 0.5, Action::Checkpoint { name: "final".into(), zoom: None });
         Scenario {
             seed: self.seed,
             canvas: self.canvas,

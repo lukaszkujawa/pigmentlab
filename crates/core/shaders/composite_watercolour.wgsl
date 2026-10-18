@@ -86,7 +86,7 @@ fn pigment_per_pixel(texel: vec2<i32>) -> f32 {
 }
 
 @fragment
-fn fs_watercolour(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fs_watercolour(in: VertexOutput) -> Surface {
     let texel = vec2<i32>(in.position.xy);
     let index = clamped_index(texel);
     var albedo = dry[index].yzw;
@@ -105,6 +105,5 @@ fn fs_watercolour(in: VertexOutput) -> @location(0) vec4<f32> {
     let soaked = clamp(wet.water.x / SATURATED_WATER, 0.0, 1.0) * inside;
     let damp = clamp(wet.water.y, 0.0, 1.0) * inside;
     albedo *= 1.0 - WET_DARKENING * soaked - DAMP_DARKENING * damp * (1.0 - soaked);
-    let colour = shade(albedo, texel, smoothstep(0.0, SHEEN_DEPTH, wet.water.x) * inside * PIXELS_PER_CM * 0.015, 1.0);
-    return vec4<f32>(clamp(colour, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    return surface_of(albedo, texel, smoothstep(0.0, SHEEN_DEPTH, wet.water.x) * inside * PIXELS_PER_CM * 0.015, 1.0, true);
 }

@@ -1,17 +1,6 @@
-struct CompositeUniform {
-    canvas_width: u32,
-    canvas_height: u32,
-    light_azimuth: f32,
-    light_elevation: f32,
-    gloss: f32,
-    ambient: f32,
-    shadow_strength: f32,
-    padding: f32,
-};
 
 const OCCLUSION_STRENGTH: f32 = 0.6;
 const EDGE_PAINT: f32 = 0.02;
-const LIGHTING_FLOOR: f32 = 0.35;
 const SHADOW_STEPS: i32 = 24;
 const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 * PIXELS_PER_CM, 0.18 * PIXELS_PER_CM);
 
@@ -76,12 +65,6 @@ fn height_at(texel: vec2<i32>) -> f32 {
     return smooth_surface[clamped_index(texel)];
 }
 
-fn light_direction() -> vec3<f32> {
-    let elevation = radians(composite.light_elevation);
-    let azimuth = radians(composite.light_azimuth);
-    return vec3<f32>(cos(elevation) * cos(azimuth), cos(elevation) * sin(azimuth), sin(elevation));
-}
-
 fn occlusion(texel: vec2<i32>, height: f32) -> f32 {
     var total = 0.0;
     for (var direction = 0; direction < 8; direction++) {
@@ -111,77 +94,35 @@ fn shadow(texel: vec2<i32>, height: f32, light: vec3<f32>) -> f32 {
     return 1.0 - composite.shadow_strength * blocked;
 }
 
-fn shade(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32, medium: f32) -> vec3<f32> {
+struct Surface {
+    @location(0) albedo: vec4<f32>,
+    @location(1) finish: vec4<f32>,
+};
+
+fn surface_of(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32, medium: f32, covered: bool) -> Surface {
     let height = height_at(texel);
     let glossy = smoothstep(0.0, 0.015 * PIXELS_PER_CM, paint_height) * mix(0.7, 1.0, medium);
-    let slope_x = (height_at(texel + vec2<i32>(1, 0)) - height_at(texel - vec2<i32>(1, 0))) * 0.5;
-    let slope_y = (height_at(texel + vec2<i32>(0, 1)) - height_at(texel - vec2<i32>(0, 1))) * 0.5;
-    let normal = normalize(vec3<f32>(-slope_x, -slope_y, 1.0));
-    let light = light_direction();
-    let diffuse = min(max(dot(normal, light), 0.0) / max(light.z, 0.2), 1.5);
-    let halfway = normalize(light + vec3<f32>(0.0, 0.0, 1.0));
-    let shininess = mix(8.0, 96.0, composite.gloss);
-    let specular = pow(max(dot(normal, halfway), 0.0), shininess) * composite.gloss * 0.5 * glossy;
-    let lit = shadow(texel, height, light);
-    let ambient = composite.ambient * occlusion(texel, height);
-    let lighting = max(ambient + (1.0 - composite.ambient) * diffuse * lit, LIGHTING_FLOOR);
-    return albedo * lighting + vec3<f32>(specular * lit);
+    var surface: Surface;
+    surface.albedo = vec4<f32>(clamp(albedo, vec3<f32>(0.0), vec3<f32>(1.0)), select(0.0, 1.0, covered));
+    surface.finish = vec4<f32>(glossy, shadow(texel, height, light_direction()), occlusion(texel, height), 0.0);
+    return surface;
 }
 
 fn painted(texel: vec2<i32>) -> bool {
     return heights[clamped_index(texel)] > EDGE_PAINT;
 }
 
-fn coverage(texel: vec2<i32>) -> f32 {
-    var total = 0.0;
-    for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-            if (painted(texel + vec2<i32>(dx, dy))) { total += f32((2 - abs(dx)) * (2 - abs(dy))); }
-        }
-    }
-    return total / 16.0;
-}
-
-fn thickest_neighbour(texel: vec2<i32>) -> vec2<i32> {
-    var best = texel;
-    var deepest = 0.0;
-    for (var i = 0; i < 4; i++) {
-        let neighbour = texel + array<vec2<i32>, 4>(vec2<i32>(1, 0), vec2<i32>(-1, 0), vec2<i32>(0, 1), vec2<i32>(0, -1))[i];
-        let depth = heights[clamped_index(neighbour)];
-        if (depth > deepest) {
-            deepest = depth;
-            best = neighbour;
-        }
-    }
-    return best;
-}
-
-fn paint_colour(texel: vec2<i32>, base: vec3<f32>) -> vec3<f32> {
+@fragment
+fn fs_main(in: VertexOutput) -> Surface {
+    let texel = vec2<i32>(in.position.xy);
+    let base = dry[clamped_index(texel)].yzw;
+    let covered = painted(texel);
     let column = column_pigment(texel);
     let height = column.height;
-    if (height <= 1e-4) { return shade(base, texel, 0.0, 0.0); }
+    if (height <= 1e-4) { return surface_of(base, texel, 0.0, 0.0, covered); }
     let k = max(visible_absorption(column), vec3<f32>(0.0));
     let s = max(visible_scattering(column), vec3<f32>(0.0));
     let thickness = max(mix(height, smooth_paint[clamped_index(texel)], 0.3), 1e-4);
     let albedo = layer_reflectance(k, s, thickness * OPTICAL_THICKNESS_PER_PIXEL, base);
-    return shade(albedo, texel, height, clamp(column.medium / height, 0.0, 1.0));
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let texel = vec2<i32>(in.position.xy);
-    let base = dry[clamped_index(texel)].yzw;
-    var colour = paint_colour(texel, base);
-    if (smooth_paint[clamped_index(texel)] > 0.0) {
-        let cover = coverage(texel);
-        if (cover > 0.0 && cover < 1.0) {
-            let bare = shade(base, texel, 0.0, 0.0);
-            if (painted(texel)) {
-                colour = mix(bare, colour, cover);
-            } else {
-                colour = mix(colour, paint_colour(thickest_neighbour(texel), base), cover);
-            }
-        }
-    }
-    return vec4<f32>(clamp(colour, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    return surface_of(albedo, texel, height, clamp(column.medium / height, 0.0, 1.0), covered);
 }

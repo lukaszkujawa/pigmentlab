@@ -722,7 +722,6 @@ export component AppWindow inherits Window {
     preferred-height: 900px;
     background: Theme.window;
 
-    in property <image> canvas-texture <=> canvas-image.source;
     in property <image> stage-texture <=> stage-image.source;
     out property <length> stage-width: viewport.width;
     out property <length> stage-height: viewport.height;
@@ -915,7 +914,7 @@ export component AppWindow inherits Window {
                         drop-shadow-blur: 24px;
                         drop-shadow-color: #00000099;
                     }
-                    canvas-image := Image {
+                    canvas-image := Rectangle {
                         x: (viewport.width - self.width) / 2 + root.pan-x;
                         y: (viewport.height - self.height) / 2 + root.pan-y;
                         width: root.canvas-width * root.zoom;

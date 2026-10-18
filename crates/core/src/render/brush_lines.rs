@@ -1,4 +1,5 @@
 use super::composite::DISPLAY_FORMAT;
+use super::view::{Frame, ViewFrames};
 use crate::brush::{Brush, BrushPreset, VERTICES_PER_BRISTLE, blade_grid, carries_paint};
 use glam::Vec4;
 use crate::gpu::Gpu;
@@ -9,38 +10,40 @@ const WORKING_FACE_FLAG: u32 = 1 << 29;
 pub struct BrushLines {
     lines: wgpu::RenderPipeline,
     solids: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
+    canvas: wgpu::BindGroup,
+    stage: wgpu::BindGroup,
     line_vertices: u32,
     solid_vertices: u32,
 }
 
 impl BrushLines {
-    pub fn new(gpu: &Gpu, brush: &Brush) -> Self {
+    pub fn new(gpu: &Gpu, brush: &Brush, frames: &ViewFrames) -> Self {
         let preset = brush.preset();
-        let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("brush lines"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/brush_lines.wgsl").into()),
-        });
+        let shader = gpu.shader("brush lines", &[include_str!("../../shaders/view.wgsl"), include_str!("../../shaders/brush_lines.wgsl")]);
         let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("brush lines"),
             entries: &[
                 buffer_entry(0, wgpu::BufferBindingType::Uniform),
                 buffer_entry(1, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(2, wgpu::BufferBindingType::Storage { read_only: true }),
+                buffer_entry(3, wgpu::BufferBindingType::Uniform),
             ],
         });
         let silicone = if preset.deposit_rate > 0.0 { 0 } else { SILICONE_FLAG };
         let solid: Vec<u32> = if preset.is_rigid() { blade_sheet(preset).into_iter().map(|id| id | silicone | working_face(preset, brush.rest(), id)).collect() } else { Vec::new() };
         let solid_buffer = upload(gpu, "blade sheet", bytemuck::cast_slice(&solid));
-        let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("brush lines"),
-            layout: &layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: brush.uniform.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: brush.positions.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: solid_buffer.as_entire_binding() },
-            ],
-        });
+        let bind_group = |frame: Frame| {
+            gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("brush lines"),
+                layout: &layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: brush.uniform.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 1, resource: brush.positions.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 2, resource: solid_buffer.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 3, resource: frames.buffer(frame).as_entire_binding() },
+                ],
+            })
+        };
         let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("brush lines"),
             bind_group_layouts: &[Some(&layout)],
@@ -72,13 +75,14 @@ impl BrushLines {
         Self {
             lines: pipeline("vs_hair", wgpu::PrimitiveTopology::LineList),
             solids: pipeline("vs_solid", wgpu::PrimitiveTopology::TriangleList),
-            bind_group,
+            canvas: bind_group(Frame::Canvas),
+            stage: bind_group(Frame::Stage),
             line_vertices,
             solid_vertices: solid.len() as u32,
         }
     }
 
-    pub fn encode(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView) {
+    pub fn encode(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView, frame: Frame) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("brush lines"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -92,7 +96,14 @@ impl BrushLines {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_bind_group(
+            0,
+            match frame {
+                Frame::Canvas => &self.canvas,
+                Frame::Stage => &self.stage,
+            },
+            &[],
+        );
         pass.set_pipeline(&self.solids);
         pass.draw(0..self.solid_vertices, 0..1);
         if self.line_vertices > 0 {

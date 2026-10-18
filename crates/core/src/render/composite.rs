@@ -2,10 +2,13 @@ use crate::canvas::Canvas;
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use crate::watercolour::Watercolour;
 use super::height_map::HeightMap;
+use super::present::{Present, PresentInputs};
+use super::view::{Frame, ViewFrames};
 use crate::paint::ActiveWindow;
 
 pub const DISPLAY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const PRESENTED_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 pub fn create_presented_texture(gpu: &Gpu, label: &str, size: wgpu::Extent3d, usage: wgpu::TextureUsages) -> wgpu::Texture {
     gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -59,6 +62,9 @@ pub struct Composite {
     shader: wgpu::ShaderModule,
     uniform: wgpu::Buffer,
     canvas: CanvasExtent,
+    albedo: wgpu::TextureView,
+    finish: wgpu::TextureView,
+    present: Present,
 }
 
 #[derive(Clone, Copy)]
@@ -68,12 +74,13 @@ struct CanvasExtent {
 }
 
 impl Composite {
-    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, height_map: &HeightMap) -> Self {
+    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, height_map: &HeightMap, frames: &ViewFrames) -> Self {
         let shader = gpu.shader(
             "composite",
             &[
                 include_str!("../../shaders/window.wgsl"),
                 include_str!("../../shaders/km.wgsl"),
+                include_str!("../../shaders/lighting.wgsl"),
                 include_str!("../../shaders/composite.wgsl"),
                 include_str!("../../shaders/wash_outline.wgsl"),
                 include_str!("../../shaders/wash_bridge.wgsl"),
@@ -111,6 +118,9 @@ impl Composite {
             ],
         });
         let pipeline = render_pipeline(gpu, &shader, &layout, "fs_main");
+        let albedo = surface_map(gpu, "albedo map", canvas);
+        let finish = surface_map(gpu, "finish map", canvas);
+        let present = Present::new(gpu, PresentInputs { albedo: &albedo, finish: &finish, surface: &height_map.surface, lighting: &uniform }, frames);
         let composite = Self {
             pipeline,
             bind_group,
@@ -118,6 +128,9 @@ impl Composite {
             shader,
             uniform,
             canvas: CanvasExtent { width: canvas.size.width, height: canvas.size.height },
+            albedo,
+            finish,
+            present,
         };
         composite.set_lighting(gpu, Lighting::default());
         composite
@@ -178,18 +191,18 @@ impl Composite {
         );
     }
 
-    pub fn encode(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("composite"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
+    pub fn encode_surface(&self, encoder: &mut wgpu::CommandEncoder) {
+        let target = |view| {
+            Some(wgpu::RenderPassColorAttachment {
+                view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+            })
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("composite"),
+            color_attachments: &[target(&self.albedo), target(&self.finish)],
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
@@ -200,6 +213,25 @@ impl Composite {
         pass.set_bind_group(0, bind_group, &[]);
         pass.draw(0..3, 0..1);
     }
+
+    pub fn encode(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView, frame: Frame) {
+        self.present.encode(encoder, target, frame);
+    }
+}
+
+fn surface_map(gpu: &Gpu, label: &str, canvas: &Canvas) -> wgpu::TextureView {
+    gpu.device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: canvas.size.extent(),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: SURFACE_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
 }
 
 fn render_pipeline(gpu: &Gpu, shader: &wgpu::ShaderModule, layout: &wgpu::BindGroupLayout, fragment: &str) -> wgpu::RenderPipeline {
@@ -216,7 +248,7 @@ fn render_pipeline(gpu: &Gpu, shader: &wgpu::ShaderModule, layout: &wgpu::BindGr
             module: shader,
             entry_point: Some(fragment),
             compilation_options: Default::default(),
-            targets: &[Some(DISPLAY_FORMAT.into())],
+            targets: &[Some(SURFACE_FORMAT.into()), Some(SURFACE_FORMAT.into())],
         }),
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: None,

@@ -378,8 +378,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     });
                     engine.advance_realtime(started.elapsed().as_secs_f64());
                     engine.set_stage(Some(stage_view(&app, engine.canvas_size())));
-                    let texture = engine.render().clone();
-                    app.set_canvas_texture(slint::Image::try_from(texture).unwrap());
+                    engine.render();
                     if let Some(stage) = engine.stage() {
                         app.set_stage_texture(slint::Image::try_from(stage.clone()).unwrap());
                     }
