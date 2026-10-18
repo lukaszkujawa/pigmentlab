@@ -1,17 +1,23 @@
 mod bottle;
 mod collide;
+mod drain;
 mod flick;
 mod flight;
 mod fluid;
+mod jet;
+mod laid;
 mod outflow;
 mod pendulum;
+mod puddles;
 mod rig;
-mod thread;
+mod splash;
 
 pub use bottle::Bottle;
+pub use drain::{Dribble, Tap, Tuft, drain_flow};
 pub use flick::{Spatter, shed_share};
 pub use flight::Droplet;
 pub use fluid::Fluid;
+pub use jet::{Jet, Piece};
 pub use rig::{Hanging, Rig, Setting};
 
 use crate::paint::Mark;
@@ -27,7 +33,11 @@ const HARDEST_THROW: f32 = 1.5;
 
 pub struct Drips {
     bottles: Vec<Bottle>,
+    cut: Vec<Bottle>,
+    dribble: Option<Dribble>,
+    tap: Option<Tap>,
     droplets: Vec<Droplet>,
+    puddles: puddles::Puddles,
     held: Option<u32>,
     selected: Option<u32>,
     paused: bool,
@@ -37,7 +47,7 @@ pub struct Drips {
 
 impl Drips {
     pub fn new(seed: u64) -> Self {
-        Self { bottles: Vec::new(), droplets: Vec::new(), held: None, selected: None, paused: false, next_id: 1, rng: SplitMix64::new(seed ^ 0xd21b_0771e) }
+        Self { bottles: Vec::new(), cut: Vec::new(), dribble: None, tap: None, droplets: Vec::new(), puddles: puddles::Puddles::default(), held: None, selected: None, paused: false, next_id: 1, rng: SplitMix64::new(seed ^ 0xd21b_0771e) }
     }
 
     pub fn hang(&mut self, rig: Rig, hanging: Hanging, paint: Coefficients, medium: f32) -> u32 {
@@ -53,18 +63,28 @@ impl Drips {
         id
     }
 
+    pub fn tap_brush(&mut self, tap: Option<Tap>) {
+        self.tap = tap;
+    }
+
+    pub fn dribble(&self) -> Option<&Dribble> {
+        self.dribble.as_ref()
+    }
+
     pub fn flick(&mut self, spatter: &Spatter) {
         self.droplets.extend(flick::spatter(spatter, &mut self.rng));
     }
 
     pub fn cut_strings(&mut self) {
-        self.bottles.clear();
+        self.cut.append(&mut self.bottles);
         self.held = None;
         self.selected = None;
     }
 
     pub fn remove(&mut self, id: u32) {
-        self.bottles.retain(|bottle| bottle.id != id);
+        let (removed, kept) = self.bottles.drain(..).partition(|bottle| bottle.id == id);
+        self.bottles = kept;
+        self.cut.extend(removed);
         self.held = self.held.filter(|held| *held != id);
         self.selected = self.selected.filter(|selected| *selected != id);
     }
@@ -92,6 +112,12 @@ impl Drips {
             Setting::PivotHeight(height) => bottle.set_pivot_height(metres(height)),
             Setting::Hole(radius) => bottle.hole_radius = metres(radius),
             Setting::Radius(radius) => bottle.resize(metres(radius)),
+        }
+    }
+
+    pub fn refill_selected(&mut self, paint: Coefficients, medium: f32) {
+        if let Some(bottle) = self.bottle_mut(self.selected) {
+            bottle.refill(paint, medium);
         }
     }
 
@@ -149,16 +175,30 @@ impl Drips {
         }
     }
 
+    pub fn next_bottle_id(&self) -> u32 {
+        self.next_id
+    }
+
     pub fn bottles(&self) -> &[Bottle] {
         &self.bottles
+    }
+
+    pub fn cut(&self) -> &[Bottle] {
+        &self.cut
     }
 
     pub fn droplets(&self) -> &[Droplet] {
         &self.droplets
     }
 
+    pub fn airborne(&self) -> f32 {
+        let jets = self.bottles.iter().chain(&self.cut).map(Bottle::falling_paint).sum::<f32>() + self.dribble.as_ref().map_or(0.0, Dribble::airborne);
+        jets + self.droplets.iter().map(Droplet::volume).sum::<f32>() + self.puddles.volume() * METRES_PER_PIXEL.powi(3)
+    }
+
     pub fn is_moving(&self) -> bool {
-        !self.paused && (!self.bottles.is_empty() || !self.droplets.is_empty())
+        let dribbling = self.tap.is_some_and(|tap| tap.flow > 0.0) || self.dribble.is_some();
+        !self.paused && (dribbling || !self.bottles.is_empty() || !self.cut.is_empty() || !self.droplets.is_empty() || !self.puddles.is_empty())
     }
 
     pub fn step(&mut self, dt: f32) -> Vec<Mark> {
@@ -171,6 +211,13 @@ impl Drips {
             marks.extend(released.marks);
             self.droplets.extend(released.droplets);
         }
+        for bottle in &mut self.cut {
+            let released = bottle.let_fall(dt);
+            marks.extend(released.marks);
+            self.droplets.extend(released.droplets);
+        }
+        self.cut.retain(|bottle| bottle.falling_paint() > 0.0);
+        self.drip_from_brush(dt, &mut marks);
         collide::collide(&mut self.bottles);
         for droplet in &mut self.droplets {
             droplet.fly(dt);
@@ -180,7 +227,21 @@ impl Drips {
         for droplet in landed {
             marks.extend(droplet.impact(&mut self.rng));
         }
-        marks
+        self.puddles.settle(marks, dt)
+    }
+
+    fn drip_from_brush(&mut self, dt: f32, marks: &mut Vec<Mark>) {
+        let tap = self.tap.filter(|tap| tap.flow > 0.0 || self.dribble.is_some());
+        if let Some(tap) = tap.filter(|tap| tap.flow > 0.0 && self.dribble.as_ref().is_none_or(|dribble| !dribble.carries(tap) && dribble.jet().pieces().is_empty())) {
+            self.dribble = Some(Dribble::new(&tap, self.rng.next_u64()));
+        }
+        let Some(dribble) = &mut self.dribble else { return };
+        let (laid, droplets) = dribble.step(tap.as_ref(), dt);
+        marks.extend(laid);
+        self.droplets.extend(droplets);
+        if dribble.is_done() && tap.is_none_or(|tap| tap.flow <= 0.0) {
+            self.dribble = None;
+        }
     }
 }
 

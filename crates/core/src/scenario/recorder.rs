@@ -7,12 +7,13 @@ pub struct Recorder {
     canvas: CanvasSize,
     seed: u64,
     start: f64,
+    first_bottle: u32,
     steps: Vec<Step>,
 }
 
 impl Recorder {
-    pub fn start(canvas: CanvasSize, seed: u64, start: f64) -> Self {
-        Self { canvas, seed, start, steps: Vec::new() }
+    pub fn start(canvas: CanvasSize, seed: u64, start: f64, first_bottle: u32) -> Self {
+        Self { canvas, seed, start, first_bottle, steps: Vec::new() }
     }
 
     pub fn pointer(&mut self, sample: PointerSample) {
@@ -69,6 +70,31 @@ impl Recorder {
     }
 
     pub fn bottle(&mut self, time: f64, action: Action) {
+        let replayed = |id: u32| id.checked_sub(self.first_bottle).map(|offset| offset + 1);
+        let chosen = |bottle: Option<u32>| match bottle {
+            Some(id) => replayed(id).map(Some),
+            None => Some(None),
+        };
+        let action = match action {
+            Action::SelectBottle { bottle } => Action::SelectBottle { bottle: bottle.and_then(replayed) },
+            Action::StopBottles { bottle } => match chosen(bottle) {
+                Some(bottle) => Action::StopBottles { bottle },
+                None => return,
+            },
+            Action::PourBottles { bottle, pouring } => match chosen(bottle) {
+                Some(bottle) => Action::PourBottles { bottle, pouring },
+                None => return,
+            },
+            Action::BottleParam { bottle, name, value } => match replayed(bottle) {
+                Some(bottle) => Action::BottleParam { bottle, name, value },
+                None => return,
+            },
+            Action::RemoveBottle { bottle } => match replayed(bottle) {
+                Some(bottle) => Action::RemoveBottle { bottle },
+                None => return,
+            },
+            other => other,
+        };
         self.push(time, action);
     }
 
@@ -105,7 +131,7 @@ mod tests {
 
     #[test]
     fn recorded_scenario_round_trips() {
-        let mut recorder = Recorder::start(CanvasSize { width: 64, height: 64 }, 1, 10.0);
+        let mut recorder = Recorder::start(CanvasSize { width: 64, height: 64 }, 1, 10.0, 1);
         recorder.dip(10.0, "cadmium_red");
         recorder.pointer(PointerSample { phase: PointerPhase::Down, x: 1.0, y: 2.0, pressure: 0.5, tilt: [0.0; 2], rotation: 0.0, time: 10.5 });
         recorder.pointer(PointerSample { phase: PointerPhase::Up, x: 1.0, y: 2.0, pressure: 0.5, tilt: [0.0; 2], rotation: 0.0, time: 11.0 });
@@ -115,5 +141,16 @@ mod tests {
         assert_eq!(parsed.steps.len(), 4);
         assert_eq!(parsed.steps[1].t, 0.5);
         assert!(matches!(parsed.steps[3].action, Action::Checkpoint { .. }));
+    }
+
+    #[test]
+    fn bottles_are_numbered_from_one_in_the_replay_and_older_bottles_are_left_out() {
+        let mut recorder = Recorder::start(CanvasSize { width: 64, height: 64 }, 1, 0.0, 7);
+        recorder.bottle(1.0, Action::PourBottles { bottle: Some(8), pouring: true });
+        recorder.bottle(2.0, Action::PourBottles { bottle: Some(3), pouring: true });
+        recorder.bottle(3.0, Action::StopBottles { bottle: None });
+        let actions: Vec<Action> = recorder.finish(3.0).steps.into_iter().map(|step| step.action).collect();
+        assert!(matches!(actions[0], Action::PourBottles { bottle: Some(2), pouring: true }), "the second bottle hung while recording is bottle 2 in the replay: {actions:?}");
+        assert!(matches!(actions[1], Action::StopBottles { bottle: None }), "a bottle hung before recording cannot be replayed and is left out: {actions:?}");
     }
 }

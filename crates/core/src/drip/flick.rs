@@ -8,7 +8,7 @@ use std::f32::consts::PI;
 const SLOWEST_FLICK: f32 = 0.3;
 const FULL_FLICK: f32 = 2.0;
 const CONTACT_TIME: f32 = 0.0025;
-const BRISTLE_GAP: f32 = 140e-6;
+pub(super) const BRISTLE_GAP: f32 = 140e-6;
 const MEAN_DROP: f32 = 0.0005;
 const SIZE_SPREAD: u32 = 4;
 const SMALLEST_DROP: f32 = 60e-6;

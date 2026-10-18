@@ -3,3 +3,4 @@
 baselines/**/*.diff.png
 baselines/**/*.actual.png
 .DS_Store
+docs/

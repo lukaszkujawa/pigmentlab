@@ -76,6 +76,10 @@
     },
     {
       "t": 0,
+      "action": "select_bottle"
+    },
+    {
+      "t": 0,
       "action": "dip",
       "pigment": "ivory_black"
     },
@@ -118,6 +122,10 @@
       "action": "param",
       "name": "hole",
       "value": 4
+    },
+    {
+      "t": 0,
+      "action": "select_bottle"
     },
     {
       "t": 0,

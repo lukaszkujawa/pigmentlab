@@ -310,6 +310,10 @@
   },
   {
    "t": 0.4,
+   "action": "select_bottle"
+  },
+  {
+   "t": 0.4,
    "action": "dip",
    "pigment": "french_ultramarine"
   },

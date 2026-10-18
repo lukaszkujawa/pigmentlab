@@ -1,11 +1,15 @@
-use super::{Engine, SIMULATION_DT};
-use crate::drip::{Drips, Fluid, Hanging, Rig, Setting, Spatter, shed_share};
+use super::{Engine, SIMULATION_DT, Tool};
+use crate::drip::{Drips, Fluid, Hanging, Rig, Setting, Spatter, Tap, Tuft, drain_flow, shed_share};
 use crate::input::PointerState;
-use crate::units::{METRES_PER_PIXEL, cm};
-use glam::Vec2;
+use crate::units::{METRES_PER_PIXEL, cm, metres};
+use glam::{Vec2, Vec3};
+use std::f32::consts::PI;
 
 const FLICK_HEIGHT: f32 = 0.01;
 const HOOK_REACH: f32 = 24.0;
+const TIP_SHARE_OF_HALF_WIDTH: f32 = 0.25;
+const SMALLEST_TIP: f32 = 0.0005;
+const LARGEST_TIP: f32 = 0.003;
 
 impl Engine {
     pub fn hang_bottle(&mut self, hanging: Hanging) {
@@ -59,6 +63,7 @@ impl Engine {
         if share <= 0.0 || self.watercolour.is_some() {
             return;
         }
+        self.settle_drained();
         let paint = self.brush_pigment();
         let thrown = self.brush_load() * share;
         if thrown <= 0.0 {
@@ -67,6 +72,38 @@ impl Engine {
         self.keep_brush_load(1.0 - share);
         let tip = (self.touch.position * METRES_PER_PIXEL).extend(FLICK_HEIGHT);
         self.drips.flick(&Spatter { tip, velocity, volume: thrown * METRES_PER_PIXEL.powi(3), paint, medium });
+    }
+
+    pub(super) fn drain_brush(&mut self) {
+        if self.tool != Tool::Brush || self.watercolour.is_some() {
+            self.drips.tap_brush(None);
+            return;
+        }
+        let preset = *self.brush.preset();
+        let capacity = self.brush.paint_capacity();
+        let touching = self.contact() > 0.0;
+        let held = match touching {
+            true => {
+                self.lifted_load = None;
+                0.0
+            }
+            false => match self.lifted_load {
+                Some(load) => load,
+                None => *self.lifted_load.insert(self.brush_load() + self.drained),
+            },
+        };
+        let cubic = METRES_PER_PIXEL.powi(3);
+        let along = self.pose.orientation * Vec3::Z;
+        let tuft = Tuft { capacity: capacity * cubic, cross_section: PI * metres(preset.width) * metres(preset.thickness) * 0.25, droop: along.z };
+        let medium = self.paint.medium.clamp(0.0, 1.0);
+        let flow = if touching { 0.0 } else { drain_flow((held - self.drained).max(0.0) * cubic, &tuft, Fluid::of(medium)) };
+        self.drained += flow * SIMULATION_DT / cubic;
+        let tip = (self.pose.position - along * preset.length) * METRES_PER_PIXEL;
+        let tip_radius = (metres(preset.width.min(preset.thickness)) * 0.5 * TIP_SHARE_OF_HALF_WIDTH).clamp(SMALLEST_TIP, LARGEST_TIP);
+        self.drips.tap_brush(Some(Tap { tip, tip_radius, flow, paint: self.paint_on_tool.coefficients, medium }));
+        if touching {
+            self.settle_drained();
+        }
     }
 
     pub fn select_bottle(&mut self, id: Option<u32>) {

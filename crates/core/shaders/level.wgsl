@@ -24,6 +24,7 @@ const YIELD_DEPTH: f32 = 0.5 * PIXELS_PER_CM;
 struct WetBounds {
     origin: vec2<i32>,
     size: vec2<u32>,
+    step: u32,
 };
 const MAX_SHARE_PER_NEIGHBOUR: f32 = 0.25;
 
@@ -117,6 +118,21 @@ fn column_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, local: vec
     return pair_flow(paint, surface, other, other + ground_of(pixel), slope, shared_medium(paint, medium, other, other_medium));
 }
 
+fn dither(pixel: vec2<u32>, salt: u32) -> f32 {
+    var hash = pixel.x * 0x8da6b343u ^ pixel.y * 0xd8163841u ^ salt * 0xcb1ab31fu ^ region.step * 0x9e3779b9u;
+    hash ^= hash >> 16u;
+    hash *= 0x7feb352du;
+    hash ^= hash >> 15u;
+    hash *= 0x846ca68bu;
+    hash ^= hash >> 16u;
+    return f32(hash >> 8u) / 16777216.0;
+}
+
+fn rounded(value: f32, pixel: vec2<u32>, channel: u32, layer: u32) -> i32 {
+    if (channel == 0u) { return i32(round(value)); }
+    return i32(floor(value + dither(pixel, layer * CHANNELS + channel)));
+}
+
 fn take_from_top(local: vec2<u32>, amount: f32) {
     var remaining = amount;
     for (var step = 0u; step < window.depth; step++) {
@@ -126,7 +142,7 @@ fn take_from_top(local: vec2<u32>, amount: f32) {
         let taken = min(density, remaining);
         let fraction = taken / density;
         for (var channel = 0u; channel < CHANNELS; channel++) {
-            volume[base + channel] = i32(round(f32(volume[base + channel]) * (1.0 - fraction)));
+            volume[base + channel] = rounded(f32(volume[base + channel]) * (1.0 - fraction), local, channel, step);
         }
         remaining -= taken;
         if (remaining <= 1e-6) { return; }
@@ -253,7 +269,7 @@ fn level_store_pixel(pixel: vec2<i32>) {
     store[cell] = i32(round((height * keep + incoming) * PAINT_SCALE));
     for (var channel = 0u; channel < 7u; channel++) {
         let own = f32(store[cell + 1u + channel]);
-        store[cell + 1u + channel] = i32(round(own * keep + incoming_pigment[channel] * PAINT_SCALE));
+        store[cell + 1u + channel] = rounded(own * keep + incoming_pigment[channel] * PAINT_SCALE, vec2<u32>(pixel), 1u + channel, 0u);
     }
 }
 

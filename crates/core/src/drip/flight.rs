@@ -1,5 +1,7 @@
-use super::fluid::{DENSITY, Fluid, SURFACE_TENSION};
-use crate::paint::Mark;
+use super::fluid::{DENSITY, Fluid, SURFACE_TENSION, wetted_mound};
+use super::splash::{Splash, finger_count, fingers};
+use crate::paint::rheology::yield_stress;
+use crate::paint::{Mark, Profile};
 use crate::pigment::Coefficients;
 use crate::rng::SplitMix64;
 use crate::units::{GRAVITY, METRES_PER_PIXEL, pixels};
@@ -11,6 +13,12 @@ const AIR_VISCOSITY: f32 = 1.8e-5;
 const SPLASH_THRESHOLD: f32 = 57.7;
 const SPLASHED_SHARE: f32 = 0.15;
 const LONGEST_STAIN: f32 = 6.0;
+const QUIET_EDGE: f32 = 0.05;
+const WETTING_SPREAD: f32 = 0.2;
+const BODY_SHARE: f32 = 0.6;
+const SPINE_WIDTH: f32 = 0.35;
+const SPINE_VOLUME: f32 = 0.15;
+const SPLASHED_EDGE: f32 = 0.12;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Droplet {
@@ -48,20 +56,25 @@ impl Droplet {
         let along = sideways.normalize_or(Vec2::X);
         let elongation = (sideways.length() / normal_speed).hypot(1.0).min(LONGEST_STAIN);
         let landing = pixels_of(self.position.truncate());
-        let tail = along * pixels((elongation - 1.0) * width);
         let volume = self.volume() / METRES_PER_PIXEL.powi(3);
         let kept = if impact.splashes { 1.0 - SPLASHED_SHARE } else { 1.0 };
-        let mut marks = vec![Mark { from: landing, to: landing + tail, radius: pixels(width * 0.5), volume: volume * kept, paint: self.paint, medium: self.medium }];
-        if impact.splashes {
-            let count = ((impact.splash_number / SPLASH_THRESHOLD - 1.0) * 8.0 + 3.0).clamp(3.0, 24.0) as usize;
-            let satellite = volume * SPLASHED_SHARE / count as f32;
-            let satellite_radius = (3.0 * satellite / (2.0 * PI)).cbrt();
-            for _ in 0..count {
-                let direction = Vec2::from_angle(rng.range(-PI, PI)) + along * (elongation - 1.0);
-                let reach = pixels(width * 0.5) * rng.range(1.2, 2.5);
-                let centre = landing + tail * 0.5 + direction.normalize_or(Vec2::X) * reach;
-                marks.push(Mark::dot(centre, satellite_radius, satellite, self.paint, self.medium));
+        let puddle = wetted_mound(volume * kept, yield_stress(self.medium));
+        let wetting = rng.range(1.0 - WETTING_SPREAD, 1.0 + WETTING_SPREAD);
+        let rim = pixels(width * 0.5).max(puddle.radius) * wetting;
+        let tail = along * (elongation - 1.0) * 2.0 * rim;
+        let profile = Profile { flatness: (1.0 - puddle.height * wetting.recip().powi(2) / rim).clamp(0.0, 1.0), ragged: if impact.splashes { SPLASHED_EDGE } else { QUIET_EDGE * rng.range(0.4, 2.5) }, open: [false; 2], taper: 1.0 };
+        let stain = Mark { from: landing, to: landing + tail, radius: rim, volume: volume * kept, paint: self.paint, medium: self.medium, profile };
+        let mut marks = match tail.length() > rim * SPINE_WIDTH {
+            true => {
+                let body_end = landing + tail * BODY_SHARE;
+                let spine = Mark { from: body_end, to: landing + tail + along * rim * (1.0 - SPINE_WIDTH), radius: rim * SPINE_WIDTH, volume: stain.volume * SPINE_VOLUME, profile: Profile { ragged: QUIET_EDGE, ..profile }, ..stain };
+                vec![Mark { to: body_end, volume: stain.volume - spine.volume, ..stain }, spine]
             }
+            false => vec![stain],
+        };
+        if impact.splashes {
+            let splash = Splash { centre: landing + tail * 0.5, tail, rim, lean: sideways.length() / normal_speed, count: finger_count(normal_speed, self.diameter, self.fluid), volume: volume * SPLASHED_SHARE, paint: self.paint, medium: self.medium };
+            marks.extend(fingers(&splash, rng));
         }
         marks
     }
@@ -104,17 +117,19 @@ mod tests {
         let thinned = Impact::of(speed, 0.003, Fluid { viscosity: 0.05, yield_stress: 0.0 });
         assert!(!enamel.splashes && (1.2..1.6).contains(&enamel.spread), "enamel from 30 cm: {enamel:?}");
         assert!(thinned.splashes && (2.0..2.7).contains(&thinned.spread), "thinned paint from 30 cm: {thinned:?}");
+        let mut rng = SplitMix64::new(1);
+        assert_eq!(droplet(Vec3::new(0.0, 0.0, -speed), 1.0).impact(&mut rng).len(), 1, "an enamel drop should land as one round dot");
     }
 
     #[test]
     fn a_slanted_drop_leaves_a_stain_as_long_as_one_over_the_sine_of_its_angle() {
         let mut rng = SplitMix64::new(1);
         let marks = droplet(Vec3::new(2.0, 0.0, -2.0), 2.0).impact(&mut rng);
-        let stain = marks[0];
-        let width = stain.radius * 2.0;
-        let length = width + stain.from.distance(stain.to);
+        let (body, spine) = (marks[0], marks[1]);
+        let width = body.radius * 2.0;
+        let length = (spine.to.x + spine.radius) - (body.from.x - body.radius);
         assert!((width / length - std::f32::consts::FRAC_1_SQRT_2).abs() < 0.01, "a 45 degree drop should leave a stain with width/length = sin 45, got {:.3}", width / length);
-        assert!(stain.to.x > stain.from.x, "the tail should point the way the drop was travelling");
+        assert!(spine.radius < body.radius && spine.to.x > body.to.x, "the narrow spine should point the way the drop was travelling");
     }
 
     #[test]

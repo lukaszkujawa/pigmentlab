@@ -1,10 +1,11 @@
 use super::compare::{Comparison, compare, difference_image};
+use super::fractal::box_counting_dimension;
 use super::{Action, Scenario};
 use crate::drip::Hanging;
 use crate::engine::{Engine, SIMULATION_DT};
 use glam::Vec2;
 use crate::gpu::Gpu;
-use crate::input::{PointerPhase, PointerSample};
+use crate::input::{Hover, PointerPhase, PointerSample};
 use serde::Serialize;
 use std::path::Path;
 use std::time::Instant;
@@ -13,6 +14,7 @@ use std::time::Instant;
 pub struct CheckpointResult {
     pub name: String,
     pub elapsed_ms: f64,
+    pub fractal_dimension: Option<f64>,
     pub comparison: Option<Comparison>,
 }
 
@@ -58,13 +60,16 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
                 let (x, y) = last_position;
                 engine.pointer(sample(PointerPhase::Up, x, y, 0.0, [0.0; 2], 0.0, step.t));
             }
+            Action::Hover { x, y, tilt, rotation } => engine.hover(Hover { x: *x, y: *y, tilt: *tilt, rotation: *rotation }),
             Action::Checkpoint { name } => {
                 engine.render();
                 let actual = engine.read_back();
                 let comparison = check(&actual, baseline_dir, name, scenario, update_baselines);
+                let fractal_dimension = box_counting_dimension(&engine.paint_heights(), scenario.canvas.width as usize, scenario.canvas.height as usize);
                 checkpoints.push(CheckpointResult {
                     name: name.clone(),
                     elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
+                    fractal_dimension,
                     comparison,
                 });
             }

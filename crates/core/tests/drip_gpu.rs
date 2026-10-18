@@ -51,17 +51,18 @@ fn painted(heights: &[f32]) -> impl Iterator<Item = (usize, usize)> + '_ {
     heights.iter().enumerate().filter(|(_, h)| **h > 0.05).map(|(i, _)| (i % WIDTH, i / WIDTH))
 }
 
-fn blobs(heights: &[f32]) -> usize {
+fn blobs(heights: &[f32]) -> Vec<f32> {
     let mut seen = vec![false; heights.len()];
-    let mut count = 0;
+    let mut volumes = Vec::new();
     for start in 0..heights.len() {
         if seen[start] || heights[start] <= 0.05 {
             continue;
         }
-        count += 1;
+        let mut volume = 0.0;
         let mut stack = vec![start];
         seen[start] = true;
         while let Some(i) = stack.pop() {
+            volume += heights[i];
             let (x, y) = (i % WIDTH, i / WIDTH);
             for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                 let (nx, ny) = (x as i32 + dx, y as i32 + dy);
@@ -75,8 +76,13 @@ fn blobs(heights: &[f32]) -> usize {
                 }
             }
         }
+        volumes.push(volume);
     }
-    count
+    volumes
+}
+
+fn largest_share(blobs: &[f32]) -> f32 {
+    blobs.iter().copied().fold(0.0, f32::max) / blobs.iter().sum::<f32>()
 }
 
 fn band_width(heights: &[f32], x: usize) -> usize {
@@ -88,7 +94,7 @@ fn every_drop_of_paint_leaving_a_bottle_lands_on_the_canvas_or_is_still_falling(
     for medium in [ENAMEL, THINNED] {
         let (mut engine, released) = Pour { hole: 2.0, ..Pour::swinging(medium) }.run();
         let on_canvas = f64::from(engine.paint_mass()) * f64::from(METRES_PER_PIXEL).powi(3);
-        let falling: f64 = engine.drips().droplets().iter().map(|droplet| f64::from(droplet.volume())).sum::<f64>() + engine.drips().bottles().iter().map(|bottle| f64::from(bottle.forming_drop())).sum::<f64>();
+        let falling = f64::from(engine.drips().airborne());
         println!("medium {medium}: released {:.3} cm3, on canvas {:.3}, falling {:.3}", released * 1e6, on_canvas * 1e6, falling * 1e6);
         assert!(released > 1e-7, "the bottle should pour");
         assert!((on_canvas + falling - released).abs() < released * 0.01, "at {medium} medium {:.3} cm3 left the bottle but {:.3} landed or is falling", released * 1e6, (on_canvas + falling) * 1e6);
@@ -96,17 +102,17 @@ fn every_drop_of_paint_leaving_a_bottle_lands_on_the_canvas_or_is_still_falling(
 }
 
 #[test]
-fn a_bottle_hanging_still_coils_its_thread_on_one_spot() {
+fn a_bottle_hanging_still_pools_its_thread_on_one_spot() {
     let (mut engine, _) = Pour::still(ENAMEL).run();
     let heights = engine.paint_heights();
     let reach = painted(&heights).map(|(x, y)| Vec2::new(x as f32, y as f32).distance(centre())).fold(0.0f32, f32::max);
-    println!("still bottle coils within {reach:.1} px ({:.2} mm)", reach * METRES_PER_PIXEL * 1000.0);
-    assert!(reach > 4.0 && reach < cm(0.5), "a still bottle should pile its coils within a few millimetres of the point under it, reaches {reach:.1} px");
+    println!("still bottle pools within {reach:.1} px ({:.2} mm)", reach * METRES_PER_PIXEL * 1000.0);
+    assert!(reach > 4.0 && reach < cm(1.0), "a still bottle should pool its thread within a centimetre of the point under it, reaches {reach:.1} px");
 }
 
 #[test]
 fn a_fast_swing_lays_a_straight_line_through_the_middle_and_loops_where_it_turns() {
-    let (mut engine, _) = Pour { hole: 2.0, seconds: 0.55, ..Pour::swinging(ENAMEL) }.run();
+    let (mut engine, _) = Pour { seconds: 2.5, ..Pour::swinging(ENAMEL) }.run();
     let heights = engine.paint_heights();
     let middle = band_width(&heights, centre().x as usize);
     let turning = (cm(4.0) as usize..cm(10.0) as usize).flat_map(|offset| [centre().x as usize - offset, centre().x as usize + offset]).map(|x| band_width(&heights, x)).max().unwrap();
@@ -119,9 +125,9 @@ fn a_thin_trickle_drips_separate_drops_while_enamel_stays_one_thread() {
     let (mut enamel, _) = Pour::swinging(ENAMEL).run();
     let (mut thinned, _) = Pour { hole: 1.0, ..Pour::swinging(THINNED) }.run();
     let (enamel_blobs, thinned_blobs) = (blobs(&enamel.paint_heights()), blobs(&thinned.paint_heights()));
-    println!("enamel lays {enamel_blobs} separate marks, thinned paint {thinned_blobs}");
-    assert!(enamel_blobs <= 3, "enamel should pour one continuous thread, made {enamel_blobs} separate marks");
-    assert!(thinned_blobs >= 8, "a thin trickle should drip a dotted line, made {thinned_blobs} separate marks");
+    println!("enamel keeps {:.3} of its paint in one mark, thinned paint lays {} separate marks", largest_share(&enamel_blobs), thinned_blobs.len());
+    assert!(largest_share(&enamel_blobs) > 0.95, "enamel should pour one continuous thread, its largest mark holds {:.3} of the paint", largest_share(&enamel_blobs));
+    assert!(thinned_blobs.len() >= 6 && largest_share(&thinned_blobs) < 0.5, "a thin trickle should drip a dotted line, made {} separate marks, the largest holding {:.3} of the paint", thinned_blobs.len(), largest_share(&thinned_blobs));
 }
 
 #[test]
@@ -130,8 +136,6 @@ fn the_same_swing_paints_the_same_marks() {
     let (mut second, _) = Pour::swinging(THINNED).run();
     assert!(first.paint_columns() == second.paint_columns(), "a swing must be reproducible");
 }
-
-
 
 fn sample(phase: pigmentlab_core::PointerPhase, at: Vec2, time: f64) -> pigmentlab_core::PointerSample {
     pigmentlab_core::PointerSample { phase, x: at.x, y: at.y, pressure: 0.5, tilt: [0.0; 2], rotation: 0.0, time }
@@ -161,6 +165,12 @@ fn bottle_tool() -> Engine {
     engine.set_param("pivot", 55.0);
     engine.dip(by_name("ivory_black").unwrap());
     engine
+}
+
+fn swing_reach(engine: &Engine, index: usize) -> f32 {
+    let pendulum = &engine.drips().bottles()[index].pendulum;
+    let rise = pendulum.bob.z - (pendulum.pivot.z - pendulum.length) + 0.5 * pendulum.velocity.length_squared() / pigmentlab_core::units::GRAVITY;
+    (2.0 * pendulum.length * rise.max(0.0)).sqrt()
 }
 
 fn hole(engine: &Engine, index: usize) -> Vec2 {
@@ -298,8 +308,8 @@ fn bottles_on_their_own_hooks(count: usize) -> (Engine, f64, Vec<Vec2>) {
         time = drag(&mut engine, &[pulled, pulled], time, 0.05);
     }
     engine.set_pouring(None, true);
-    engine.advance_exact(time + 0.3);
-    (engine, time + 0.3, hooks)
+    engine.advance_exact(time + 1.0);
+    (engine, time + 1.0, hooks)
 }
 
 #[test]
@@ -322,7 +332,8 @@ fn stopping_brings_one_bottle_or_all_of_them_to_rest_under_their_hooks() {
     engine.stop_bottles(Some(first));
     engine.advance_exact(time + 0.5);
     assert!(hole(&engine, 0).distance(hooks[0]) < cm(0.1), "the stopped bottle should hang still under its hook");
-    assert!(hole(&engine, 1).distance(hooks[1]) > cm(1.0), "the others should keep going");
+    let reach = swing_reach(&engine, 1);
+    assert!(reach > 0.01, "the others should keep going, swinging {:.1} cm", reach * 100.0);
     engine.stop_bottles(None);
     engine.advance_exact(time + 1.0);
     for (k, hook) in hooks.iter().enumerate() {
@@ -349,8 +360,6 @@ fn a_selected_bottle_takes_new_settings_while_it_swings_and_can_be_removed() {
     assert_eq!(engine.drips().selected(), None, "removing the selected bottle should clear the selection");
 }
 
-
-
 #[test]
 fn a_bottle_held_beyond_the_canvas_is_drawn_on_the_stage_around_it() {
     use pigmentlab_core::PointerPhase::{Down, Move};
@@ -372,4 +381,38 @@ fn a_bottle_held_beyond_the_canvas_is_drawn_on_the_stage_around_it() {
     assert!(on_stage.get_pixel(seen.x as u32, seen.y as u32)[3] > 0, "the bottle off the canvas should be drawn on the stage at {seen}");
     let canvas = engine.read_back();
     assert!(canvas.pixels().all(|pixel| pixel[3] == 255 && pixel[0] > 200), "with a stage the canvas itself carries no overlay");
+}
+
+fn most_drops_in_flight(pour: Pour) -> usize {
+    let mut engine = Pour { seconds: 0.0, ..pour }.run().0;
+    (1..=(pour.seconds * 60.0) as usize).fold(0, |most, frame| {
+        engine.advance_exact(frame as f64 / 60.0);
+        most.max(engine.drips().droplets().len())
+    })
+}
+
+#[test]
+fn a_runny_stream_falling_far_breaks_into_drops_in_flight_while_enamel_stays_one_thread() {
+    let thinned = most_drops_in_flight(Pour { seconds: 0.8, hole: 2.0, pivot: 70.0, ..Pour::swinging(THINNED) });
+    let (mut enamel, _) = Pour { seconds: 2.5, pivot: 70.0, ..Pour::swinging(ENAMEL) }.run();
+    let enamel_share = largest_share(&blobs(&enamel.paint_heights()));
+    println!("at most {thinned} drops of thinned paint in flight; enamel keeps {enamel_share:.3} of its paint in one mark");
+    assert!(thinned >= 10, "a runny stream falling 40 cm should break into drops before it lands, at most {thinned} in flight");
+    assert!(enamel_share > 0.9, "enamel should land as one thread over the same fall, its largest mark holds {enamel_share:.3} of the paint");
+}
+
+#[test]
+fn changing_the_paint_refills_only_the_selected_bottle() {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: HEIGHT as u32 }, 1);
+    engine.set_param("medium", ENAMEL);
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.hang_bottle(Hanging { pivot: centre(), release: centre(), push: Vec2::ZERO });
+    engine.set_param("medium", THINNED);
+    engine.dip(by_name("french_ultramarine").unwrap());
+    let bottle = &engine.drips().bottles()[0];
+    assert_eq!(bottle.paint, by_name("french_ultramarine").unwrap().coefficients, "the selected bottle should take the new colour");
+    assert_eq!((bottle.medium, bottle.fluid), (THINNED, pigmentlab_core::drip::Fluid::of(THINNED)), "the selected bottle should take the new medium");
+    engine.select_bottle(None);
+    engine.dip(by_name("cadmium_yellow").unwrap());
+    assert_eq!(engine.drips().bottles()[0].paint, by_name("french_ultramarine").unwrap().coefficients, "with nothing selected the bottles keep their paint");
 }

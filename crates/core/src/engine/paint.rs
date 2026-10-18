@@ -31,10 +31,13 @@ impl Engine {
         let strength = PIGMENT_AT_FULL_DILUTION.powf(dilution.sqrt());
         let thinned = Coefficients { absorption: paint.coefficients.absorption * strength, scattering: paint.coefficients.scattering * strength };
         self.paint_on_tool = Paint { coefficients: thinned, ..paint };
+        self.drips.refill_selected(thinned, medium);
         if self.tool != Tool::Brush {
             return;
         }
         self.brush.dip(&self.gpu, thinned, load, medium);
+        self.drained = 0.0;
+        self.lifted_load = None;
         self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: load, paint: thinned, concentration: 1.0 };
     }
@@ -46,6 +49,8 @@ impl Engine {
             self.brush.dip_watercolour(&self.gpu, clear, load, 0.0);
         } else {
             self.brush.clean(&self.gpu);
+            self.drained = 0.0;
+        self.lifted_load = None;
         }
         self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: if self.watercolour.is_some() { load } else { 0.0 }, paint: clear.coefficients, concentration: 0.0 };
@@ -75,12 +80,24 @@ impl Engine {
 
     pub fn clean(&mut self) {
         self.brush.clean(&self.gpu);
+        self.drained = 0.0;
+        self.lifted_load = None;
         self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: 0.0, ..self.brush_contents };
     }
 
     pub fn wipe(&mut self) {
+        self.settle_drained();
         self.keep_brush_load(LOAD_KEPT_AFTER_WIPE);
+    }
+
+    pub(super) fn settle_drained(&mut self) {
+        if self.drained <= 0.0 {
+            return;
+        }
+        let held = self.brush_load() + self.drained;
+        self.keep_brush_load(1.0 - (self.drained / held.max(f32::EPSILON)).min(1.0));
+        self.drained = 0.0;
     }
 
     pub(super) fn keep_brush_load(&mut self, kept: f32) {
@@ -88,10 +105,11 @@ impl Engine {
         self.gpu.queue.write_buffer(&self.brush.sample_load, 0, bytemuck::cast_slice(&scaled));
         self.gauge().invalidate();
         self.brush_contents = BrushContents { fill: self.brush_contents.fill * kept, ..self.brush_contents };
+        self.lifted_load = self.lifted_load.map(|load| load * kept);
     }
 
     pub fn brush_load(&self) -> f32 {
-        read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| f64::from(*load)).sum::<f64>() as f32
+        read_buffer::<f32>(&self.gpu, &self.brush.sample_load).iter().map(|load| f64::from(*load)).sum::<f64>() as f32 - self.drained
     }
 
     pub fn brush_sample_absorption(&self) -> Vec<Vec3> {

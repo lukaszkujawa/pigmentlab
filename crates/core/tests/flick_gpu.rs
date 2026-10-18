@@ -51,7 +51,7 @@ fn a_hard_flick_throws_runny_paint_well_past_the_end_of_the_stroke() {
 #[test]
 fn a_flick_keeps_every_drop_of_paint() {
     let mut flick = stroke_ending_at(1.0, 1.5);
-    let total = flick.engine.paint_mass() + flick.engine.brush_load() + flick.engine.drips().droplets().iter().map(|d| d.volume() / METRES_PER_PIXEL.powi(3)).sum::<f32>();
+    let total = flick.engine.paint_mass() + flick.engine.brush_load() + flick.engine.drips().airborne() / METRES_PER_PIXEL.powi(3);
     assert!((total - flick.before).abs() < flick.before * 0.01, "paint must be kept: {:.0} before, {total:.0} after", flick.before);
 }
 

@@ -5,6 +5,23 @@ pub const DENSITY: f32 = 1000.0;
 pub const SURFACE_TENSION: f32 = 0.04;
 const VISCOSITY_STIFF: f32 = 20.0;
 const VISCOSITY_OILY: f32 = 0.05;
+pub const POURED_YIELD_SHARE: f32 = 0.1;
+pub const POURED_PUDDLE: f32 = crate::units::cm(0.04);
+const WETTING_SLOPE: f32 = 0.36;
+
+pub fn wetted_mound(volume: f32, yield_stress: f32) -> crate::paint::rheology::Mound {
+    let settled = crate::paint::rheology::mound_settling_to(volume, yield_stress * POURED_YIELD_SHARE, f32::INFINITY, POURED_PUDDLE);
+    let cap_radius = (2.0 * volume / (std::f32::consts::PI * WETTING_SLOPE)).cbrt();
+    let radius = settled.radius.max(cap_radius);
+    crate::paint::rheology::Mound { radius, height: 2.0 * volume / (std::f32::consts::PI * radius * radius) }
+}
+
+pub fn wetted_strand(area: f32, yield_stress: f32) -> crate::paint::rheology::Strand {
+    let settled = crate::paint::rheology::strand_settling_to(area, yield_stress * POURED_YIELD_SHARE, f32::INFINITY, POURED_PUDDLE);
+    let cap_half_width = (0.75 * area / WETTING_SLOPE).sqrt();
+    let half_width = settled.half_width.max(cap_half_width);
+    crate::paint::rheology::Strand { half_width, height: 0.75 * area / half_width }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fluid {

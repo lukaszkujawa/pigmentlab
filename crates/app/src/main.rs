@@ -244,7 +244,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let app_weak = app.as_weak();
     app.on_rig_changed(move || {
         let app = app_weak.unwrap();
-        let rig = [app.get_rig_string(), app.get_rig_pivot(), app.get_rig_hole(), app.get_rig_radius(), app.get_rig_throw(), if app.get_rig_pour() { 1.0 } else { 0.0 }];
+        let rig = rig_of(&app);
         let mut requests = shared.borrow_mut();
         requests.rig = Some(rig);
         if let Some(bottle) = chosen(app.get_selected_bottle()) {
@@ -347,7 +347,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     let pen = tablet.state();
                     requests.borrow_mut().follow_held_pen(pen, app.get_pen_firmness(), now);
                     requests.borrow_mut().follow_hovering_pen(pen);
-                    update_recorder(&mut recorder, &app, engine.canvas_size(), now, &requests.borrow());
+                    update_recorder(&mut recorder, &app, engine, &custom.borrow(), now, &requests.borrow());
                     if let Some(spec) = requests.borrow_mut().new_canvas.take() {
                         *engine = Engine::new(engine.gpu().clone(), spec.size, SEED);
                         engine.set_sheet(spec.surface, spec.ground);
@@ -407,70 +407,93 @@ fn stage_view(app: &AppWindow, canvas: CanvasSize) -> Viewport {
     Viewport { size, origin: Vec2::new(app.get_canvas_left(), app.get_canvas_top()) * scale, scale: app.get_canvas_shown_width() * scale / canvas.width as f32 }
 }
 
-fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, canvas: CanvasSize, now: f64, requests: &Requests) {
+fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, engine: &Engine, custom: &[[u8; 3]], now: f64, requests: &Requests) {
     if app.get_recording() {
-        let active = recorder.get_or_insert_with(|| Recorder::start(canvas, SEED, now));
-        if let Some(surface) = requests.surface {
-            active.surface(now, surface);
+        if recorder.is_none() {
+            let started = recorder.insert(Recorder::start(engine.canvas_size(), SEED, now, engine.drips().next_bottle_id()));
+            record(started, now, &state_of(app, custom));
         }
-        if let Some(paint) = requests.paint {
-            active.param(now, "load", paint.load);
-            active.param(now, "medium", paint.medium);
-            active.param(now, "dilution", paint.dilution);
-        }
-        match requests.dip {
-            Some(Dip::Pigment(index)) => active.dip(now, PALETTE[index].name),
-            Some(Dip::Colour(colour)) => active.dip_colour(now, colour),
-            Some(Dip::Water) => active.dip_water(now),
-            None => {}
-        }
-        if requests.clean {
-            active.clean(now);
-        }
-        if requests.wipe {
-            active.wipe(now);
-        }
-        if let Some((index, adjustments)) = requests.brush {
-            active.tool(now, tool_name(index));
-            active.param(now, "size", adjustments.scale);
-            if let Some(count) = adjustments.bristle_count {
-                active.param(now, "bristles", count as f32);
-            }
-            active.param(now, "stiffness", adjustments.stiffness);
-            active.param(now, "thickness", adjustments.thickness);
-        }
-        if let Some(tooth) = requests.tooth {
-            active.param(now, "tooth", tooth);
-        }
-        if let Some(rig) = requests.rig {
-            for (name, value) in RIG_PARAMS.into_iter().zip(rig) {
-                active.param(now, name, value);
-            }
-        }
-        if requests.cut_strings {
-            active.cut_strings(now);
-        }
-        for action in &requests.bottle_actions {
-            active.bottle(now, action.recorded());
-        }
-        if requests.clear {
-            active.clear(now);
-        }
-        if requests.undo {
-            active.undo(now);
-        }
-        if requests.dry {
-            active.dry(now);
-        }
-        for sample in &requests.pointer {
-            active.pointer(*sample);
-        }
+        record(recorder.as_mut().expect("recording has started"), now, requests);
     } else if let Some(finished) = recorder.take() {
         let path = std::path::PathBuf::from(format!("scenarios/recorded-{}.json", stamp()));
         match finished.save(now, &path) {
             Ok(()) => app.set_status(format!("recorded {}", path.display()).into()),
             Err(error) => app.set_status(format!("recording failed: {error}").into()),
         }
+    }
+}
+
+fn state_of(app: &AppWindow, custom: &[[u8; 3]]) -> Requests {
+    Requests {
+        surface: Some(Surface::ALL[app.get_surface_index().clamp(0, Surface::ALL.len() as i32 - 1) as usize]),
+        tooth: Some(app.get_canvas_tooth()),
+        brush: Some((app.get_brush_index().max(0) as usize, adjustments_of(app, Some(app.get_brush_bristles().round() as u32)))),
+        paint: Some(paint_settings_of(app)),
+        rig: Some(rig_of(app)),
+        dip: Some(active_dip(app, custom)),
+        ..Requests::default()
+    }
+}
+
+fn rig_of(app: &AppWindow) -> [f32; 6] {
+    [app.get_rig_string(), app.get_rig_pivot(), app.get_rig_hole(), app.get_rig_radius(), app.get_rig_throw(), if app.get_rig_pour() { 1.0 } else { 0.0 }]
+}
+
+fn record(active: &mut Recorder, now: f64, requests: &Requests) {
+    if let Some(surface) = requests.surface {
+        active.surface(now, surface);
+    }
+    if let Some(paint) = requests.paint {
+        active.param(now, "load", paint.load);
+        active.param(now, "medium", paint.medium);
+        active.param(now, "dilution", paint.dilution);
+    }
+    match requests.dip {
+        Some(Dip::Pigment(index)) => active.dip(now, PALETTE[index].name),
+        Some(Dip::Colour(colour)) => active.dip_colour(now, colour),
+        Some(Dip::Water) => active.dip_water(now),
+        None => {}
+    }
+    if requests.clean {
+        active.clean(now);
+    }
+    if requests.wipe {
+        active.wipe(now);
+    }
+    if let Some((index, adjustments)) = requests.brush {
+        active.tool(now, tool_name(index));
+        active.param(now, "size", adjustments.scale);
+        if let Some(count) = adjustments.bristle_count {
+            active.param(now, "bristles", count as f32);
+        }
+        active.param(now, "stiffness", adjustments.stiffness);
+        active.param(now, "thickness", adjustments.thickness);
+    }
+    if let Some(tooth) = requests.tooth {
+        active.param(now, "tooth", tooth);
+    }
+    if let Some(rig) = requests.rig {
+        for (name, value) in RIG_PARAMS.into_iter().zip(rig) {
+            active.param(now, name, value);
+        }
+    }
+    if requests.cut_strings {
+        active.cut_strings(now);
+    }
+    for action in &requests.bottle_actions {
+        active.bottle(now, action.recorded());
+    }
+    if requests.clear {
+        active.clear(now);
+    }
+    if requests.undo {
+        active.undo(now);
+    }
+    if requests.dry {
+        active.dry(now);
+    }
+    for sample in &requests.pointer {
+        active.pointer(*sample);
     }
 }
 
