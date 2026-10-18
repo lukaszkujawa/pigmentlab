@@ -93,9 +93,9 @@ impl Piece {
         usize::from(segment + 1 == self.segments() && !self.stuck_tail) + usize::from(segment == 0 && !self.pinned && !self.stuck_head)
     }
 
-    pub fn remesh(&mut self) {
-        self.split_long_segments();
-        self.merge_short_segments();
+    pub fn remesh(&mut self, coarseness: f64) {
+        self.split_long_segments(coarseness);
+        self.merge_short_segments(coarseness);
         self.absorb_thin_ends();
     }
 
@@ -114,17 +114,17 @@ impl Piece {
         tip < BREAKING_RADIUS || (tip < STUB_THINNESS * body && self.length(end) < CAP_LENGTH_PER_RADIUS * body)
     }
 
-    fn spacing(&self, segment: usize) -> f64 {
+    fn spacing(&self, segment: usize, coarseness: f64) -> f64 {
         let crowding = (self.nodes.len() as f64 / MOST_NODES as f64).max(1.0);
-        spacing_for(self.radius(segment) * crowding)
+        spacing_for(self.radius(segment) * crowding) * coarseness
     }
 
-    fn split_long_segments(&mut self) {
+    fn split_long_segments(&mut self, coarseness: f64) {
         let mut segment = usize::from(self.pinned);
         while segment < self.segments() {
             let longest = match self.has_cap(segment) {
-                true => (SPLIT_AT * self.spacing(segment)).max(CAP_LENGTH_PER_RADIUS * self.radius(segment)),
-                false => SPLIT_AT * self.spacing(segment),
+                true => (SPLIT_AT * self.spacing(segment, coarseness)).max(CAP_LENGTH_PER_RADIUS * self.radius(segment)),
+                false => SPLIT_AT * self.spacing(segment, coarseness),
             };
             if self.length(segment) > longest && self.nodes.len() < MOST_NODES {
                 let (a, b) = (self.nodes[segment], self.nodes[segment + 1]);
@@ -149,11 +149,11 @@ impl Piece {
         first / (first + second)
     }
 
-    fn merge_short_segments(&mut self) {
+    fn merge_short_segments(&mut self, coarseness: f64) {
         let first_free = if self.pinned { HELD_NODES } else { 1 };
         let mut segment = first_free - 1;
         while segment < self.segments() && self.segments() > first_free {
-            if self.length(segment) >= MERGE_AT * self.spacing(segment) {
+            if self.length(segment) >= MERGE_AT * self.spacing(segment, coarseness) {
                 segment += 1;
                 continue;
             }
@@ -217,11 +217,11 @@ mod tests {
     fn remeshing_keeps_the_volume_and_the_spacing_follows_the_radius() {
         let mut piece = column(4, 0.04, 0.001);
         let volume = piece.volume();
-        piece.remesh();
+        piece.remesh(1.0);
         assert!((piece.volume() - volume).abs() < volume * 1e-12);
-        assert!((1..piece.segments() - 1).all(|segment| piece.length(segment) <= SPLIT_AT * piece.spacing(segment)));
+        assert!((1..piece.segments() - 1).all(|segment| piece.length(segment) <= SPLIT_AT * piece.spacing(segment, 1.0)));
         let mut thick = column(400, 0.04, 0.003);
-        thick.remesh();
+        thick.remesh(1.0);
         assert!(thick.segments() < 400, "a thick column is merged into fewer segments, {}", thick.segments());
         assert!((thick.volume() - volume * 9.0).abs() < volume * 1e-9);
     }

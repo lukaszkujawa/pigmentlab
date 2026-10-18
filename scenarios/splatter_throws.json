@@ -1,0 +1,973 @@
+{
+ "seed": 1,
+ "canvas": {
+  "width": 2048,
+  "height": 1536
+ },
+ "steps": [
+  {
+   "t": 0.0,
+   "action": "tool",
+   "name": "Splatter"
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "load",
+   "value": 1.0
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "splatter_height",
+   "value": 30
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "medium",
+   "value": 0.2
+  },
+  {
+   "t": 0.0,
+   "action": "dip",
+   "pigment": "ivory_black"
+  },
+  {
+   "t": 0.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 1.0
+  },
+  {
+   "t": 0.0,
+   "action": "press",
+   "x": 100,
+   "y": 230,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0083,
+   "action": "move",
+   "x": 136.7,
+   "y": 234.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0167,
+   "action": "move",
+   "x": 173.3,
+   "y": 238.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.025,
+   "action": "move",
+   "x": 210.0,
+   "y": 242.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0333,
+   "action": "move",
+   "x": 246.7,
+   "y": 246.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0417,
+   "action": "move",
+   "x": 283.3,
+   "y": 250.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.05,
+   "action": "move",
+   "x": 320.0,
+   "y": 255.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0583,
+   "action": "move",
+   "x": 356.7,
+   "y": 259.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0667,
+   "action": "move",
+   "x": 393.3,
+   "y": 263.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.075,
+   "action": "move",
+   "x": 430.0,
+   "y": 267.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0833,
+   "action": "move",
+   "x": 466.7,
+   "y": 271.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.0917,
+   "action": "move",
+   "x": 503.3,
+   "y": 275.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.1,
+   "action": "move",
+   "x": 540.0,
+   "y": 280.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 0.1,
+   "action": "release"
+  },
+  {
+   "t": 1.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 4.0
+  },
+  {
+   "t": 1.0,
+   "action": "press",
+   "x": 760,
+   "y": 230,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0083,
+   "action": "move",
+   "x": 796.7,
+   "y": 234.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0167,
+   "action": "move",
+   "x": 833.3,
+   "y": 238.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.025,
+   "action": "move",
+   "x": 870.0,
+   "y": 242.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0333,
+   "action": "move",
+   "x": 906.7,
+   "y": 246.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0417,
+   "action": "move",
+   "x": 943.3,
+   "y": 250.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.05,
+   "action": "move",
+   "x": 980.0,
+   "y": 255.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0583,
+   "action": "move",
+   "x": 1016.7,
+   "y": 259.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0667,
+   "action": "move",
+   "x": 1053.3,
+   "y": 263.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.075,
+   "action": "move",
+   "x": 1090.0,
+   "y": 267.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0833,
+   "action": "move",
+   "x": 1126.7,
+   "y": 271.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.0917,
+   "action": "move",
+   "x": 1163.3,
+   "y": 275.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.1,
+   "action": "move",
+   "x": 1200.0,
+   "y": 280.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 1.1,
+   "action": "release"
+  },
+  {
+   "t": 2.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 9.0
+  },
+  {
+   "t": 2.0,
+   "action": "press",
+   "x": 1420,
+   "y": 230,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0083,
+   "action": "move",
+   "x": 1456.7,
+   "y": 234.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0167,
+   "action": "move",
+   "x": 1493.3,
+   "y": 238.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.025,
+   "action": "move",
+   "x": 1530.0,
+   "y": 242.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0333,
+   "action": "move",
+   "x": 1566.7,
+   "y": 246.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0417,
+   "action": "move",
+   "x": 1603.3,
+   "y": 250.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.05,
+   "action": "move",
+   "x": 1640.0,
+   "y": 255.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0583,
+   "action": "move",
+   "x": 1676.7,
+   "y": 259.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0667,
+   "action": "move",
+   "x": 1713.3,
+   "y": 263.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.075,
+   "action": "move",
+   "x": 1750.0,
+   "y": 267.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0833,
+   "action": "move",
+   "x": 1786.7,
+   "y": 271.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.0917,
+   "action": "move",
+   "x": 1823.3,
+   "y": 275.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.1,
+   "action": "move",
+   "x": 1860.0,
+   "y": 280.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 2.1,
+   "action": "release"
+  },
+  {
+   "t": 3.0,
+   "action": "param",
+   "name": "medium",
+   "value": 0.45
+  },
+  {
+   "t": 3.0,
+   "action": "dip",
+   "pigment": "french_ultramarine"
+  },
+  {
+   "t": 3.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 1.0
+  },
+  {
+   "t": 3.0,
+   "action": "press",
+   "x": 100,
+   "y": 690,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0083,
+   "action": "move",
+   "x": 136.7,
+   "y": 694.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0167,
+   "action": "move",
+   "x": 173.3,
+   "y": 698.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.025,
+   "action": "move",
+   "x": 210.0,
+   "y": 702.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0333,
+   "action": "move",
+   "x": 246.7,
+   "y": 706.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0417,
+   "action": "move",
+   "x": 283.3,
+   "y": 710.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.05,
+   "action": "move",
+   "x": 320.0,
+   "y": 715.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0583,
+   "action": "move",
+   "x": 356.7,
+   "y": 719.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0667,
+   "action": "move",
+   "x": 393.3,
+   "y": 723.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.075,
+   "action": "move",
+   "x": 430.0,
+   "y": 727.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0833,
+   "action": "move",
+   "x": 466.7,
+   "y": 731.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.0917,
+   "action": "move",
+   "x": 503.3,
+   "y": 735.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.1,
+   "action": "move",
+   "x": 540.0,
+   "y": 740.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 3.1,
+   "action": "release"
+  },
+  {
+   "t": 4.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 4.0
+  },
+  {
+   "t": 4.0,
+   "action": "press",
+   "x": 760,
+   "y": 690,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0083,
+   "action": "move",
+   "x": 796.7,
+   "y": 694.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0167,
+   "action": "move",
+   "x": 833.3,
+   "y": 698.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.025,
+   "action": "move",
+   "x": 870.0,
+   "y": 702.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0333,
+   "action": "move",
+   "x": 906.7,
+   "y": 706.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0417,
+   "action": "move",
+   "x": 943.3,
+   "y": 710.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.05,
+   "action": "move",
+   "x": 980.0,
+   "y": 715.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0583,
+   "action": "move",
+   "x": 1016.7,
+   "y": 719.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0667,
+   "action": "move",
+   "x": 1053.3,
+   "y": 723.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.075,
+   "action": "move",
+   "x": 1090.0,
+   "y": 727.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0833,
+   "action": "move",
+   "x": 1126.7,
+   "y": 731.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.0917,
+   "action": "move",
+   "x": 1163.3,
+   "y": 735.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.1,
+   "action": "move",
+   "x": 1200.0,
+   "y": 740.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 4.1,
+   "action": "release"
+  },
+  {
+   "t": 5.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 9.0
+  },
+  {
+   "t": 5.0,
+   "action": "press",
+   "x": 1420,
+   "y": 690,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0083,
+   "action": "move",
+   "x": 1456.7,
+   "y": 694.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0167,
+   "action": "move",
+   "x": 1493.3,
+   "y": 698.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.025,
+   "action": "move",
+   "x": 1530.0,
+   "y": 702.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0333,
+   "action": "move",
+   "x": 1566.7,
+   "y": 706.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0417,
+   "action": "move",
+   "x": 1603.3,
+   "y": 710.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.05,
+   "action": "move",
+   "x": 1640.0,
+   "y": 715.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0583,
+   "action": "move",
+   "x": 1676.7,
+   "y": 719.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0667,
+   "action": "move",
+   "x": 1713.3,
+   "y": 723.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.075,
+   "action": "move",
+   "x": 1750.0,
+   "y": 727.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0833,
+   "action": "move",
+   "x": 1786.7,
+   "y": 731.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.0917,
+   "action": "move",
+   "x": 1823.3,
+   "y": 735.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.1,
+   "action": "move",
+   "x": 1860.0,
+   "y": 740.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 5.1,
+   "action": "release"
+  },
+  {
+   "t": 6.0,
+   "action": "param",
+   "name": "medium",
+   "value": 1.0
+  },
+  {
+   "t": 6.0,
+   "action": "dip",
+   "pigment": "cadmium_red"
+  },
+  {
+   "t": 6.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 1.0
+  },
+  {
+   "t": 6.0,
+   "action": "press",
+   "x": 100,
+   "y": 1150,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0083,
+   "action": "move",
+   "x": 136.7,
+   "y": 1154.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0167,
+   "action": "move",
+   "x": 173.3,
+   "y": 1158.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.025,
+   "action": "move",
+   "x": 210.0,
+   "y": 1162.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0333,
+   "action": "move",
+   "x": 246.7,
+   "y": 1166.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0417,
+   "action": "move",
+   "x": 283.3,
+   "y": 1170.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.05,
+   "action": "move",
+   "x": 320.0,
+   "y": 1175.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0583,
+   "action": "move",
+   "x": 356.7,
+   "y": 1179.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0667,
+   "action": "move",
+   "x": 393.3,
+   "y": 1183.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.075,
+   "action": "move",
+   "x": 430.0,
+   "y": 1187.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0833,
+   "action": "move",
+   "x": 466.7,
+   "y": 1191.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.0917,
+   "action": "move",
+   "x": 503.3,
+   "y": 1195.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.1,
+   "action": "move",
+   "x": 540.0,
+   "y": 1200.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 6.1,
+   "action": "release"
+  },
+  {
+   "t": 7.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 4.0
+  },
+  {
+   "t": 7.0,
+   "action": "press",
+   "x": 760,
+   "y": 1150,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0083,
+   "action": "move",
+   "x": 796.7,
+   "y": 1154.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0167,
+   "action": "move",
+   "x": 833.3,
+   "y": 1158.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.025,
+   "action": "move",
+   "x": 870.0,
+   "y": 1162.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0333,
+   "action": "move",
+   "x": 906.7,
+   "y": 1166.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0417,
+   "action": "move",
+   "x": 943.3,
+   "y": 1170.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.05,
+   "action": "move",
+   "x": 980.0,
+   "y": 1175.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0583,
+   "action": "move",
+   "x": 1016.7,
+   "y": 1179.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0667,
+   "action": "move",
+   "x": 1053.3,
+   "y": 1183.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.075,
+   "action": "move",
+   "x": 1090.0,
+   "y": 1187.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0833,
+   "action": "move",
+   "x": 1126.7,
+   "y": 1191.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.0917,
+   "action": "move",
+   "x": 1163.3,
+   "y": 1195.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.1,
+   "action": "move",
+   "x": 1200.0,
+   "y": 1200.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 7.1,
+   "action": "release"
+  },
+  {
+   "t": 8.0,
+   "action": "param",
+   "name": "splatter_force",
+   "value": 9.0
+  },
+  {
+   "t": 8.0,
+   "action": "press",
+   "x": 1420,
+   "y": 1150,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0083,
+   "action": "move",
+   "x": 1456.7,
+   "y": 1154.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0167,
+   "action": "move",
+   "x": 1493.3,
+   "y": 1158.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.025,
+   "action": "move",
+   "x": 1530.0,
+   "y": 1162.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0333,
+   "action": "move",
+   "x": 1566.7,
+   "y": 1166.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0417,
+   "action": "move",
+   "x": 1603.3,
+   "y": 1170.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.05,
+   "action": "move",
+   "x": 1640.0,
+   "y": 1175.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0583,
+   "action": "move",
+   "x": 1676.7,
+   "y": 1179.2,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0667,
+   "action": "move",
+   "x": 1713.3,
+   "y": 1183.3,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.075,
+   "action": "move",
+   "x": 1750.0,
+   "y": 1187.5,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0833,
+   "action": "move",
+   "x": 1786.7,
+   "y": 1191.7,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.0917,
+   "action": "move",
+   "x": 1823.3,
+   "y": 1195.8,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.1,
+   "action": "move",
+   "x": 1860.0,
+   "y": 1200.0,
+   "pressure": 0.5
+  },
+  {
+   "t": 8.1,
+   "action": "release"
+  },
+  {
+   "t": 10.5,
+   "action": "checkpoint",
+   "name": "thrown"
+  }
+ ]
+}

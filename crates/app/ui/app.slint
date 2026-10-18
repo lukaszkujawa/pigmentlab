@@ -761,6 +761,9 @@ export component AppWindow inherits Window {
     in-out property <int> surface-index: 0;
     in property <bool> watercolour: false;
     in property <bool> tube-selected: false;
+    in property <bool> splatter-selected: false;
+    in-out property <float> splatter-height: 30;
+    in-out property <float> splatter-force: 3;
     in property <[string]> procedural-names: [];
     in property <int> procedural-base: 0;
     in property <[BottleRow]> bottles: [];
@@ -816,6 +819,7 @@ export component AppWindow inherits Window {
     callback brush-adjusted();
     callback paint-changed();
     callback rig-changed();
+    callback splatter-changed();
     callback cut-strings();
     callback bottle-picked(int);
     callback stop-bottles(int);
@@ -1080,7 +1084,19 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            if root.panel-tab == 1: Card {
+                            if root.panel-tab == 1 && root.splatter-selected: Card {
+                                title: "SPLATTER";
+                                Text {
+                                    text: "Press where the paint should start landing and drag to where the farthest paint should land. Force sets how hard it is thrown; harder throws come down more steeply to stay inside the arrow and shatter into more irregular lines and drops. Load sets how much paint, Medium how runny it is.";
+                                    color: Theme.muted;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                                ParamSlider { label: "Force"; minimum: 0.5; maximum: 10; value <=> root.splatter-force; value-text: round(self.value * 10) / 10 + " m/s"; released => { root.splatter-changed(); } }
+                                ParamSlider { label: "Height"; minimum: 5; maximum: 200; value <=> root.splatter-height; value-text: round(self.value) + " cm"; released => { root.splatter-changed(); } }
+                            }
+
+                            if root.panel-tab == 1 && !root.splatter-selected: Card {
                                 title: "BOTTLES";
                                 if root.bottles.length == 0: Text {
                                     text: "Press the canvas to hang a corked bottle from the hook (orange ring) and hold it. Drag and let go to throw it, then switch on its flow. Drag the ring to move the hook.";
@@ -1112,7 +1128,7 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            if root.panel-tab == 1: Card {
+                            if root.panel-tab == 1 && !root.splatter-selected: Card {
                                 title: root.selected-bottle >= 0 ? "SELECTED BOTTLE" : "NEXT BOTTLE";
                                 Text {
                                     text: root.selected-bottle >= 0 ? "String, hook height, size and hole change this bottle now." : "Settings for the next bottle you hang.";

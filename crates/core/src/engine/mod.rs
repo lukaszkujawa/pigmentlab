@@ -7,7 +7,7 @@ use crate::input::{Hover, PointerSample, PointerTrack};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Mark, Marks, SMALLEST_WINDOW, Tube, WetBounds};
 use crate::pigment::{Coefficients, Paint};
 use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
-use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, DripOverlay, HeightMap, Lighting, Stage, Target, Viewport};
+use crate::render::{BrushLines, Composite, DISPLAY_FORMAT, DripOverlay, Guides, HeightMap, Lighting, Stage, Target, Viewport};
 use glam::Vec3;
 
 mod drip;
@@ -25,6 +25,9 @@ const LIFTED_HEIGHT: f32 = 1.25;
 const SUBSTEPS_PER_WATER_STEP: u64 = 4;
 const WATER_SETTLE_SECONDS: f64 = 90.0;
 pub const DRIP_TOOL: &str = "Drip bottle";
+pub const SPLATTER_TOOL: &str = "Splatter";
+const DEFAULT_SPLATTER_HEIGHT: f32 = 30.0;
+const DEFAULT_SPLATTER_FORCE: f32 = 3.0;
 pub const TUBE_TOOL: &str = "Paint tube";
 const FOOTPRINT_SLACK: f32 = crate::units::cm(0.15);
 
@@ -33,10 +36,11 @@ enum Tool {
     Brush,
     Tube,
     Drip,
+    Splatter,
 }
 
 pub fn tool_names() -> Vec<&'static str> {
-    PRESETS.iter().map(|named| named.name).chain([TUBE_TOOL, DRIP_TOOL]).collect()
+    PRESETS.iter().map(|named| named.name).chain([TUBE_TOOL, DRIP_TOOL, SPLATTER_TOOL]).collect()
 }
 
 pub struct Engine {
@@ -55,6 +59,9 @@ pub struct Engine {
     stage_view: Option<Viewport>,
     rig: Rig,
     holding_hook: bool,
+    splatter_height: f32,
+    splatter_force: f32,
+    aim: Option<[glam::Vec2; 2]>,
     drained: f32,
     lifted_load: Option<f32>,
     tool: Tool,
@@ -155,6 +162,9 @@ impl Engine {
             stage_view: None,
             rig: Rig { hook: glam::Vec2::new(size.width as f32, size.height as f32) * 0.5, ..Rig::default() },
             holding_hook: false,
+            splatter_height: crate::units::cm(DEFAULT_SPLATTER_HEIGHT),
+            splatter_force: DEFAULT_SPLATTER_FORCE,
+            aim: None,
             drained: 0.0,
             lifted_load: None,
             tool: Tool::Brush,
@@ -261,17 +271,18 @@ impl Engine {
         if self.show_bristles && self.tool == Tool::Brush {
             self.brush_lines.encode(&mut encoder, &view);
         }
-        let hook = (self.show_bristles && self.tool == Tool::Drip).then_some(self.rig.hook);
-        let drips = self.show_bristles.then_some(&self.drips);
+        let splattering = self.tool == Tool::Splatter;
+        let guides = Guides { hook: (self.show_bristles && self.tool == Tool::Drip).then_some(self.rig.hook), aim: self.aim.filter(|_| splattering), reach: self.splatter_reach().filter(|_| splattering) };
+        let drips = (self.show_bristles || guides.aim.is_some()).then_some(&self.drips);
         match self.stage_view {
             Some(stage) => {
                 let layer = self.stage.layer(&self.gpu, stage);
-                self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: layer, view: stage, premultiplied: true }, drips, hook);
+                self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: layer, view: stage, premultiplied: true }, drips, guides);
                 self.stage.encode_output(&mut encoder);
             }
-            None if self.show_bristles => {
+            None if drips.is_some() => {
                 let canvas = Viewport::canvas(glam::UVec2::new(self.canvas.size.width, self.canvas.size.height));
-                self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: &view, view: canvas, premultiplied: false }, drips, hook);
+                self.drip_overlay.encode(&self.gpu, &mut encoder, &Target { texture: &view, view: canvas, premultiplied: false }, drips, guides);
             }
             None => {}
         }

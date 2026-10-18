@@ -6,6 +6,6 @@ mod stage;
 
 pub use brush_lines::BrushLines;
 pub use composite::{Composite, DISPLAY_FORMAT, Lighting};
-pub use drip_overlay::{DripOverlay, Target, Viewport};
+pub use drip_overlay::{DripOverlay, Guides, Target, Viewport};
 pub use height_map::HeightMap;
 pub use stage::Stage;

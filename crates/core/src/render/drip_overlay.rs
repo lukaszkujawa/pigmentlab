@@ -10,6 +10,8 @@ const STRING_WIDTH: f32 = 3.0;
 const OUTLINE_WIDTH: f32 = 4.0;
 const PIVOT_RADIUS: f32 = 10.0;
 const HOOK_RADIUS: f32 = 24.0;
+const ARROW_HEAD: f32 = 22.0;
+const ARROW_SPREAD: f32 = 0.45;
 const SMALLEST_DOT: f32 = 1.5;
 const RIG: Vec4 = Vec4::new(0.12, 0.11, 0.1, 0.75);
 const SELECTED: Vec4 = Vec4::new(0.98, 0.55, 0.1, 0.95);
@@ -20,6 +22,13 @@ const GLASS: Vec4 = Vec4::new(0.85, 0.88, 0.9, 0.12);
 struct Vertex {
     position: [f32; 2],
     colour: [f32; 4],
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Guides {
+    pub hook: Option<Vec2>,
+    pub aim: Option<[Vec2; 2]>,
+    pub reach: Option<[Vec2; 2]>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -93,8 +102,11 @@ impl DripOverlay {
         }
     }
 
-    pub fn encode(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, target: &Target, drips: Option<&Drips>, hook: Option<Vec2>) {
-        let vertices = drips.map(|drips| shapes(drips, hook, 1.0 / target.view.scale)).unwrap_or_default();
+    pub fn encode(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, target: &Target, drips: Option<&Drips>, guides: Guides) {
+        let pixel = 1.0 / target.view.scale;
+        let mut vertices = drips.map(|drips| shapes(drips, guides.hook, pixel)).unwrap_or_default();
+        vertices.extend(guides.reach.map(|reach| span(reach, pixel)).unwrap_or_default());
+        vertices.extend(guides.aim.map(|aim| arrow(aim, pixel)).unwrap_or_default());
         let load = match target.premultiplied {
             true => wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
             false => wgpu::LoadOp::Load,
@@ -167,7 +179,7 @@ fn shapes(drips: &Drips, hook: Option<Vec2>, pixel: f32) -> Vec<Vertex> {
         shapes.line(top, pivot, STRING_WIDTH * pixel, string);
         shapes.disc(pivot, PIVOT_RADIUS * pixel, RIG);
     }
-    let streams = drips.bottles().iter().chain(drips.cut()).map(|bottle| (bottle.jet(), bottle.paint)).chain(drips.dribble().map(|dribble| (dribble.jet(), dribble.paint())));
+    let streams = drips.bottles().iter().chain(drips.cut()).map(|bottle| (bottle.jet(), bottle.paint)).chain(drips.dribble().into_iter().chain(drips.thrown()).map(|dribble| (dribble.jet(), dribble.paint())));
     for (jet, paint) in streams {
         let stream = paint.opaque_reflectance().extend(0.9);
         for piece in jet.pieces() {
@@ -181,6 +193,27 @@ fn shapes(drips: &Drips, hook: Option<Vec2>, pixel: f32) -> Vec<Vertex> {
         let centre = droplet.position.truncate() / METRES_PER_PIXEL;
         shapes.disc(centre, pixels(droplet.diameter * 0.5).max(SMALLEST_DOT * pixel), droplet.paint.opaque_reflectance().extend(0.9));
     }
+    shapes.vertices
+}
+
+fn span([near, far]: [Vec2; 2], pixel: f32) -> Vec<Vertex> {
+    let mut shapes = Shapes::default();
+    let reach = SELECTED * Vec4::new(1.0, 1.0, 1.0, 0.35);
+    shapes.line(near, far, OUTLINE_WIDTH * pixel * 2.0, reach);
+    shapes.ring(far, ARROW_HEAD * pixel * 0.4, OUTLINE_WIDTH * pixel * 0.5, reach);
+    shapes.vertices
+}
+
+fn arrow([from, to]: [Vec2; 2], pixel: f32) -> Vec<Vertex> {
+    let mut shapes = Shapes::default();
+    let along = (to - from).normalize_or(Vec2::X);
+    let head = ARROW_HEAD * pixel;
+    shapes.disc(from, PIVOT_RADIUS * pixel * 0.6, SELECTED);
+    shapes.line(from, to - along * head * 0.8, OUTLINE_WIDTH * pixel, SELECTED);
+    for side in [-1.0, 1.0] {
+        shapes.line(to, to - along.rotate(Vec2::from_angle(side * ARROW_SPREAD)) * head, OUTLINE_WIDTH * pixel, SELECTED);
+    }
+    shapes.ring(to, head * 0.6, OUTLINE_WIDTH * pixel * 0.5, SELECTED);
     shapes.vertices
 }
 

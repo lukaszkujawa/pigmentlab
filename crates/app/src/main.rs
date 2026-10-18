@@ -6,7 +6,7 @@ mod dock_icon;
 mod tablet;
 
 use pigmentlab_core::brush::{BrushAdjustments, PRESETS};
-use pigmentlab_core::engine::{DRIP_TOOL, PaintSettings, TUBE_TOOL, tool_names};
+use pigmentlab_core::engine::{DRIP_TOOL, PaintSettings, SPLATTER_TOOL, TUBE_TOOL, tool_names};
 use pigmentlab_core::paint::NOZZLE_RADIUS;
 use pigmentlab_core::scenario::Recorder;
 use pigmentlab_core::canvas::{Medium, Surface};
@@ -26,6 +26,7 @@ const SMALLEST_CANVAS_SIDE: u32 = 256;
 const LARGEST_CANVAS_SIDE: u32 = 4096;
 const SEED: u64 = 1;
 const RIG_PARAMS: [&str; 6] = ["string", "pivot", "hole", "radius", "throw", "pour"];
+const SPLATTER_PARAMS: [&str; 2] = ["splatter_force", "splatter_height"];
 
 const MAX_CUSTOM_COLOURS: usize = 12;
 const HOVER: i32 = 3;
@@ -58,6 +59,7 @@ struct Requests {
     brush: Option<(usize, BrushAdjustments)>,
     paint: Option<PaintSettings>,
     rig: Option<[f32; 6]>,
+    splatter: Option<[f32; 2]>,
     cut_strings: bool,
     bottle_actions: Vec<BottleAction>,
     tooth: Option<f32>,
@@ -108,7 +110,7 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_surface_names(slint::ModelRc::new(slint::VecModel::from(
         Surface::ALL.iter().map(|surface| slint::SharedString::from(surface.name())).collect::<Vec<_>>(),
     )));
-    let (brushes, procedural): (Vec<&str>, Vec<&str>) = tool_names().into_iter().partition(|name| *name != DRIP_TOOL);
+    let (brushes, procedural): (Vec<&str>, Vec<&str>) = tool_names().into_iter().partition(|name| *name != DRIP_TOOL && *name != SPLATTER_TOOL);
     app.set_procedural_base(brushes.len() as i32);
     app.set_brush_names(slint::ModelRc::new(slint::VecModel::from(brushes.into_iter().map(slint::SharedString::from).collect::<Vec<_>>())));
     app.set_procedural_names(slint::ModelRc::new(slint::VecModel::from(procedural.into_iter().map(slint::SharedString::from).collect::<Vec<_>>())));
@@ -213,6 +215,7 @@ fn main() -> Result<(), slint::PlatformError> {
         app.set_brush_has_thickness(preset.is_some_and(|preset| preset.has_thickness()));
         app.set_brush_has_length(preset.is_some_and(|preset| preset.is_rigid()));
         app.set_tube_selected(tool_name(index.max(0) as usize) == TUBE_TOOL);
+        app.set_splatter_selected(tool_name(index.max(0) as usize) == SPLATTER_TOOL);
         shared.borrow_mut().brush = Some((index.max(0) as usize, adjustments_of(&app, None)));
     });
     let shared = requests.clone();
@@ -251,6 +254,9 @@ fn main() -> Result<(), slint::PlatformError> {
             requests.bottle_actions.extend(BOTTLE_PARAMS.into_iter().zip(rig).map(|(name, value)| BottleAction::Param(bottle, name, value)));
         }
     });
+    let shared = requests.clone();
+    let app_weak = app.as_weak();
+    app.on_splatter_changed(move || shared.borrow_mut().splatter = Some(splatter_of(&app_weak.unwrap())));
     let shared = requests.clone();
     let app_weak = app.as_weak();
     app.on_bottle_picked(move |bottle| {
@@ -430,9 +436,14 @@ fn state_of(app: &AppWindow, custom: &[[u8; 3]]) -> Requests {
         brush: Some((app.get_brush_index().max(0) as usize, adjustments_of(app, Some(app.get_brush_bristles().round() as u32)))),
         paint: Some(paint_settings_of(app)),
         rig: Some(rig_of(app)),
+        splatter: Some(splatter_of(app)),
         dip: Some(active_dip(app, custom)),
         ..Requests::default()
     }
+}
+
+fn splatter_of(app: &AppWindow) -> [f32; 2] {
+    [app.get_splatter_force(), app.get_splatter_height()]
 }
 
 fn rig_of(app: &AppWindow) -> [f32; 6] {
@@ -474,6 +485,11 @@ fn record(active: &mut Recorder, now: f64, requests: &Requests) {
     }
     if let Some(rig) = requests.rig {
         for (name, value) in RIG_PARAMS.into_iter().zip(rig) {
+            active.param(now, name, value);
+        }
+    }
+    if let Some(splatter) = requests.splatter {
+        for (name, value) in SPLATTER_PARAMS.into_iter().zip(splatter) {
             active.param(now, name, value);
         }
     }
@@ -530,6 +546,11 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     }
     if let Some(rig) = requests.rig.take() {
         for (name, value) in RIG_PARAMS.into_iter().zip(rig) {
+            engine.set_param(name, value);
+        }
+    }
+    if let Some(splatter) = requests.splatter.take() {
+        for (name, value) in SPLATTER_PARAMS.into_iter().zip(splatter) {
             engine.set_param(name, value);
         }
     }

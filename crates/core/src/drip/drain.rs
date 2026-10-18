@@ -1,7 +1,7 @@
 use super::flick::BRISTLE_GAP;
 use super::flight::Droplet;
 use super::fluid::{DENSITY, Fluid};
-use super::jet::{Jet, Source};
+use super::jet::{Jet, Node, Source};
 use super::laid::{Threads, falling_droplet};
 use crate::paint::Mark;
 use crate::pigment::Coefficients;
@@ -12,6 +12,9 @@ const RETAINED_SHARE: f32 = 0.6;
 const BUNDLE_PERMEABILITY_PER_GAP_SQUARED: f32 = 1.0 / 32.0;
 const YIELD_GRADIENT_PER_STRESS: f32 = 4.0 / BRISTLE_GAP;
 const FASTEST_HAND: f32 = 10.0;
+const FINE_UP_TO: f32 = 0.3;
+const COARSE_FROM: f32 = 0.6;
+const COARSEST: f64 = 4.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tuft {
@@ -29,12 +32,22 @@ pub struct Tap {
     pub medium: f32,
 }
 
+fn thrown_coarseness(medium: f32) -> f64 {
+    let t = ((medium - FINE_UP_TO) / (COARSE_FROM - FINE_UP_TO)).clamp(0.0, 1.0);
+    1.0 + (COARSEST - 1.0) * f64::from(t * t * (3.0 - 2.0 * t))
+}
+
 pub fn drain_flow(load: f32, tuft: &Tuft, fluid: Fluid) -> f32 {
     let retained = RETAINED_SHARE * tuft.capacity;
     let overload = ((load - retained) / (tuft.capacity - retained)).clamp(0.0, 1.0);
     let permeability = BUNDLE_PERMEABILITY_PER_GAP_SQUARED * BRISTLE_GAP * BRISTLE_GAP;
     let pull = DENSITY * GRAVITY * tuft.droop.max(0.0) - YIELD_GRADIENT_PER_STRESS * fluid.yield_stress;
     permeability * tuft.cross_section * pull.max(0.0) / fluid.viscosity * overload
+}
+
+pub struct Slug {
+    pub nodes: Vec<Node>,
+    pub volumes: Vec<f64>,
 }
 
 pub struct Dribble {
@@ -48,6 +61,12 @@ pub struct Dribble {
 impl Dribble {
     pub fn new(tap: &Tap, seed: u64) -> Self {
         Self { jet: Jet::new(Fluid::of(tap.medium), seed), paint: tap.paint, medium: tap.medium, last_tip: None, threads: Threads::default() }
+    }
+
+    pub fn thrown(slugs: Vec<Slug>, paint: Coefficients, medium: f32, seed: u64) -> Self {
+        let mut jet = Jet::new(Fluid::of(medium), seed).coarsened(thrown_coarseness(medium));
+        slugs.into_iter().for_each(|slug| jet.fling(slug.nodes, slug.volumes));
+        Self { jet, paint, medium, last_tip: None, threads: Threads::default() }
     }
 
     pub fn jet(&self) -> &Jet {

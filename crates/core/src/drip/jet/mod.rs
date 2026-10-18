@@ -24,6 +24,8 @@ const MOST_SUBSTEPS: usize = 400;
 const FEWEST_SUBSTEPS: usize = 8;
 const STRIDE_GROWTH: f64 = 2.0;
 const ROUNDEST_DROP: f64 = 2.5;
+const SMALLEST_THREAD: f64 = 1e-9;
+const RAYLEIGH_WAVELENGTH: f64 = 9.02;
 const LONGEST_SPLAT: f64 = 3.0;
 const NOZZLE_COLUMN_PER_RADIUS: f64 = 0.2;
 const NOZZLE_JITTER: f64 = 1e-4;
@@ -68,6 +70,7 @@ pub struct Jet {
     jitter: SplitMix64,
     nozzle: Option<DVec3>,
     threads: u64,
+    coarseness: f64,
 }
 
 impl Source {
@@ -78,11 +81,20 @@ impl Source {
 
 impl Jet {
     pub fn new(fluid: Fluid, seed: u64) -> Self {
-        Self { pieces: Vec::new(), viscosity: f64::from(fluid.viscosity), gravity: DVec3::new(0.0, 0.0, -GRAVITY), jitter: SplitMix64::new(seed), nozzle: None, threads: 0 }
+        Self { pieces: Vec::new(), viscosity: f64::from(fluid.viscosity), gravity: DVec3::new(0.0, 0.0, -GRAVITY), jitter: SplitMix64::new(seed), nozzle: None, threads: 0, coarseness: 1.0 }
     }
 
     pub fn set_fluid(&mut self, fluid: Fluid) {
         self.viscosity = f64::from(fluid.viscosity);
+    }
+
+    pub fn coarsened(self, coarseness: f64) -> Self {
+        Self { coarseness, ..self }
+    }
+
+    pub fn fling(&mut self, nodes: Vec<Node>, volumes: Vec<f64>) {
+        let thread = self.fresh_thread();
+        self.pieces.push(Piece { thread, ..Piece::new(nodes, volumes, false) });
     }
 
     pub fn let_go(&mut self) {
@@ -155,6 +167,10 @@ impl Jet {
             if clock >= frame {
                 break;
             }
+            if !piece.pinned && !piece.is_on_canvas() && SAFETY * stable_step(&piece, self.viscosity) < shortest {
+                fallen.drops.extend(atomise(&piece));
+                return;
+            }
             let dt = (SAFETY * stable_step(&piece, self.viscosity)).min(STRIDE_GROWTH * piece.stride).clamp(shortest, longest).min(frame - clock);
             piece.stride = dt;
             let nozzle = source.filter(|_| piece.pinned).map(|source| Source { position: source.position - source.velocity * (frame - clock), ..*source });
@@ -165,7 +181,7 @@ impl Jet {
             let held = nozzle.map(|nozzle| nozzle.velocity + (nozzle.exit_velocity() - nozzle.velocity).length() * (DVec3::NEG_Z + shaking));
             advance(&mut piece, held, self.viscosity, self.gravity, dt);
             clock += dt;
-            piece.remesh();
+            piece.remesh(self.coarseness);
             let neck = (0..piece.segments()).find(|segment| is_breaking_neck(&piece, *segment));
             if let Some(below) = neck.and_then(|segment| piece.cut(segment)) {
                 let thread = self.fresh_thread();
@@ -297,6 +313,25 @@ fn held_nodes(piece: &Piece) -> usize {
     if piece.pinned { HELD_NODES } else { 0 }
 }
 
+fn atomise(piece: &Piece) -> Vec<Drop> {
+    let mut drops = Vec::new();
+    let (mut volume, mut length, mut position, mut velocity) = (0.0, 0.0, DVec3::ZERO, DVec3::ZERO);
+    for segment in 0..piece.segments() {
+        let [from, to] = [piece.nodes[segment], piece.nodes[segment + 1]];
+        let share = piece.volumes[segment];
+        volume += share;
+        length += piece.length(segment);
+        position += from.position.lerp(to.position, 0.5) * share;
+        velocity += from.velocity.lerp(to.velocity, 0.5) * share;
+        let wavelength = RAYLEIGH_WAVELENGTH * (volume / (PI * length)).sqrt();
+        if length >= wavelength || segment + 1 == piece.segments() {
+            drops.push(Drop { position: position / volume, velocity: velocity / volume, volume });
+            (volume, length, position, velocity) = (0.0, 0.0, DVec3::ZERO, DVec3::ZERO);
+        }
+    }
+    drops
+}
+
 fn is_compact(piece: &Piece) -> bool {
     let (low, high) = piece.nodes.iter().fold((DVec3::MAX, DVec3::MIN), |(low, high), node| (low.min(node.position), high.max(node.position)));
     (high - low).truncate().length() < LONGEST_SPLAT * (6.0 * piece.volume() / PI).cbrt()
@@ -304,7 +339,7 @@ fn is_compact(piece: &Piece) -> bool {
 
 fn is_round(piece: &Piece) -> bool {
     let diameter = (6.0 * piece.volume() / PI).cbrt();
-    piece.segments() <= 2 || piece.total_length() < ROUNDEST_DROP * diameter
+    piece.segments() <= 2 || piece.total_length() < ROUNDEST_DROP * diameter || piece.volume() < SMALLEST_THREAD
 }
 
 #[cfg(test)]

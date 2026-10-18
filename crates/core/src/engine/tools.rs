@@ -1,4 +1,4 @@
-use super::{DEPOSIT_DT, DRIP_TOOL, Engine, FOOTPRINT_SLACK, PaintSettings, SIMULATION_DT, TUBE_TOOL, Tool};
+use super::{DEPOSIT_DT, DRIP_TOOL, Engine, FOOTPRINT_SLACK, PaintSettings, SIMULATION_DT, SPLATTER_TOOL, TUBE_TOOL, Tool};
 use crate::brush::{Brush, BrushAdjustments, BrushPreset, preset_by_name};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Marks, Tube};
 use crate::render::{BrushLines, Composite, HeightMap};
@@ -23,8 +23,9 @@ impl Engine {
     }
 
     pub fn configure_brush(&mut self, name: &str, adjustments: BrushAdjustments) -> bool {
-        if name.eq_ignore_ascii_case(TUBE_TOOL) || name.eq_ignore_ascii_case(DRIP_TOOL) {
-            self.tool = if name.eq_ignore_ascii_case(TUBE_TOOL) { Tool::Tube } else { Tool::Drip };
+        let procedural = [(TUBE_TOOL, Tool::Tube), (DRIP_TOOL, Tool::Drip), (SPLATTER_TOOL, Tool::Splatter)];
+        if let Some((_, tool)) = procedural.into_iter().find(|(tool, _)| name.eq_ignore_ascii_case(tool)) {
+            self.tool = tool;
             self.adjustments = adjustments;
             return true;
         }

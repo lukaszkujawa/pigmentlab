@@ -1,5 +1,5 @@
 use super::{Engine, SIMULATION_DT, Tool};
-use crate::drip::{Drips, Fluid, Hanging, Rig, Setting, Spatter, Tap, Tuft, drain_flow, shed_share};
+use crate::drip::{Drips, Fluid, Hanging, Rig, Setting, Spatter, Tap, Throw, Tuft, drain_flow, shed_share};
 use crate::input::PointerState;
 use crate::units::{METRES_PER_PIXEL, cm, metres};
 use glam::{Vec2, Vec3};
@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 
 const FLICK_HEIGHT: f32 = 0.01;
 const HOOK_REACH: f32 = 24.0;
+const SPLATTER_VOLUME: f32 = 4e-7;
 const TIP_SHARE_OF_HALF_WIDTH: f32 = 0.25;
 const SMALLEST_TIP: f32 = 0.0005;
 const LARGEST_TIP: f32 = 0.003;
@@ -30,6 +31,8 @@ impl Engine {
             "pour" => self.rig.pour_at_once = value > 0.5,
             "hook_x" => self.rig.hook.x = value,
             "hook_y" => self.rig.hook.y = value,
+            "splatter_height" => self.splatter_height = cm(value),
+            "splatter_force" => self.splatter_force = value.max(0.1),
             _ => return false,
         }
         true
@@ -54,6 +57,44 @@ impl Engine {
             true => self.drips.hold(at),
             false => self.drips.let_go(self.rig.throw),
         }
+    }
+
+    pub(super) fn aim_splatter(&mut self, pointer: &PointerState) {
+        let at = Vec2::new(pointer.x, pointer.y);
+        match (pointer.pressed, self.aim) {
+            (true, aim) if pointer.fresh_press || aim.is_none() => self.aim = Some([at, at]),
+            (true, Some([from, _])) => self.aim = Some([from, at]),
+            (false, Some([from, aim])) => {
+                self.aim = None;
+                self.splatter(from, aim);
+            }
+            _ => {}
+        }
+        self.needs_render = true;
+    }
+
+    pub fn splatter(&mut self, from: Vec2, aim: Vec2) {
+        if self.paint.load > 0.0 {
+            let throw = self.throw(from, aim);
+            self.drips.splatter(&throw);
+        }
+    }
+
+    pub(super) fn splatter_reach(&self) -> Option<[Vec2; 2]> {
+        self.aim.map(|[from, aim]| self.throw(from, aim).reach().map(|point| point / METRES_PER_PIXEL))
+    }
+
+    fn throw(&self, from: Vec2, aim: Vec2) -> Throw {
+        let volume = SPLATTER_VOLUME * self.paint.load.clamp(0.0, 1.0);
+        Throw { at: from * METRES_PER_PIXEL, toward: aim * METRES_PER_PIXEL, height: metres(self.splatter_height), speed: self.splatter_force, volume, paint: self.paint_on_tool.coefficients, medium: self.paint.medium.clamp(0.0, 1.0) }
+    }
+
+    pub fn aim(&self) -> Option<[Vec2; 2]> {
+        self.aim
+    }
+
+    pub fn splatter_height(&self) -> f32 {
+        self.splatter_height
     }
 
     pub(super) fn flick_brush(&mut self) {

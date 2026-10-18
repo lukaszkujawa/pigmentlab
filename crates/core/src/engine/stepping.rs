@@ -57,8 +57,10 @@ impl Engine {
                     self.gpu.queue.submit(Some(encoder.finish()));
                 }
                 self.needs_render |= self.touch.engaged() || self.show_bristles;
-                if self.tool == Tool::Drip {
-                    self.steer_bottles(&state);
+                match self.tool {
+                    Tool::Drip => self.steer_bottles(&state),
+                    Tool::Splatter => self.aim_splatter(&state),
+                    Tool::Brush | Tool::Tube => {}
                 }
             }
             if let Some(hover) = self.hover.filter(|_| !self.pressed && !self.touch.engaged()) {
@@ -78,12 +80,12 @@ impl Engine {
             let (focus, footprint_radius) = match self.tool {
                 Tool::Brush => (self.brush.tuft_centre(), preset.reach_from_handle() + FOOTPRINT_SLACK),
                 Tool::Tube => (self.tool_tip().truncate(), self.tube_reach() + FOOTPRINT_SLACK),
-                Tool::Drip => (self.tool_tip().truncate(), FOOTPRINT_SLACK),
+                Tool::Drip | Tool::Splatter => (self.tool_tip().truncate(), FOOTPRINT_SLACK),
             };
             if self.window.needs_relocation(focus, footprint_radius) {
                 self.window.follow(&self.gpu, &mut encoder, &self.canvas, focus);
             }
-            if self.touch.engaged() && self.tool != Tool::Drip {
+            if self.touch.engaged() && matches!(self.tool, Tool::Brush | Tool::Tube) {
                 let touched = WetBounds::around(self.tool_tip().truncate().round().as_ivec2(), footprint_radius.ceil() as i32 + WET_MARGIN);
                 match &mut self.watercolour {
                     Some(watercolour) => {
@@ -124,7 +126,7 @@ impl Engine {
                     }
                     self.position_at_last_deposit = self.tool_tip();
                 }
-                Tool::Drip => {}
+                Tool::Drip | Tool::Splatter => {}
             }
             self.step_drips();
             self.lay_pending_marks(&mut encoder);

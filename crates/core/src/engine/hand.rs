@@ -16,7 +16,7 @@ impl Engine {
     pub(super) fn tool_tip(&self) -> Vec3 {
         match self.tool {
             Tool::Brush => self.pose.position,
-            Tool::Tube | Tool::Drip => self.touch.position.extend(0.0),
+            Tool::Tube | Tool::Drip | Tool::Splatter => self.touch.position.extend(0.0),
         }
     }
 
