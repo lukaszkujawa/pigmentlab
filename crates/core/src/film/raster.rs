@@ -12,13 +12,88 @@ pub struct Covered {
     pub volume: f32,
 }
 
+struct Outline<'a> {
+    mark: &'a Mark,
+    lobe_sizes: [f32; 5],
+    lobe_phases: [f32; 5],
+    egg: f32,
+}
+
+impl<'a> Outline<'a> {
+    fn of(mark: &'a Mark) -> Self {
+        Self {
+            mark,
+            lobe_sizes: std::array::from_fn(|lobe| LOBE_SIZES[lobe] * (0.5 + mark_hash(mark, 2 * lobe as u32))),
+            lobe_phases: std::array::from_fn(|lobe| TAU * mark_hash(mark, 2 * lobe as u32 + 1)),
+            egg: 2.0 * mark_hash(mark, 11) - 1.0,
+        }
+    }
+
+    fn edge(&self, angle: f32) -> f32 {
+        if self.mark.profile.ragged == 0.0 {
+            return 1.0;
+        }
+        let wobble: f32 = (0..LOBES.len()).map(|lobe| self.lobe_sizes[lobe] * (LOBES[lobe] * angle + self.lobe_phases[lobe]).sin()).sum();
+        1.0 + self.mark.profile.ragged * wobble
+    }
+
+    fn oval_offset(&self, p: Vec2) -> f32 {
+        let mark = self.mark;
+        let along = mark.to - mark.from;
+        let extent = along.length();
+        let axis = if extent > 1e-6 { along / extent } else { Vec2::X };
+        let away = p - 0.5 * (mark.from + mark.to);
+        let radius = mark.radius.max(SMALLEST_RADIUS);
+        let lengthwise = away.dot(axis) / (0.5 * extent + radius);
+        let egg = 1.0 + EGG * self.egg * lengthwise.clamp(-1.0, 1.0);
+        let local = Vec2::new(lengthwise, axis.perp_dot(away) / (radius * egg));
+        local.length() / self.edge(local.y.atan2(local.x))
+    }
+
+    fn capsule_offset(&self, p: Vec2) -> (f32, f32) {
+        let mark = self.mark;
+        let [open_start, open_end] = mark.profile.open;
+        let tip = mark.radius * mark.profile.taper;
+        let along = mark.to - mark.from;
+        let span = along.length_squared();
+        let projected = if span > 1e-6 { (p - mark.from).dot(along) / span } else { 0.0 };
+        let extent = span.sqrt();
+        let fade = mark.radius.min(tip).max(SMALLEST_RADIUS).min(0.5 * extent);
+        let mut share = 1.0;
+        if open_start {
+            share *= (0.5 + projected * extent / fade).clamp(0.0, 1.0);
+        }
+        if open_end {
+            share *= (0.5 - (projected - 1.0) * extent / fade).clamp(0.0, 1.0);
+        }
+        let t = projected.clamp(if open_start { -1.0 } else { 0.0 }, if open_end { 2.0 } else { 1.0 });
+        let away = p - (mark.from + along * t);
+        let radius = mark.radius + (tip - mark.radius) * t.clamp(0.0, 1.0);
+        let travelled = t * extent / radius.max(SMALLEST_RADIUS);
+        (away.length() / (radius * self.edge(away.y.atan2(away.x) + travelled)).max(SMALLEST_RADIUS), share)
+    }
+
+    fn weight(&self, pixel: IVec2) -> u32 {
+        let profile = &self.mark.profile;
+        let p = pixel.as_vec2() + 0.5;
+        let (offset, share) = if profile.oval { (self.oval_offset(p), 1.0) } else { self.capsule_offset(p) };
+        if share <= 0.0 {
+            return 0;
+        }
+        let rim = ((1.0 - offset) / (1.0 - profile.flatness).max(0.02)).clamp(0.0, 1.0);
+        let height = (1.0 - (1.0 - rim) * (1.0 - rim)).powf(1.0 - 0.5 * profile.stiffness);
+        (height * share * COVERAGE_SCALE).round() as u32
+    }
+}
+
 pub fn rasterise(mark: &Mark) -> Vec<Covered> {
+    let outline = Outline::of(mark);
     let reach = reach_of(mark);
     let corner = (mark.from.min(mark.to) - reach).floor().as_ivec2();
     let far = (mark.from.max(mark.to) + reach).ceil().as_ivec2();
     let weights: Vec<(IVec2, u32)> = (corner.y..=far.y)
         .flat_map(|y| (corner.x..=far.x).map(move |x| IVec2::new(x, y)))
-        .map(|pixel| (pixel, weight(mark, pixel)))
+        .map(|pixel| (pixel, outline.weight(pixel)))
         .filter(|(_, weight)| *weight > 0)
         .collect();
     let total: u64 = weights.iter().map(|(_, weight)| u64::from(*weight)).sum();
@@ -41,61 +116,6 @@ fn mark_hash(mark: &Mark, salt: u32) -> f32 {
     hash = hash.wrapping_mul(0x846c_a68b);
     hash ^= hash >> 16;
     (hash >> 8) as f32 / 16_777_216.0
-}
-
-fn edge(mark: &Mark, angle: f32) -> f32 {
-    let wobble: f32 = (0..LOBES.len())
-        .map(|lobe| {
-            let size = LOBE_SIZES[lobe] * (0.5 + mark_hash(mark, 2 * lobe as u32));
-            size * (LOBES[lobe] * angle + TAU * mark_hash(mark, 2 * lobe as u32 + 1)).sin()
-        })
-        .sum();
-    1.0 + mark.profile.ragged * wobble
-}
-
-fn oval_offset(mark: &Mark, p: Vec2) -> f32 {
-    let along = mark.to - mark.from;
-    let extent = along.length();
-    let axis = if extent > 1e-6 { along / extent } else { Vec2::X };
-    let away = p - 0.5 * (mark.from + mark.to);
-    let radius = mark.radius.max(SMALLEST_RADIUS);
-    let lengthwise = away.dot(axis) / (0.5 * extent + radius);
-    let egg = 1.0 + EGG * (2.0 * mark_hash(mark, 11) - 1.0) * lengthwise.clamp(-1.0, 1.0);
-    let local = Vec2::new(lengthwise, axis.perp_dot(away) / (radius * egg));
-    local.length() / edge(mark, local.y.atan2(local.x))
-}
-
-fn capsule_offset(mark: &Mark, p: Vec2) -> (f32, f32) {
-    let [open_start, open_end] = mark.profile.open;
-    let tip = mark.radius * mark.profile.taper;
-    let along = mark.to - mark.from;
-    let span = along.length_squared();
-    let projected = if span > 1e-6 { (p - mark.from).dot(along) / span } else { 0.0 };
-    let extent = span.sqrt();
-    let fade = mark.radius.min(tip).max(SMALLEST_RADIUS).min(0.5 * extent);
-    let mut share = 1.0;
-    if open_start {
-        share *= (0.5 + projected * extent / fade).clamp(0.0, 1.0);
-    }
-    if open_end {
-        share *= (0.5 - (projected - 1.0) * extent / fade).clamp(0.0, 1.0);
-    }
-    let t = projected.clamp(if open_start { -1.0 } else { 0.0 }, if open_end { 2.0 } else { 1.0 });
-    let away = p - (mark.from + along * t);
-    let radius = mark.radius + (tip - mark.radius) * t.clamp(0.0, 1.0);
-    let travelled = t * extent / radius.max(SMALLEST_RADIUS);
-    (away.length() / (radius * edge(mark, away.y.atan2(away.x) + travelled)).max(SMALLEST_RADIUS), share)
-}
-
-fn weight(mark: &Mark, pixel: IVec2) -> u32 {
-    let p = pixel.as_vec2() + 0.5;
-    let (offset, share) = if mark.profile.oval { (oval_offset(mark, p), 1.0) } else { capsule_offset(mark, p) };
-    if share <= 0.0 {
-        return 0;
-    }
-    let rim = ((1.0 - offset) / (1.0 - mark.profile.flatness).max(0.02)).clamp(0.0, 1.0);
-    let height = (1.0 - (1.0 - rim) * (1.0 - rim)).powf(1.0 - 0.5 * mark.profile.stiffness);
-    (height * share * COVERAGE_SCALE).round() as u32
 }
 
 #[cfg(test)]

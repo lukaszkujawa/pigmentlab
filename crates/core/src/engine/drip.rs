@@ -211,15 +211,13 @@ impl Engine {
         if self.drips.paused() || !self.substeps.is_multiple_of(super::SUBSTEPS_PER_FILM_STEP) {
             return;
         }
-        let changes = self.film.settle(SIMULATION_DT * super::SUBSTEPS_PER_FILM_STEP as f32, FILM_CHANGE_CAPACITY);
+        let Some(changes) = self.film.settle(SIMULATION_DT * super::SUBSTEPS_PER_FILM_STEP as f32, FILM_CHANGE_CAPACITY, !self.realtime) else { return };
         if let Some(bounds) = self.film_deltas.encode(&self.gpu, encoder, &changes) {
             self.mark_stale(bounds.expand(1));
         }
     }
 
-    pub fn film(&self) -> &crate::film::Film {
-        &self.film
+    pub fn film_unsettled(&mut self) -> f32 {
+        self.film.unsettled()
     }
-
-
 }

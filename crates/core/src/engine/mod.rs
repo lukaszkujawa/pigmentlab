@@ -1,7 +1,7 @@
 use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, PRESETS, Touch};
 use crate::canvas::{Canvas, CanvasSize, Medium};
 use crate::drip::{Drips, Rig};
-use crate::film::{Film, FilmDeltas};
+use crate::film::{Film, FilmDeltas, FilmWorker};
 use crate::gpu::{Gpu, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{Hover, PointerSample, PointerTrack};
@@ -56,7 +56,8 @@ pub struct Engine {
     marks: Marks,
     pending_marks: Vec<Mark>,
     drips: Drips,
-    film: Film,
+    film: FilmWorker,
+    realtime: bool,
     film_deltas: FilmDeltas,
     drip_overlay: DripOverlay,
     stage: Stage,
@@ -134,7 +135,7 @@ impl Engine {
         let tube = Tube::new(&gpu, &window, &canvas, &height_map.heights, seed, SIMULATION_DT);
         let marks = Marks::new(&gpu, &window, &canvas);
         let film_deltas = FilmDeltas::new(&gpu, &window, &canvas);
-        let film = Film::new(size.width, size.height, canvas.relief_heights());
+        let film = FilmWorker::spawn(Film::new(size.width, size.height, canvas.relief_heights()));
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let frames = ViewFrames::new(&gpu, glam::UVec2::new(size.width, size.height));
         let composite = Composite::new(&gpu, &canvas, &window, &height_map, &frames);
@@ -162,6 +163,7 @@ impl Engine {
             pending_marks: Vec::new(),
             drips: Drips::new(seed),
             film,
+            realtime: false,
             film_deltas,
             drip_overlay,
             stage,

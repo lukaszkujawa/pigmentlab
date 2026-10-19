@@ -68,7 +68,7 @@ fn every_drop_of_a_throw_lands_on_the_canvas_is_settling_into_it_or_is_still_in_
     let thrown = engine.drips().airborne() / METRES_PER_PIXEL.powi(3);
     for seconds in [0.1, 0.4, 1.5] {
         engine.advance_exact(seconds);
-        let accounted = engine.paint_mass() + engine.film().unsettled() + engine.drips().airborne() / METRES_PER_PIXEL.powi(3);
+        let accounted = engine.paint_mass() + engine.film_unsettled() + engine.drips().airborne() / METRES_PER_PIXEL.powi(3);
         assert!((accounted - thrown).abs() < thrown * 0.01, "after {seconds} s {thrown:.0} thrown but {accounted:.0} found");
     }
     assert_eq!(engine.drips().airborne(), 0.0, "a throw should have landed after a second and a half");

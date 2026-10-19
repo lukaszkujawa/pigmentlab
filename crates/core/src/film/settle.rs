@@ -39,6 +39,10 @@ impl Blob {
         Self { pixels, links, wet: vec![false; cells], open: vec![false; cells], height: vec![0.0; cells], edge: vec![0.0; cells], ground: vec![0.0; cells], pigment: vec![[0.0; 7]; cells], unit: vec![0.0; cells], offset: vec![0.0; cells], creep: vec![0.0; cells], weight: vec![1.0; cells] }
     }
 
+    pub fn pixel(&self, index: usize) -> IVec2 {
+        self.pixels[index]
+    }
+
     pub fn cells(&self) -> impl Iterator<Item = (usize, IVec2)> + '_ {
         self.pixels.iter().copied().enumerate()
     }
@@ -112,7 +116,8 @@ impl Blob {
         let links = self.links(cells);
         let ones = vec![1.0; cells.len()];
         let shift: Vec<f32> = cells
-            .iter()
+            .par_iter()
+            .with_min_len(CHUNK)
             .map(|&index| {
                 let around = self.around(index);
                 let ground_around: f32 = around.iter().map(|n| self.ground[*n]).sum();
@@ -120,11 +125,11 @@ impl Blob {
                 self.ground[index] - CAPILLARY_AREA * (ground_around - 4.0 * self.ground[index]) - CAPILLARY_AREA * edges
             })
             .collect();
-        let unit = Self::solve(&links, &ones, cells.iter().map(|&index| if self.unit[index] == 0.0 { 1.0 } else { self.unit[index] }).collect());
-        let offset = Self::solve(&links, &shift, cells.iter().map(|&index| if self.offset[index] == 0.0 { self.ground[index] } else { self.offset[index] }).collect());
+        let unit = Self::solve(&links, &ones, cells.par_iter().with_min_len(CHUNK).map(|&index| if self.unit[index] == 0.0 { 1.0 } else { self.unit[index] }).collect());
+        let offset = Self::solve(&links, &shift, cells.par_iter().with_min_len(CHUNK).map(|&index| if self.offset[index] == 0.0 { self.ground[index] } else { self.offset[index] }).collect());
         let level = (volume + offset.iter().sum::<f32>()) / unit.iter().sum::<f32>().max(f32::EPSILON);
 
-        let mut target: Vec<f32> = unit.iter().zip(&offset).map(|(u, q)| (level * u - q).max(0.0)).collect();
+        let mut target: Vec<f32> = unit.par_iter().with_min_len(CHUNK).zip(&offset).map(|(u, q)| (level * u - q).max(0.0)).collect();
         for (position, &index) in cells.iter().enumerate() {
             self.unit[index] = unit[position];
             self.offset[index] = offset[position];
@@ -134,25 +139,46 @@ impl Blob {
     }
 
     fn yielding(&self, cells: &[usize], yield_stress: f32) -> Vec<f32> {
-        let mut pressure = vec![0.0; self.wet.len()];
-        for &index in cells {
-            let around: f32 = self.around(index).iter().map(|n| self.surface(*n)).sum();
-            pressure[index] = self.surface(index) - CAPILLARY_AREA * (around - 4.0 * self.surface(index));
-        }
-        let mut flowing = vec![0.0; self.wet.len()];
-        for &index in cells {
-            let [left, right, up, down] = self.around(index).map(|n| if self.wet[n] { pressure[n] } else { pressure[index] });
-            let gradient = 0.5 * (right - left).hypot(down - up);
-            let stress = DENSITY * GRAVITY * self.height[index] * METRES_PER_PIXEL * gradient;
-            flowing[index] = (1.0 - yield_stress / stress.max(f32::EPSILON)).clamp(0.0, 1.0);
-        }
+        let pressure = self.scatter(
+            cells,
+            cells
+                .par_iter()
+                .with_min_len(CHUNK)
+                .map(|&index| {
+                    let around: f32 = self.around(index).iter().map(|n| self.surface(*n)).sum();
+                    self.surface(index) - CAPILLARY_AREA * (around - 4.0 * self.surface(index))
+                })
+                .collect(),
+        );
+        let flowing = self.scatter(
+            cells,
+            cells
+                .par_iter()
+                .with_min_len(CHUNK)
+                .map(|&index| {
+                    let [left, right, up, down] = self.around(index).map(|n| if self.wet[n] { pressure[n] } else { pressure[index] });
+                    let gradient = 0.5 * (right - left).hypot(down - up);
+                    let stress = DENSITY * GRAVITY * self.height[index] * METRES_PER_PIXEL * gradient;
+                    (1.0 - yield_stress / stress.max(f32::EPSILON)).clamp(0.0, 1.0)
+                })
+                .collect(),
+        );
         cells
-            .iter()
+            .par_iter()
+            .with_min_len(CHUNK)
             .map(|&index| {
                 let (sum, count) = self.around(index).iter().filter(|n| self.wet[**n]).fold((2.0 * flowing[index], 2.0), |(sum, count), n| (sum + flowing[*n], count + 1.0));
                 sum / count
             })
             .collect()
+    }
+
+    fn scatter(&self, cells: &[usize], values: Vec<f32>) -> Vec<f32> {
+        let mut spread = vec![0.0; self.wet.len()];
+        for (&index, value) in cells.iter().zip(values) {
+            spread[index] = value;
+        }
+        spread
     }
 
     fn rate(&self, cells: &[usize], volume: f32, fluid: Fluid) -> f32 {
@@ -175,8 +201,8 @@ impl Blob {
         let target = self.equilibrium(&cells, volume);
         let flowing = self.yielding(&cells, fluid.yield_stress * POURED_YIELD_SHARE);
         let pace = 1.0 - (-self.rate(&cells, volume, fluid) * dt).exp();
-        let before: Vec<f32> = cells.iter().map(|&index| self.height[index]).collect();
-        let mut after: Vec<f32> = cells.iter().enumerate().map(|(position, &index)| before[position] + self.weight[index] * pace * flowing[position] * (target[position] - before[position])).collect();
+        let before: Vec<f32> = cells.par_iter().with_min_len(CHUNK).map(|&index| self.height[index]).collect();
+        let mut after: Vec<f32> = cells.par_iter().with_min_len(CHUNK).enumerate().map(|(position, &index)| before[position] + self.weight[index] * pace * flowing[position] * (target[position] - before[position])).collect();
         let weights: f32 = cells.iter().map(|&index| self.weight[index]).sum();
         let shortfall = (volume - after.iter().sum::<f32>()) / weights.max(f32::EPSILON);
         for (position, &index) in cells.iter().enumerate() {
@@ -195,17 +221,20 @@ impl Blob {
         for (position, &index) in cells.iter().enumerate() {
             earlier[index] = before[position];
         }
-        let previous = self.pigment.clone();
-        for &index in cells {
-            if earlier[index] > 0.0 {
-                let scale = self.height[index] / earlier[index];
-                self.pigment[index] = previous[index].map(|channel| channel * scale);
-                continue;
-            }
-            let (near_height, near_pigment) = self.around(index).into_iter().filter(|n| self.wet[*n] && earlier[*n] > 0.0).fold((0.0, [0.0; 7]), |(height, pigment): (f32, Pigment), n| (height + earlier[n], std::array::from_fn(|channel| pigment[channel] + previous[n][channel])));
-            if near_height > 0.0 {
-                self.pigment[index] = near_pigment.map(|channel| channel * self.height[index] / near_height);
-            }
+        let carried: Vec<Pigment> = cells
+            .par_iter()
+            .with_min_len(CHUNK)
+            .map(|&index| {
+                if earlier[index] > 0.0 {
+                    let scale = self.height[index] / earlier[index];
+                    return self.pigment[index].map(|channel| channel * scale);
+                }
+                let (near_height, near_pigment) = self.around(index).into_iter().filter(|n| self.wet[*n] && earlier[*n] > 0.0).fold((0.0, [0.0; 7]), |(height, pigment): (f32, Pigment), n| (height + earlier[n], std::array::from_fn(|channel| pigment[channel] + self.pigment[n][channel])));
+                if near_height > 0.0 { near_pigment.map(|channel| channel * self.height[index] / near_height) } else { self.pigment[index] }
+            })
+            .collect();
+        for (&index, pigment) in cells.iter().zip(carried) {
+            self.pigment[index] = pigment;
         }
     }
 

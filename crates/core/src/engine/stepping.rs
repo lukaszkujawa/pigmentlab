@@ -16,12 +16,14 @@ impl Engine {
         if needed > MAX_SUBSTEPS_PER_ADVANCE {
             self.time = target_time - dt * f64::from(MAX_SUBSTEPS_PER_ADVANCE);
         }
+        self.realtime = true;
         self.advance_steps(needed.min(MAX_SUBSTEPS_PER_ADVANCE));
     }
 
     pub fn advance_exact(&mut self, target_time: f64) {
         let dt = f64::from(SIMULATION_DT);
         let needed = ((target_time - self.time) / dt).round().max(0.0) as u32;
+        self.realtime = false;
         self.advance_steps(needed);
     }
 

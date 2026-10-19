@@ -1,8 +1,10 @@
 mod deltas;
 mod raster;
 mod settle;
+mod worker;
 
 pub use deltas::{FILM_CHANGE_CAPACITY, FilmDeltas};
+pub use worker::FilmWorker;
 
 use crate::canvas::PAINT_SCALE;
 use crate::paint::Mark;
@@ -12,7 +14,6 @@ use settle::{Blob, NOWHERE, Pigment};
 
 const VISITED: usize = NOWHERE - 1;
 const REACHED: usize = NOWHERE - 2;
-use std::collections::BTreeMap;
 
 const TILE: i32 = 32;
 const CELLS: usize = (TILE * TILE) as usize;
@@ -29,6 +30,8 @@ pub struct Change {
     pub pixel: u32,
     pub delta: [i32; 8],
 }
+
+type Drift = Vec<(usize, [i32; 8])>;
 
 #[derive(Clone)]
 struct Tile {
@@ -56,13 +59,63 @@ impl Tile {
     fn kept(&self, now: f32) -> bool {
         now - self.fed_at < WET_SECONDS
     }
+
+    fn drifted(&self, now: f32) -> Drift {
+        let step = if self.kept(now) { UPLOAD_STEP } else { 0 };
+        (0..CELLS)
+            .filter_map(|cell| {
+                let fixed = fixed_point(self.height[cell], &self.pigment[cell]);
+                let committed = self.committed[cell];
+                let appeared = (fixed[0] > 0) != (committed[0] > 0);
+                (appeared || (0..8).any(|channel| (fixed[channel] - committed[channel]).abs() > step)).then_some((cell, fixed))
+            })
+            .collect()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Layout {
+    columns: i32,
+    rows: i32,
+}
+
+impl Layout {
+    fn new(width: i32, height: i32) -> Self {
+        Self { columns: width.div_euclid(TILE) + 3, rows: height.div_euclid(TILE) + 3 }
+    }
+
+    fn slots(self) -> usize {
+        (self.columns * self.rows) as usize
+    }
+
+    fn slot(self, pixel: IVec2) -> Option<(usize, usize)> {
+        let tile = pixel.div_euclid(IVec2::splat(TILE));
+        let local = pixel - tile * TILE;
+        let bordered = tile + 1;
+        (bordered.x >= 0 && bordered.y >= 0 && bordered.x < self.columns && bordered.y < self.rows).then(|| ((bordered.x * self.rows + bordered.y) as usize, (local.y * TILE + local.x) as usize))
+    }
+
+    fn origin(self, slot: usize) -> IVec2 {
+        (IVec2::new(slot as i32 / self.rows, slot as i32 % self.rows) - 1) * TILE
+    }
+
+    fn pixel(self, slot: usize, cell: usize) -> IVec2 {
+        self.origin(slot) + IVec2::new(cell as i32 % TILE, cell as i32 / TILE)
+    }
+}
+
+struct Region {
+    pixels: Vec<IVec2>,
+    links: Vec<[usize; 4]>,
+    wet: usize,
 }
 
 pub struct Film {
     width: i32,
     height: i32,
     relief: Vec<f32>,
-    tiles: BTreeMap<Key, Tile>,
+    layout: Layout,
+    tiles: Vec<Option<Tile>>,
     laid: Vec<f32>,
     places: Vec<usize>,
     depths: Vec<u32>,
@@ -72,21 +125,10 @@ pub struct Film {
     skipped: usize,
 }
 
-type Key = (i32, i32);
-
-fn tile_of(pixel: IVec2) -> (Key, usize) {
-    let tile = pixel.div_euclid(IVec2::splat(TILE));
-    let local = pixel - tile * TILE;
-    ((tile.x, tile.y), (local.y * TILE + local.x) as usize)
-}
-
-fn tile_origin(key: Key) -> IVec2 {
-    IVec2::new(key.0, key.1) * TILE
-}
-
 impl Film {
     pub fn new(width: u32, height: u32, relief: Vec<f32>) -> Self {
-        Self { width: width as i32, height: height as i32, relief, tiles: BTreeMap::new(), laid: Vec::new(), places: Vec::new(), depths: Vec::new(), clock: 0.0, live_cells: 0, waited: 0.0, skipped: 0 }
+        let layout = Layout::new(width as i32, height as i32);
+        Self { width: width as i32, height: height as i32, relief, layout, tiles: vec![None; layout.slots()], laid: Vec::new(), places: Vec::new(), depths: Vec::new(), clock: 0.0, live_cells: 0, waited: 0.0, skipped: 0 }
     }
 
     pub fn set_relief(&mut self, relief: Vec<f32>) {
@@ -94,12 +136,12 @@ impl Film {
     }
 
     pub fn forget(&mut self) {
-        self.tiles.clear();
+        self.tiles.fill(None);
         self.laid.clear();
     }
 
     pub fn unsettled(&self) -> f32 {
-        self.tiles.values().flat_map(|tile| (0..CELLS).map(move |cell| tile.height[cell] - tile.committed[cell][0] as f32 / PAINT_SCALE)).sum()
+        self.tiles.iter().flatten().flat_map(|tile| (0..CELLS).map(move |cell| tile.height[cell] - tile.committed[cell][0] as f32 / PAINT_SCALE)).sum()
     }
 
     pub fn lay(&mut self, marks: &[Mark]) {
@@ -110,8 +152,8 @@ impl Film {
                 if !self.on_canvas(cover.pixel) {
                     continue;
                 }
-                let (key, cell) = tile_of(cover.pixel);
-                let tile = self.tiles.entry(key).or_insert_with(Tile::new);
+                let (slot, cell) = self.layout.slot(cover.pixel).expect("a canvas pixel lies in the layout");
+                let tile = self.tiles[slot].get_or_insert_with(Tile::new);
                 tile.height[cell] += cover.volume;
                 for (channel, value) in pigment.iter().enumerate() {
                     tile.pigment[cell][channel] += cover.volume * value;
@@ -128,8 +170,7 @@ impl Film {
     fn stir(&mut self, pixel: IVec2) {
         let now = self.clock;
         for at in std::iter::once(pixel).chain(NEIGHBOURS.map(|step| pixel + step)) {
-            let (key, cell) = tile_of(at);
-            if let Some(tile) = self.tiles.get_mut(&key) {
+            if let Some((tile, cell)) = self.layout.slot(at).and_then(|(slot, cell)| self.tiles[slot].as_mut().map(|tile| (tile, cell))) {
                 tile.stirred_at[cell] = now;
                 tile.fed_at = now;
             }
@@ -151,18 +192,18 @@ impl Film {
     }
 
     fn retire(&mut self) {
-        let retired: Vec<Key> = self.tiles.iter().filter(|(_, tile)| !tile.kept(self.clock) && !tile.changed && tile.height.iter().zip(&tile.committed).all(|(height, committed)| fixed_point(*height, &[0.0; 7])[0] == committed[0])).map(|(key, _)| *key).collect();
+        let clock = self.clock;
+        let retired: Vec<usize> = (0..self.tiles.len()).filter(|slot| self.tiles[*slot].as_ref().is_some_and(|tile| !tile.kept(clock) && !tile.changed && tile.height.iter().zip(&tile.committed).all(|(height, committed)| fixed_point(*height, &[0.0; 7])[0] == committed[0]))).collect();
         if retired.is_empty() {
             return;
         }
         if self.laid.is_empty() {
             self.laid = vec![0.0; (self.width * self.height) as usize];
         }
-        for key in retired {
-            let tile = self.tiles.remove(&key).expect("a retired tile exists");
-            let origin = tile_origin(key);
+        for slot in retired {
+            let tile = self.tiles[slot].take().expect("a retired tile exists");
             for cell in (0..CELLS).filter(|cell| tile.committed[*cell][0] != 0) {
-                let pixel = origin + IVec2::new(cell as i32 % TILE, cell as i32 / TILE);
+                let pixel = self.layout.pixel(slot, cell);
                 self.laid[(pixel.y * self.width + pixel.x) as usize] += tile.committed[cell][0] as f32 / PAINT_SCALE;
             }
         }
@@ -188,83 +229,82 @@ impl Film {
     }
 
     fn blobs(&mut self) -> Vec<Blob> {
+        let layout = self.layout;
+        let place = |pixel: IVec2| layout.slot(pixel).map(|(slot, cell)| slot * CELLS + cell);
         let mut places = std::mem::take(&mut self.places);
         let mut depths = std::mem::take(&mut self.depths);
-        let atlas = Atlas::of(&self.tiles);
-        if places.len() < atlas.slots.len() * CELLS {
-            places.resize(atlas.slots.len() * CELLS, NOWHERE);
-        }
-        depths.resize(atlas.slots.len() * CELLS, 0);
-        let mut reached = Vec::new();
-        let mut depth = Vec::new();
-        for (key, tile) in self.tiles.iter().filter(|(_, tile)| self.clock - tile.fed_at < FLOWING_SECONDS) {
-            for cell in (0..CELLS).filter(|cell| tile.stirred(*cell, self.clock)) {
-                let pixel = tile_origin(*key) + IVec2::new(cell as i32 % TILE, cell as i32 / TILE);
-                atlas.mark(&mut places, pixel, REACHED);
-                if let Some((slot, at)) = atlas.slot(pixel) {
-                    depths[slot * CELLS + at] = 0;
-                }
-                reached.push(pixel);
-                depth.push(0);
-            }
+        places.resize(layout.slots() * CELLS, NOWHERE);
+        depths.resize(layout.slots() * CELLS, 0);
+        let mut reached = self.stirred_pixels();
+        for &pixel in &reached {
+            let at = place(pixel).expect("a stirred pixel lies in the layout");
+            places[at] = REACHED;
+            depths[at] = 0;
         }
         let mut next = 0;
         while next < reached.len() {
-            let (pixel, steps) = (reached[next], depth[next]);
+            let pixel = reached[next];
             next += 1;
+            let steps = depths[place(pixel).expect("a reached pixel lies in the layout")];
             if steps >= SETTLING_REACH {
                 continue;
             }
             for neighbour in NEIGHBOURS.map(|step| pixel + step) {
-                if atlas.cell(neighbour).is_some_and(|(tile, cell)| tile.wet[cell]) && atlas.place(&places, neighbour) == Some(NOWHERE) {
-                    atlas.mark(&mut places, neighbour, REACHED);
-                    if let Some((slot, cell)) = atlas.slot(neighbour) {
-                        depths[slot * CELLS + cell] = steps + 1;
-                    }
+                if let Some(at) = place(neighbour).filter(|at| places[*at] == NOWHERE && self.tiles[at / CELLS].as_ref().is_some_and(|tile| tile.wet[at % CELLS])) {
+                    places[at] = REACHED;
+                    depths[at] = steps + 1;
                     reached.push(neighbour);
-                    depth.push(steps + 1);
                 }
             }
         }
-        let mut blobs = Vec::new();
+        let mut regions = Vec::new();
         for &start in &reached {
-            if atlas.place(&places, start) != Some(REACHED) {
+            let start_at = place(start).expect("a reached pixel lies in the layout");
+            if places[start_at] != REACHED {
                 continue;
             }
-            atlas.mark(&mut places, start, VISITED);
+            places[start_at] = VISITED;
             let mut pixels = vec![start];
             let mut next = 0;
             while next < pixels.len() {
                 let pixel = pixels[next];
                 next += 1;
                 for neighbour in NEIGHBOURS.map(|step| pixel + step) {
-                    if atlas.place(&places, neighbour) == Some(REACHED) {
-                        atlas.mark(&mut places, neighbour, VISITED);
+                    if let Some(at) = place(neighbour).filter(|at| places[*at] == REACHED) {
+                        places[at] = VISITED;
                         pixels.push(neighbour);
                     }
                 }
             }
-            let mut blob = self.gather(&atlas, &mut places, pixels);
-            for (index, pixel) in blob.cells().filter(|(index, _)| blob.wet[*index]).collect::<Vec<_>>() {
-                let (slot, cell) = atlas.slot(pixel).expect("a blob pixel lies in the atlas");
-                let depth = depths[slot * CELLS + cell] as f32 / SETTLING_REACH as f32;
-                blob.weight[index] = 1.0 - depth * depth * (3.0 - 2.0 * depth);
-            }
-            blobs.push(blob);
+            regions.push(self.outline(&mut places, pixels));
         }
         for pixel in reached {
-            atlas.mark(&mut places, pixel, NOWHERE);
+            places[place(pixel).expect("a reached pixel lies in the layout")] = NOWHERE;
         }
+        let blobs = regions.into_par_iter().map(|region| self.fill(region, &depths)).collect();
         self.places = places;
         self.depths = depths;
         blobs
     }
 
-    fn gather(&self, atlas: &Atlas, places: &mut [usize], mut pixels: Vec<IVec2>) -> Blob {
-        let place = |pixel: IVec2| atlas.slot(pixel).map(|(slot, cell)| slot * CELLS + cell);
+    fn stirred_pixels(&self) -> Vec<IVec2> {
+        let clock = self.clock;
+        let layout = self.layout;
+        let per_tile: Vec<Vec<IVec2>> = self
+            .tiles
+            .par_iter()
+            .enumerate()
+            .filter_map(|(slot, tile)| tile.as_ref().filter(|tile| clock - tile.fed_at < FLOWING_SECONDS).map(|tile| (0..CELLS).filter(|cell| tile.stirred(*cell, clock)).map(|cell| layout.pixel(slot, cell)).collect()))
+            .collect();
+        per_tile.concat()
+    }
+
+    fn outline(&self, places: &mut [usize], mut pixels: Vec<IVec2>) -> Region {
+        let layout = self.layout;
+        let place = |pixel: IVec2| layout.slot(pixel).map(|(slot, cell)| slot * CELLS + cell);
         let wet = pixels.len();
         for (index, pixel) in pixels.iter().enumerate() {
-            places[place(*pixel).expect("a wet pixel lies in the atlas")] = index;
+            places[place(*pixel).expect("a wet pixel lies in the layout")] = index;
         }
         for index in 0..wet {
             for neighbour in NEIGHBOURS.map(|step| pixels[index] + step) {
@@ -275,49 +315,52 @@ impl Film {
             }
         }
         let links = pixels[..wet].iter().map(|pixel| NEIGHBOURS.map(|step| place(*pixel + step).map_or(NOWHERE, |at| places[at]))).collect();
-        let mut blob = Blob::new(pixels.clone(), links);
-        for (index, &pixel) in pixels.iter().enumerate() {
+        for (index, pixel) in pixels.iter().enumerate() {
+            places[place(*pixel).expect("a blob pixel lies in the layout")] = if index < wet { VISITED } else { NOWHERE };
+        }
+        Region { pixels, links, wet }
+    }
+
+    fn fill(&self, region: Region, depths: &[u32]) -> Blob {
+        let Region { pixels, links, wet } = region;
+        let mut blob = Blob::new(pixels, links);
+        for index in 0..blob.wet.len() {
+            let pixel = blob.pixel(index);
             blob.ground[index] = self.relief_at(pixel);
-            let found = atlas.cell(pixel);
+            let found = self.layout.slot(pixel).and_then(|(slot, cell)| self.tiles[slot].as_ref().map(|tile| (tile, slot, cell)));
             match found.filter(|_| index < wet) {
-                Some((tile, cell)) => {
+                Some((tile, slot, cell)) => {
+                    let depth = depths[slot * CELLS + cell] as f32 / SETTLING_REACH as f32;
                     blob.wet[index] = true;
                     blob.height[index] = tile.height[cell];
                     blob.pigment[index] = tile.pigment[cell];
                     blob.unit[index] = tile.unit[cell];
                     blob.offset[index] = tile.offset[cell];
+                    blob.weight[index] = 1.0 - depth * depth * (3.0 - 2.0 * depth);
                 }
                 None => {
-                    blob.creep[index] = found.map_or(0.0, |(tile, cell)| tile.creep[cell]);
-                    let neighbour = found.filter(|(tile, cell)| tile.wet[*cell]);
-                    blob.edge[index] = neighbour.map_or(0.0, |(tile, cell)| tile.height[cell]);
+                    blob.creep[index] = found.map_or(0.0, |(tile, _, cell)| tile.creep[cell]);
+                    let neighbour = found.filter(|(tile, _, cell)| tile.wet[*cell]);
+                    blob.edge[index] = neighbour.map_or(0.0, |(tile, _, cell)| tile.height[cell]);
                     blob.open[index] = self.on_canvas(pixel) && neighbour.is_none();
                 }
             }
-        }
-        for (index, pixel) in pixels.iter().enumerate() {
-            places[place(*pixel).expect("a blob pixel lies in the atlas")] = if index < wet { VISITED } else { NOWHERE };
         }
         blob
     }
 
     fn write_back(&mut self, blob: &Blob) {
         let mut moving = Vec::new();
-        let mut current: Option<(Key, &mut Tile)> = None;
         for (index, pixel) in blob.cells() {
-            if !blob.wet[index] {
-                if blob.creep[index] > 0.0 {
-                    let (key, cell) = tile_of(pixel);
-                    current = None;
-                    self.tiles.entry(key).or_insert_with(Tile::new).creep[cell] = blob.creep[index];
-                }
+            if !blob.wet[index] && blob.creep[index] <= 0.0 {
                 continue;
             }
-            let (key, cell) = tile_of(pixel);
-            if current.as_ref().is_none_or(|(held, _)| *held != key) {
-                current = Some((key, self.tiles.entry(key).or_insert_with(Tile::new)));
+            let (slot, cell) = self.layout.slot(pixel).expect("a blob pixel lies in the layout");
+            let tile = self.tiles[slot].get_or_insert_with(Tile::new);
+            if !blob.wet[index] {
+                tile.creep[cell] = blob.creep[index];
+                continue;
             }
-            let (_, tile) = current.as_mut().expect("the current tile was just set");
             if tile.height[cell] != blob.height[index] || tile.pigment[cell] != blob.pigment[index] || !tile.wet[cell] {
                 tile.changed = true;
             }
@@ -337,69 +380,22 @@ impl Film {
 
     fn changes(&mut self, most: usize) -> Vec<Change> {
         let width = self.width;
-        let mut changes = Vec::new();
+        let layout = self.layout;
         let clock = self.clock;
-        for (key, tile) in self.tiles.iter_mut().filter(|(_, tile)| tile.changed || !tile.kept(clock)) {
-            let step = if tile.kept(clock) { UPLOAD_STEP } else { 0 };
-            let mut pending = false;
-            for cell in 0..CELLS {
-                let fixed = fixed_point(tile.height[cell], &tile.pigment[cell]);
-                let committed = tile.committed[cell];
-                let appeared = (fixed[0] > 0) != (committed[0] > 0);
-                if !appeared && (0..8).all(|channel| (fixed[channel] - committed[channel]).abs() <= step) {
-                    continue;
-                }
-                if changes.len() >= most {
-                    pending = true;
-                    continue;
-                }
-                let pixel = tile_origin(*key) + IVec2::new(cell as i32 % TILE, cell as i32 / TILE);
+        let drifted: Vec<(usize, Drift)> = self.tiles.par_iter().enumerate().filter_map(|(slot, tile)| tile.as_ref().filter(|tile| tile.changed || !tile.kept(clock)).map(|tile| (slot, tile.drifted(clock)))).collect();
+        let mut changes = Vec::new();
+        for (slot, cells) in drifted {
+            let tile = self.tiles[slot].as_mut().expect("a drifted tile exists");
+            let room = most.saturating_sub(changes.len()).min(cells.len());
+            for &(cell, fixed) in &cells[..room] {
+                let pixel = layout.pixel(slot, cell);
                 let delta = std::array::from_fn(|channel| fixed[channel] - tile.committed[cell][channel]);
                 changes.push(Change { pixel: (pixel.y * width + pixel.x) as u32, delta });
                 tile.committed[cell] = fixed;
             }
-            tile.changed = pending;
+            tile.changed = room < cells.len();
         }
         changes
-    }
-}
-
-struct Atlas<'a> {
-    low: IVec2,
-    span: IVec2,
-    slots: Vec<Option<&'a Tile>>,
-}
-
-impl<'a> Atlas<'a> {
-    fn of(tiles: &'a BTreeMap<Key, Tile>) -> Self {
-        let keys = || tiles.keys().map(|&(x, y)| IVec2::new(x, y));
-        let low = keys().reduce(IVec2::min).unwrap_or(IVec2::ZERO) - 1;
-        let span = keys().reduce(IVec2::max).unwrap_or(IVec2::ZERO) + 2 - low;
-        let mut slots = vec![None; (span.x * span.y) as usize];
-        for (&(x, y), tile) in tiles {
-            slots[((y - low.y) * span.x + x - low.x) as usize] = Some(tile);
-        }
-        Self { low, span, slots }
-    }
-
-    fn slot(&self, pixel: IVec2) -> Option<(usize, usize)> {
-        let ((x, y), cell) = tile_of(pixel);
-        let local = IVec2::new(x, y) - self.low;
-        (local.x >= 0 && local.y >= 0 && local.x < self.span.x && local.y < self.span.y).then(|| ((local.y * self.span.x + local.x) as usize, cell))
-    }
-
-    fn cell(&self, pixel: IVec2) -> Option<(&'a Tile, usize)> {
-        self.slot(pixel).and_then(|(slot, cell)| self.slots[slot].map(|tile| (tile, cell)))
-    }
-
-    fn place(&self, places: &[usize], pixel: IVec2) -> Option<usize> {
-        self.slot(pixel).map(|(slot, cell)| places[slot * CELLS + cell])
-    }
-
-    fn mark(&self, places: &mut [usize], pixel: IVec2, value: usize) {
-        if let Some((slot, cell)) = self.slot(pixel) {
-            places[slot * CELLS + cell] = value;
-        }
     }
 }
 
@@ -410,3 +406,4 @@ fn fixed_point(height: f32, pigment: &Pigment) -> [i32; 8] {
 
 #[cfg(test)]
 mod tests;
+
