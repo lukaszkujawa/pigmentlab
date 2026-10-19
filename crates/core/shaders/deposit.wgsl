@@ -58,6 +58,7 @@ struct DepositUniform {
     region_y: u32,
     blade_flattening: f32,
     step: u32,
+    descent: f32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -105,6 +106,10 @@ fn segment_of(sample: u32, load: f32) -> Segment {
     return Segment(start, end, clamp(u32(ceil(travelled)), 1u, MAX_SEGMENT_STEPS), min(travelled / (REFERENCE_SPEED * deposit.dt), 1.0), film_reach(load), fill);
 }
 
+fn handle_motion() -> f32 {
+    return deposit.brush_travel + deposit.descent;
+}
+
 fn film_reach(load: f32) -> f32 {
     if (deposit.rigidity >= 0.5) { return deposit.film_height; }
     return mix(FILM_MIN_RADIUS, deposit.film_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
@@ -126,7 +131,7 @@ fn buried_depth(point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>) -> f32 {
 fn pickup_wanted(segment: Segment, point: vec3<f32>, pixel: vec2<i32>, state: vec4<f32>, remaining: ptr<function, f32>) -> f32 {
     let height = state.x + state.w;
     if (state.x <= 0.0 || point.z > height + segment.film) { return 0.0; }
-    let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
+    let brush_motion = min(handle_motion() / (REFERENCE_SPEED * deposit.dt), 1.0);
     let buried = buried_depth(point, pixel, state);
     let share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) / f32(segment.steps) * min(segment.motion, brush_motion);
     let wanted = min(share * exchange_portion(segment), *remaining);
@@ -414,9 +419,9 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     var remaining_capacity = deposit.sample_capacity - initial_load;
     var requested = 0.0;
     let travelled = distance(segment.start.xy, segment.end.xy);
-    let brush_moving = deposit.brush_travel >= MIN_DISPLACING_SPEED * deposit.dt;
+    let brush_moving = handle_motion() >= MIN_DISPLACING_SPEED * deposit.dt;
     let share = 1.0 / f32(segment.steps);
-    let brush_motion = min(deposit.brush_travel / (REFERENCE_SPEED * deposit.dt), 1.0);
+    let brush_motion = min(handle_motion() / (REFERENCE_SPEED * deposit.dt), 1.0);
     let heading = select(vec2<f32>(0.0), (segment.end.xy - segment.start.xy) / max(travelled, 1e-6), travelled > 1e-3);
     let direction = select(heading, normalize(heading + SQUEEZE_OUTWARD * deposit.blade_flattening * squeeze_outward(sample, segment.end.xy, heading)), STEEL && travelled > 1e-3);
     for (var i = 1u; i <= segment.steps; i++) {

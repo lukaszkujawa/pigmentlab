@@ -106,7 +106,8 @@ impl Engine {
                         self.contents_version += 1;
                     } else if self.water_brush.is_none() && self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
                         let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
-                        let stroke = StrokeState { travel, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
+                        let descent = (self.position_at_last_deposit.z - self.pose.position.z).max(0.0);
+                        let stroke = StrokeState { travel, descent, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
                         let region = self.window.region_around(self.brush.tuft_centre(), footprint_radius + DEPOSIT_REACH as f32);
                         self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke, region);
                         self.contents_version += 1;

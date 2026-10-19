@@ -30,12 +30,14 @@ struct DepositUniform {
     region_origin: [u32; 2],
     blade_flattening: f32,
     step: u32,
-    padding: [u32; 3],
+    descent: f32,
+    padding: [u32; 2],
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct StrokeState {
     pub travel: f32,
+    pub descent: f32,
     pub pressure: f32,
     pub contact: f32,
     pub lifting: bool,
@@ -84,7 +86,8 @@ impl Deposit {
             region_origin: [0; 2],
             blade_flattening: 0.0,
             step: 0,
-            padding: [0; 3],
+            descent: 0.0,
+            padding: [0; 2],
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let columns = window.columns();
@@ -213,6 +216,7 @@ impl Deposit {
             region_origin: region.origin.to_array(),
             blade_flattening: brush.preset().blade_flattening(stroke.pressure),
             step: self.steps.replace(self.steps.get().wrapping_add(1)),
+            descent: stroke.descent,
             ..self.base
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
