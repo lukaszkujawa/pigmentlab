@@ -1,7 +1,7 @@
 mod deposit;
 mod gauge;
 mod level;
-mod marks;
+pub(crate) mod marks;
 pub(crate) mod rheology;
 mod squeeze;
 mod tube;

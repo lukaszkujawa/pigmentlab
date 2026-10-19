@@ -8,15 +8,22 @@ use std::f32::consts::{PI, TAU};
 const FINGERS_PER_IMPACT_REYNOLDS: f32 = 1.0 / 4.2;
 const FEWEST_FINGERS: f32 = 3.0;
 const MOST_FINGERS: f32 = 64.0;
+const COUNT_SPREAD: f32 = 0.35;
 const ANGLE_JITTER: f32 = 0.45;
-const REACH_PER_RIM: f32 = 0.6;
+const REACH_PER_RIM: f32 = 0.9;
 const LONGEST_STRETCH: f32 = 2.5;
 const SHORTEST_STRETCH: f32 = 0.1;
 const ROOT_INSET: f32 = 0.8;
 const FINGER_FLATNESS: f32 = 0.6;
 const FINGER_EDGE: f32 = 0.1;
-const FINGER_TIP: f32 = 0.4;
-const SHEDDING: f32 = 0.7;
+const SEGMENT_PER_ROOT: f32 = 2.5;
+const MOST_SEGMENTS: usize = 8;
+const CURL: f32 = 0.9;
+const THINNING: f32 = 0.75;
+const THINNEST: f32 = 0.6;
+const BEADED: f32 = 0.55;
+const BEAD_SHARE: f32 = 0.35;
+const SHEDDING: f32 = 0.5;
 const SHED_SHARE: f32 = 0.5;
 const DROPLET_SLOPE: f32 = 0.36;
 const LONGEST_LEAN: f32 = 2.0;
@@ -33,37 +40,79 @@ pub struct Splash {
     pub rim: f32,
     pub lean: f32,
     pub count: usize,
+    pub vigour: f32,
     pub volume: f32,
     pub paint: Coefficients,
     pub medium: f32,
 }
 
+struct Finger {
+    root: Vec2,
+    heading: Vec2,
+    reach: f32,
+    width: f32,
+    volume: f32,
+}
+
 pub fn fingers(splash: &Splash, rng: &mut SplitMix64) -> Vec<Mark> {
     let heading = splash.tail.normalize_or(Vec2::X);
     let lean = splash.lean.clamp(0.0, LONGEST_LEAN);
-    let weights: Vec<f32> = (0..splash.count).map(|_| rng.unit().powi(2) + 0.05).collect();
+    let count = ((splash.count as f32 * rng.range(1.0 - COUNT_SPREAD, 1.0 + COUNT_SPREAD)).round() as usize).max(FEWEST_FINGERS as usize);
+    let weights: Vec<f32> = (0..count).map(|_| rng.unit().powi(3) + 0.03).collect();
     let total: f32 = weights.iter().sum();
-    let flat = Profile { flatness: FINGER_FLATNESS, stiffness: 0.0, ragged: FINGER_EDGE, open: [true, false], taper: FINGER_TIP, oval: false };
-    let mut marks = Vec::with_capacity(2 * splash.count);
+    let mut marks = Vec::new();
     for (finger, weight) in weights.iter().enumerate() {
-        let direction = Vec2::from_angle(TAU * (finger as f32 + rng.range(-ANGLE_JITTER, ANGLE_JITTER)) / splash.count as f32);
+        let direction = Vec2::from_angle(TAU * (finger as f32 + rng.range(-ANGLE_JITTER, ANGLE_JITTER)) / count as f32);
         let downwind = direction.dot(heading);
-        let root = splash.centre + direction * splash.rim * ROOT_INSET + splash.tail * 0.5 * downwind;
-        let reach = splash.rim * (REACH_PER_RIM * weight.sqrt() + (1.0 - ROOT_INSET)) * (1.0 + lean * downwind).clamp(SHORTEST_STRETCH, LONGEST_STRETCH);
-        let tip = root + direction * reach;
-        let volume = splash.volume * weight / total;
-        let shed = rng.unit() < SHEDDING * weight.sqrt();
-        let kept = if shed { volume * (1.0 - SHED_SHARE) } else { volume };
-        let root_radius = (ROOT_WIDTH_SHARE * PI * splash.rim / splash.count as f32) * (0.5 + weight.sqrt());
-        marks.push(Mark { from: root, to: tip, radius: root_radius, volume: kept, paint: splash.paint, medium: splash.medium, profile: flat });
-        if shed {
-            let flight = tip + direction.rotate(Vec2::from_angle(rng.range(-0.2, 0.2))) * reach * rng.range(0.3, 1.6);
-            let droplet = volume - kept;
-            let radius = (2.0 * droplet / (PI * DROPLET_SLOPE)).cbrt();
-            marks.push(Mark { profile: Profile { flatness: FINGER_FLATNESS, stiffness: 0.0, ragged: FINGER_EDGE, open: [false; 2], taper: 1.0, oval: false }, ..Mark::dot(flight, radius, droplet, splash.paint, splash.medium) });
-        }
+        let stretch = (1.0 + lean * downwind).clamp(SHORTEST_STRETCH, LONGEST_STRETCH);
+        let finger = Finger {
+            root: splash.centre + direction * splash.rim * ROOT_INSET + splash.tail * 0.5 * downwind,
+            heading: direction,
+            reach: splash.rim * (REACH_PER_RIM * splash.vigour.sqrt() * weight.sqrt() * rng.range(0.5, 1.5) + (1.0 - ROOT_INSET)) * stretch,
+            width: (ROOT_WIDTH_SHARE * PI * splash.rim / count as f32) * (0.5 + weight.sqrt()),
+            volume: splash.volume * weight / total,
+        };
+        lay_finger(&finger, splash, rng, &mut marks);
     }
     marks
+}
+
+fn lay_finger(finger: &Finger, splash: &Splash, rng: &mut SplitMix64, marks: &mut Vec<Mark>) {
+    let segments = ((finger.reach / (SEGMENT_PER_ROOT * finger.width)).ceil() as usize).clamp(1, MOST_SEGMENTS);
+    let curl = rng.range(-CURL, CURL) / finger.reach.max(1.0);
+    let beaded = rng.unit() < BEADED;
+    let shed = rng.unit() < SHEDDING;
+    let in_bead = if beaded { BEAD_SHARE } else { 0.0 };
+    let in_drop = if shed { SHED_SHARE * (1.0 - in_bead) } else { 0.0 };
+    let along_finger = finger.volume * (1.0 - in_bead - in_drop);
+    let step = finger.reach / segments as f32;
+    let width_at = |t: f32| finger.width * ((1.0 - t).powf(THINNING)).max(THINNEST / finger.width.max(THINNEST));
+    let weights: Vec<f32> = (0..segments).map(|k| width_at((k as f32 + 0.5) / segments as f32).powi(2)).collect();
+    let total: f32 = weights.iter().sum();
+    let flat = Profile { flatness: FINGER_FLATNESS, stiffness: 0.0, ragged: FINGER_EDGE, open: [true, true], taper: 1.0, oval: false };
+    let mut at = finger.root;
+    let mut heading = finger.heading;
+    for k in 0..segments {
+        let turned = heading.rotate(Vec2::from_angle(curl * step));
+        let next = at + turned * step;
+        let (from_width, to_width) = (width_at(k as f32 / segments as f32), width_at((k + 1) as f32 / segments as f32));
+        let last = k + 1 == segments;
+        let profile = Profile { open: [true, !last || beaded], taper: to_width / from_width, ..flat };
+        marks.push(Mark { from: at, to: next, radius: from_width, volume: along_finger * weights[k] / total, paint: splash.paint, medium: splash.medium, profile });
+        at = next;
+        heading = turned;
+    }
+    let dot = |centre: Vec2, volume: f32| {
+        let radius = (2.0 * volume / (PI * DROPLET_SLOPE)).cbrt();
+        Mark { profile: Profile { flatness: FINGER_FLATNESS, stiffness: 0.0, ragged: FINGER_EDGE, open: [false; 2], taper: 1.0, oval: false }, ..Mark::dot(centre, radius, volume, splash.paint, splash.medium) }
+    };
+    if beaded {
+        marks.push(dot(at, finger.volume * in_bead));
+    }
+    if shed {
+        let flight = at + heading.rotate(Vec2::from_angle(rng.range(-0.3, 0.3))) * finger.reach * rng.range(0.2, 1.8);
+        marks.push(dot(flight, finger.volume * in_drop));
+    }
 }
 
 #[cfg(test)]
@@ -74,7 +123,7 @@ mod tests {
     const WATER: Fluid = Fluid { viscosity: 1e-3, yield_stress: 0.0 };
 
     fn splash(tail: Vec2, lean: f32) -> Splash {
-        Splash { centre: Vec2::new(500.0, 500.0), tail, rim: 20.0, lean, count: 16, volume: 300.0, paint: Coefficients { absorption: Vec3::ONE, scattering: Vec3::ONE }, medium: 0.8 }
+        Splash { centre: Vec2::new(500.0, 500.0), tail, rim: 20.0, lean, count: 16, vigour: 1.0, volume: 300.0, paint: Coefficients { absorption: Vec3::ONE, scattering: Vec3::ONE }, medium: 0.8 }
     }
 
     #[test]
@@ -99,10 +148,10 @@ mod tests {
 
     #[test]
     fn fingers_of_a_slanted_impact_reach_downwind() {
-        let straight = fingers(&splash(Vec2::ZERO, 0.0), &mut SplitMix64::new(3));
-        let slanted = fingers(&splash(Vec2::new(30.0, 0.0), 1.0), &mut SplitMix64::new(3));
         let reach = |marks: &[Mark]| marks.iter().map(|mark| mark.to.x - 500.0).fold(0.0f32, f32::max) / -marks.iter().map(|mark| mark.to.x - 500.0).fold(0.0f32, f32::min);
-        assert!((0.7..1.4).contains(&reach(&straight)), "a straight impact splashes evenly, downwind/upwind reach {:.2}", reach(&straight));
-        assert!(reach(&slanted) > 2.0, "a slanted impact throws its fingers downwind, downwind/upwind reach {:.2}", reach(&slanted));
+        let mean = |tail: Vec2, lean: f32| (0..32).map(|seed| reach(&fingers(&splash(tail, lean), &mut SplitMix64::new(seed)))).sum::<f32>() / 32.0;
+        let (straight, slanted) = (mean(Vec2::ZERO, 0.0), mean(Vec2::new(30.0, 0.0), 1.0));
+        assert!((0.7..1.4).contains(&straight), "a straight impact splashes evenly, downwind/upwind reach {straight:.2}");
+        assert!(slanted > 2.0, "a slanted impact throws its fingers downwind, downwind/upwind reach {slanted:.2}");
     }
 }

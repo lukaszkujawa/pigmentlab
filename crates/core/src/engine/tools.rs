@@ -60,6 +60,7 @@ impl Engine {
             "dilution" => self.set_paint(PaintSettings { dilution: value, ..self.paint }),
             "tooth" => {
                 self.canvas.set_tooth(&self.gpu, value);
+                self.film.set_relief(self.canvas.relief_heights());
                 if let Some(watercolour) = &self.watercolour {
                     watercolour.set_tooth(&self.gpu, &self.canvas);
                 }

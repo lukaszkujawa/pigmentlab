@@ -1,4 +1,5 @@
 use super::{Engine, SIMULATION_DT, Tool};
+use crate::film::FILM_CHANGE_CAPACITY;
 use crate::drip::{Drips, Fluid, Hanging, Rig, Setting, Spatter, Tap, Throw, Tuft, drain_flow, shed_share};
 use crate::input::PointerState;
 use crate::units::{METRES_PER_PIXEL, cm, metres};
@@ -200,7 +201,25 @@ impl Engine {
             return;
         }
         let marks = self.drips.step(SIMULATION_DT);
-        self.pending_marks.extend(marks);
+        if self.watercolour.is_none() {
+            self.film.lay(&marks);
+        }
         self.needs_render = true;
     }
+
+    pub(super) fn settle_film(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        if self.drips.paused() || !self.substeps.is_multiple_of(super::SUBSTEPS_PER_FILM_STEP) {
+            return;
+        }
+        let changes = self.film.settle(SIMULATION_DT * super::SUBSTEPS_PER_FILM_STEP as f32, FILM_CHANGE_CAPACITY);
+        if let Some(bounds) = self.film_deltas.encode(&self.gpu, encoder, &changes) {
+            self.mark_stale(bounds.expand(1));
+        }
+    }
+
+    pub fn film(&self) -> &crate::film::Film {
+        &self.film
+    }
+
+
 }

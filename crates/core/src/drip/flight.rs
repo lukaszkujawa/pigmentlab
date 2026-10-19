@@ -12,6 +12,7 @@ const AIR_DENSITY: f32 = 1.2;
 const AIR_VISCOSITY: f32 = 1.8e-5;
 const SPLASH_THRESHOLD: f32 = 57.7;
 const SPLASHED_SHARE: f32 = 0.15;
+const MOST_SPLASHED_SHARE: f32 = 0.4;
 const LONGEST_STAIN: f32 = 6.0;
 const QUIET_EDGE: f32 = 0.05;
 const WETTING_SPREAD: f32 = 0.2;
@@ -58,7 +59,8 @@ impl Droplet {
         let elongation = (sideways.length() / normal_speed).hypot(1.0).min(LONGEST_STAIN);
         let landing = pixels_of(self.position.truncate());
         let volume = self.volume() / METRES_PER_PIXEL.powi(3);
-        let kept = if impact.splashes { 1.0 - SPLASHED_SHARE } else { 1.0 };
+        let splashed = (SPLASHED_SHARE * impact.splash_number / SPLASH_THRESHOLD).min(MOST_SPLASHED_SHARE);
+        let kept = if impact.splashes { 1.0 - splashed } else { 1.0 };
         let puddle = wetted_mound(volume * kept, yield_stress(self.medium));
         let wetting = rng.range(1.0 - WETTING_SPREAD, 1.0 + WETTING_SPREAD);
         let rim = pixels(width * 0.5).max(puddle.reach) * wetting;
@@ -74,7 +76,7 @@ impl Droplet {
             false => vec![stain],
         };
         if impact.splashes {
-            let splash = Splash { centre: landing + tail * 0.5, tail, rim, lean: sideways.length() / normal_speed, count: finger_count(normal_speed, self.diameter, self.fluid), volume: volume * SPLASHED_SHARE, paint: self.paint, medium: self.medium };
+            let splash = Splash { centre: landing + tail * 0.5, tail, rim, lean: sideways.length() / normal_speed, count: finger_count(normal_speed, self.diameter, self.fluid), vigour: impact.splash_number / SPLASH_THRESHOLD, volume: volume * splashed, paint: self.paint, medium: self.medium };
             marks.extend(fingers(&splash, rng));
         }
         marks

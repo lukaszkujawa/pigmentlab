@@ -35,6 +35,8 @@ impl Engine {
 
     pub fn set_surface(&mut self, surface: Surface) {
         self.canvas.set_surface(&self.gpu, surface);
+        self.film.forget();
+        self.film.set_relief(self.canvas.relief_heights());
         match surface.medium() {
             Medium::Watercolour => match &mut self.watercolour {
                 Some(watercolour) => watercolour.set_paper(&self.gpu, &self.canvas),
@@ -60,6 +62,7 @@ impl Engine {
     }
 
     pub fn clear(&mut self) {
+        self.film.forget();
         if let Some(watercolour) = &mut self.watercolour {
             watercolour.clear(&self.gpu);
         }
@@ -74,6 +77,7 @@ impl Engine {
     }
 
     pub fn dry(&mut self) {
+        self.film.forget();
         let mut encoder = self.encoder("dry");
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.snapshot(&mut encoder);
@@ -89,6 +93,7 @@ impl Engine {
     }
 
     pub fn undo(&mut self) -> bool {
+        self.film.forget();
         let mut encoder = self.encoder("undo");
         let restored = self.history.pop(&mut encoder, &self.canvas.paint);
         if restored {

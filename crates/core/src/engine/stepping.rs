@@ -129,6 +129,7 @@ impl Engine {
                 Tool::Drip | Tool::Splatter => {}
             }
             self.step_drips();
+            self.settle_film(&mut encoder);
             self.lay_pending_marks(&mut encoder);
             if let Some(watercolour) = self.watercolour.as_mut().filter(|water| water.is_wet() && self.substeps.is_multiple_of(SUBSTEPS_PER_WATER_STEP)) {
                 let settled = self.time > self.water_settles_at;

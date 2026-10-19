@@ -3,7 +3,7 @@ mod collide;
 mod drain;
 mod flick;
 mod flight;
-mod fluid;
+pub(crate) mod fluid;
 mod jet;
 mod laid;
 mod outflow;

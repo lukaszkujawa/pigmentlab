@@ -8,9 +8,9 @@ use glam::{IVec2, Vec2};
 pub const MARK_CAPACITY: usize = 4096;
 const TILE_CAPACITY: usize = 1 << 18;
 const TILE_ROW: u32 = 65535;
-const SMALLEST_RADIUS: f32 = 0.75;
+pub(crate) const SMALLEST_RADIUS: f32 = 0.75;
 const TILE: f32 = 16.0;
-const EGG: f32 = 0.35;
+pub(crate) const EGG: f32 = 0.35;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mark {

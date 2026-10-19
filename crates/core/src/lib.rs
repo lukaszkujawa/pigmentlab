@@ -2,6 +2,7 @@ pub mod brush;
 pub mod canvas;
 pub mod drip;
 pub mod engine;
+pub mod film;
 pub mod gpu;
 pub mod history;
 pub mod input;

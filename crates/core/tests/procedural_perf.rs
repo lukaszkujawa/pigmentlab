@@ -68,3 +68,15 @@ fn report_strongest_splatter_frame_times() {
     }
 }
 
+
+#[test]
+#[ignore]
+fn report_runny_bottles_frame_times() {
+    let mut pourer = engine(1.0);
+    pourer.set_param("hole", 4.0);
+    for k in 0..4 {
+        let hook = Vec2::new(500.0 + 350.0 * k as f32, 768.0);
+        pourer.hang_bottle(Hanging { pivot: hook, release: hook + Vec2::new(cm(6.0), 0.0), push: Vec2::new(0.0, cm(20.0)) });
+    }
+    frames("four bottles medium 1", &mut pourer, 4.0);
+}

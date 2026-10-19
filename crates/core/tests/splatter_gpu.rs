@@ -61,14 +61,14 @@ fn separate_marks(engine: &mut Engine) -> usize {
 }
 
 #[test]
-fn every_drop_of_a_throw_lands_on_the_canvas_or_is_still_in_the_air() {
+fn every_drop_of_a_throw_lands_on_the_canvas_is_settling_into_it_or_is_still_in_the_air() {
     let mut engine = splatter_tool(0.5, 1.0);
     engine.set_param("splatter_force", 5.0);
     engine.splatter(START, START + Vec2::new(ARROW, 0.0));
     let thrown = engine.drips().airborne() / METRES_PER_PIXEL.powi(3);
     for seconds in [0.1, 0.4, 1.5] {
         engine.advance_exact(seconds);
-        let accounted = engine.paint_mass() + engine.drips().airborne() / METRES_PER_PIXEL.powi(3);
+        let accounted = engine.paint_mass() + engine.film().unsettled() + engine.drips().airborne() / METRES_PER_PIXEL.powi(3);
         assert!((accounted - thrown).abs() < thrown * 0.01, "after {seconds} s {thrown:.0} thrown but {accounted:.0} found");
     }
     assert_eq!(engine.drips().airborne(), 0.0, "a throw should have landed after a second and a half");

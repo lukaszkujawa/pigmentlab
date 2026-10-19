@@ -1,6 +1,7 @@
 use crate::brush::{Brush, BrushAdjustments, BrushPose, BrushPreset, PRESETS, Touch};
 use crate::canvas::{Canvas, CanvasSize, Medium};
 use crate::drip::{Drips, Rig};
+use crate::film::{Film, FilmDeltas};
 use crate::gpu::{Gpu, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{Hover, PointerSample, PointerTrack};
@@ -19,6 +20,7 @@ mod tools;
 
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const SUBSTEPS_PER_DEPOSIT: u64 = 2;
+const SUBSTEPS_PER_FILM_STEP: u64 = 8;
 const DEPOSIT_DT: f32 = SIMULATION_DT * SUBSTEPS_PER_DEPOSIT as f32;
 const UNDO_DEPTH: usize = 6;
 const LIFTED_HEIGHT: f32 = 1.25;
@@ -54,6 +56,8 @@ pub struct Engine {
     marks: Marks,
     pending_marks: Vec<Mark>,
     drips: Drips,
+    film: Film,
+    film_deltas: FilmDeltas,
     drip_overlay: DripOverlay,
     stage: Stage,
     stage_view: Option<Viewport>,
@@ -129,6 +133,8 @@ impl Engine {
         let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base, DEPOSIT_DT);
         let tube = Tube::new(&gpu, &window, &canvas, &height_map.heights, seed, SIMULATION_DT);
         let marks = Marks::new(&gpu, &window, &canvas);
+        let film_deltas = FilmDeltas::new(&gpu, &window, &canvas);
+        let film = Film::new(size.width, size.height, canvas.relief_heights());
         let levelling = Levelling::new(&gpu, &canvas, &window, &height_map);
         let frames = ViewFrames::new(&gpu, glam::UVec2::new(size.width, size.height));
         let composite = Composite::new(&gpu, &canvas, &window, &height_map, &frames);
@@ -155,6 +161,8 @@ impl Engine {
             marks,
             pending_marks: Vec::new(),
             drips: Drips::new(seed),
+            film,
+            film_deltas,
             drip_overlay,
             stage,
             stage_view: None,
