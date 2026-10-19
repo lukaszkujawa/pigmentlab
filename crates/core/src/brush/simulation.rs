@@ -1,5 +1,5 @@
 use super::frame::BrushPose;
-use super::geometry::{VERTICES_PER_BRISTLE, clump_count, rest_positions};
+use super::geometry::{VERTICES_PER_BRISTLE, clump_count, load_shares, rest_positions};
 use super::preset::BrushPreset;
 use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
 use crate::canvas::Canvas;
@@ -63,6 +63,7 @@ struct Motion {
 pub struct Brush {
     preset: BrushPreset,
     rest: Vec<Vec4>,
+    load_shares: Vec<f32>,
     pub uniform: wgpu::Buffer,
     pub positions: wgpu::Buffer,
     pub chain: wgpu::Buffer,
@@ -82,7 +83,9 @@ pub struct Brush {
 
 impl Brush {
     pub fn new(gpu: &Gpu, preset: BrushPreset, seed: u64, window: &ActiveWindow, canvas: &Canvas, stroke_base: &wgpu::Buffer) -> Self {
-        let rest = rest_positions(&preset, &mut SplitMix64::new(seed));
+        let mut rng = SplitMix64::new(seed);
+        let rest = rest_positions(&preset, &mut rng);
+        let load_shares = load_shares(&preset, &rest, &mut rng);
         let vertex_bytes = std::mem::size_of_val(rest.as_slice()) as u64;
         let samples = u64::from(preset.bristle_count) * u64::from(SAMPLES_PER_BRISTLE);
         let rest_buffer = gpu.storage_buffer("bristle rest", vertex_bytes);
@@ -136,6 +139,7 @@ impl Brush {
         let brush = Self {
             preset,
             rest,
+            load_shares,
             uniform,
             positions,
             chain,
@@ -178,10 +182,11 @@ impl Brush {
     fn dipped_loads(&self) -> impl Iterator<Item = f32> + '_ {
         let held_blade = self.preset.handle_lean > 0.0;
         (0..self.preset.bristle_count * SAMPLES_PER_BRISTLE).map(move |sample| {
-            let offset = self.rest[(sample / SAMPLES_PER_BRISTLE * VERTICES_PER_BRISTLE) as usize + 1].x;
+            let bristle = (sample / SAMPLES_PER_BRISTLE) as usize;
+            let offset = self.rest[bristle * VERTICES_PER_BRISTLE as usize + 1].x;
             let along = (sample % SAMPLES_PER_BRISTLE) as f32 / (SAMPLES_PER_BRISTLE - 1) as f32;
             let loaded = !held_blade || super::knife::carries_paint(offset, along, self.preset.length, self.preset.width * 0.5);
-            if loaded { self.preset.sample_capacity } else { 0.0 }
+            if loaded { self.preset.sample_capacity * self.load_shares[bristle] } else { 0.0 }
         })
     }
 

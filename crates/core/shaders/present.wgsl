@@ -2,6 +2,12 @@ const LIGHTING_FLOOR: f32 = 0.35;
 const EDGE_SOFTNESS_PIXELS: f32 = 1.5;
 const EDGE_SOFTNESS_CELLS: f32 = 4.0;
 const MAX_SUPERSAMPLES: f32 = 3.0;
+const OIL_REFLECTANCE: f32 = 0.04;
+const LAMP_RADIANCE: f32 = 14.0;
+const MATTE_LAMP_RADIUS: f32 = 0.45;
+const GLOSSY_LAMP_RADIUS: f32 = 0.12;
+const WINDOW_RADIANCE: f32 = 5.0;
+const WINDOW_RADIUS: f32 = 0.7;
 
 @group(0) @binding(0) var albedo_map: texture_2d<f32>;
 @group(0) @binding(1) var finish_map: texture_2d<f32>;
@@ -132,6 +138,20 @@ fn look_at(p: vec2<f32>) -> Look {
     return Look(mix(outside.albedo, inside.albedo, cover), mix(outside.finish, inside.finish, cover));
 }
 
+fn disc_seen(away: f32, radius: f32) -> f32 {
+    return 1.0 - smoothstep(radius * 0.5, radius * 1.5, away);
+}
+
+fn reflection(normal: vec3<f32>, light: vec3<f32>, glossy: f32) -> f32 {
+    let mirrored = reflect(vec3<f32>(0.0, 0.0, -1.0), normal);
+    let away = acos(clamp(dot(mirrored, light), -1.0, 1.0));
+    let lamp_radius = mix(MATTE_LAMP_RADIUS, GLOSSY_LAMP_RADIUS, composite.gloss);
+    let lamp = disc_seen(away, lamp_radius) * LAMP_RADIANCE * GLOSSY_LAMP_RADIUS * GLOSSY_LAMP_RADIUS / (lamp_radius * lamp_radius);
+    let window = disc_seen(away, WINDOW_RADIUS) * WINDOW_RADIANCE;
+    let fresnel = OIL_REFLECTANCE + (1.0 - OIL_REFLECTANCE) * pow(1.0 - normal.z, 5.0);
+    return (lamp + window) * fresnel * glossy;
+}
+
 fn shaded(p: vec2<f32>) -> vec3<f32> {
     let look = look_at(p);
     let q = p - 0.5;
@@ -142,12 +162,10 @@ fn shaded(p: vec2<f32>) -> vec3<f32> {
     let normal = normalize(vec3<f32>(-height.slope, 1.0));
     let light = light_direction();
     let diffuse = min(max(dot(normal, light), 0.0) / max(light.z, 0.2), 1.5);
-    let halfway = normalize(light + vec3<f32>(0.0, 0.0, 1.0));
-    let shininess = mix(8.0, 96.0, composite.gloss);
-    let specular = pow(max(dot(normal, halfway), 0.0), shininess) * composite.gloss * 0.5 * glossy;
     let ambient = composite.ambient * occlusion;
     let lighting = max(ambient + (1.0 - composite.ambient) * diffuse * lit, LIGHTING_FLOOR);
-    return clamp(look.albedo * lighting + vec3<f32>(specular * lit), vec3<f32>(0.0), vec3<f32>(1.0));
+    let specular = reflection(normal, light, glossy) * lit;
+    return clamp(look.albedo * lighting + vec3<f32>(specular), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 @fragment

@@ -1,5 +1,6 @@
 use super::preset::{BrushPreset, BrushShape};
 use crate::rng::SplitMix64;
+use crate::units::cm;
 use glam::{Vec2, Vec3, Vec4};
 
 pub const VERTICES_PER_BRISTLE: u32 = 10;
@@ -12,6 +13,9 @@ const BELLY: f32 = 0.35;
 const MAX_LEAN: f32 = 0.5;
 const CURL: f32 = 0.04;
 const CURL_RANDOMNESS: f32 = 0.35;
+const LOAD_BAND_WIDTH: f32 = cm(0.04);
+const LOAD_CONTRAST: f32 = 2.0;
+const LEANEST_LOAD: f32 = 0.35;
 
 pub fn rest_positions(preset: &BrushPreset, rng: &mut SplitMix64) -> Vec<Vec4> {
     let mut positions = Vec::with_capacity((preset.bristle_count * VERTICES_PER_BRISTLE) as usize);
@@ -52,6 +56,34 @@ fn curl_direction(preset: &BrushPreset, root: Vec2, random: Vec2) -> Vec2 {
         BrushShape::Blade => return Vec2::ZERO,
     };
     (outward + random * CURL_RANDOMNESS).normalize_or_zero()
+}
+
+pub fn load_shares(preset: &BrushPreset, rest: &[Vec4], rng: &mut SplitMix64) -> Vec<f32> {
+    let roots = rest.iter().step_by(VERTICES_PER_BRISTLE as usize).map(|record| record.truncate().truncate());
+    if preset.shape == BrushShape::Blade {
+        return roots.map(|_| 1.0).collect();
+    }
+    let band = match preset.shape {
+        BrushShape::Round => Vec2::splat(LOAD_BAND_WIDTH),
+        _ => Vec2::new(LOAD_BAND_WIDTH, preset.thickness),
+    };
+    let half = Vec2::new(preset.width, preset.thickness) * 0.5;
+    let cells = (half * 2.0 / band).ceil().as_uvec2() + 2;
+    let values: Vec<f32> = (0..cells.x * cells.y).map(|_| LEANEST_LOAD + rng.unit().powf(LOAD_CONTRAST)).collect();
+    let value = |x: u32, y: u32| values[(y.min(cells.y - 1) * cells.x + x.min(cells.x - 1)) as usize];
+    let shares: Vec<f32> = roots
+        .map(|root| {
+            let grid = ((root + half) / band).max(Vec2::ZERO);
+            let cell = grid.floor().as_uvec2();
+            let f = grid - grid.floor();
+            let f = f * f * (3.0 - 2.0 * f);
+            let top = value(cell.x, cell.y) + (value(cell.x + 1, cell.y) - value(cell.x, cell.y)) * f.x;
+            let bottom = value(cell.x, cell.y + 1) + (value(cell.x + 1, cell.y + 1) - value(cell.x, cell.y + 1)) * f.x;
+            top + (bottom - top) * f.y
+        })
+        .collect();
+    let mean = shares.iter().sum::<f32>() / shares.len() as f32;
+    shares.into_iter().map(|share| share / mean).collect()
 }
 
 pub fn clump_count(preset: &BrushPreset) -> u32 {
@@ -159,5 +191,26 @@ mod tests {
             assert!(bristle[1].truncate().length() <= cm(0.4) * 1.001);
             assert!(bristle[0].z > 0.0 && bristle[1].z == 0.0);
         }
+    }
+
+    #[test]
+    fn dipped_load_varies_across_a_flat_but_keeps_its_total() {
+        let preset = BrushPreset::flat(400, cm(1.2), cm(0.3), cm(2.0));
+        let mut rng = SplitMix64::new(3);
+        let rest = rest_positions(&preset, &mut rng);
+        let shares = load_shares(&preset, &rest, &mut rng);
+        let mean = shares.iter().sum::<f32>() / shares.len() as f32;
+        let leanest = shares.iter().copied().fold(f32::MAX, f32::min);
+        let richest = shares.iter().copied().fold(0.0, f32::max);
+        assert!((mean - 1.0).abs() < 1e-4, "shares keep the dipped total, mean {mean}");
+        assert!(leanest > 0.3 && richest > 1.5 * leanest, "some bands lean, some rich: {leanest}..{richest}");
+    }
+
+    #[test]
+    fn blades_load_evenly() {
+        let preset = BrushPreset::knife(cm(0.8), cm(2.4));
+        let mut rng = SplitMix64::new(3);
+        let rest = rest_positions(&preset, &mut rng);
+        assert!(load_shares(&preset, &rest, &mut rng).iter().all(|&share| share == 1.0));
     }
 }

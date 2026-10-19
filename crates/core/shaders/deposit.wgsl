@@ -12,6 +12,7 @@ const SQUEEZED_LAYER: f32 = 4.0;
 const WEAVE_PEAK_REACH: i32 = 3;
 const VALLEY_SOFTNESS: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
+const RETAINED_FILL: f32 = 0.05;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 0;
 const BLADE_GROOVE_RADIUS: i32 = 1;
@@ -356,9 +357,13 @@ fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, 
     atomicMax(&coarse_marks[coarse_index(local)], 1u);
 }
 
+fn releasable(fill: f32) -> f32 {
+    return clamp((fill - RETAINED_FILL) / (1.0 - RETAINED_FILL), 0.0, 1.0);
+}
+
 fn release(point_xy: vec2<f32>, reach_floor: f32, deposit_share: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
-    let given = min(deposit_share * select(pow(fill, 1.5), sqrt(fill), BLADE), *load);
+    let given = min(deposit_share * select(pow(releasable(fill), 1.5), sqrt(fill), BLADE), *load);
     if (given <= 0.0) { return; }
     *load -= given;
     splat_film(point_xy, film_radius(fill), given, absorption, scattering, medium, reach_floor);

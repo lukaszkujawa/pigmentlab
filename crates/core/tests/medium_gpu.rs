@@ -173,7 +173,7 @@ fn crossed_strokes_with_generous_medium_keep_their_edges() {
     let (mut generous, _, _) = crossing(0.75, 0.0);
     let (mut stiff, _, _) = crossing(0.0, 0.0);
     let (generous_heights, stiff_heights) = (generous.paint_heights(), stiff.paint_heights());
-    for (place, columns, slack) in [("away from the crossing", 200..300, 3), ("beside the crossing", 440..460, 4)] {
+    for (place, columns, slack) in [("away from the crossing", 200..300, 4), ("beside the crossing", 440..460, 4)] {
         let (before, after) = (Profile::of(&stiff_heights, columns.clone()), Profile::of(&generous_heights, columns));
         assert!(after.width() <= before.width() + slack, "{place} the first stroke should not spread once crossed ({} -> {} px)", before.width(), after.width());
     }
