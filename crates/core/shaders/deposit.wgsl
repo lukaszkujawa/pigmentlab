@@ -13,6 +13,8 @@ const WEAVE_PEAK_REACH: i32 = 3;
 const VALLEY_SOFTNESS: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const RETAINED_FILL: f32 = 0.05;
+const STRAND_FILL: f32 = 0.5;
+const STRAND_STEPS: u32 = 24u;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 0;
 const BLADE_GROOVE_RADIUS: i32 = 1;
@@ -55,6 +57,7 @@ struct DepositUniform {
     region_x: u32,
     region_y: u32,
     blade_flattening: f32,
+    step: u32,
 };
 
 @group(0) @binding(0) var<uniform> deposit: DepositUniform;
@@ -361,9 +364,33 @@ fn releasable(fill: f32) -> f32 {
     return clamp((fill - RETAINED_FILL) / (1.0 - RETAINED_FILL), 0.0, 1.0);
 }
 
-fn release(point_xy: vec2<f32>, reach_floor: f32, deposit_share: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
+fn strand_roll(bristle: u32) -> f32 {
+    let phase = hashed(bristle) % STRAND_STEPS;
+    return f32(hashed(bristle * 0x9e3779b9u ^ ((deposit.step + phase) / STRAND_STEPS)) >> 8u) / 16777216.0;
+}
+
+fn hashed(value: u32) -> u32 {
+    var x = value * 0x85ebca6bu;
+    x = (x ^ (x >> 13u)) * 0xc2b2ae35u;
+    return x ^ (x >> 16u);
+}
+
+fn release(bristle: u32, point_xy: vec2<f32>, reach_floor: f32, full_share: f32, strength: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
-    let given = min(deposit_share * select(pow(releasable(fill), 1.5), sqrt(fill), BLADE), *load);
+    if (BLADE) {
+        lay(point_xy, reach_floor, min(full_share * strength * sqrt(fill), *load), fill, load, absorption, scattering, medium);
+        return;
+    }
+    let flow = strength * pow(releasable(fill), 1.5);
+    let strand_flow = pow(releasable(STRAND_FILL * (1.0 - medium)), 1.5);
+    if (flow >= strand_flow) {
+        lay(point_xy, reach_floor, min(full_share * flow, *load), fill, load, absorption, scattering, medium);
+    } else if (strand_roll(bristle) < sqrt(flow / strand_flow)) {
+        lay(point_xy, reach_floor, min(full_share * sqrt(flow * strand_flow), *load), fill, load, absorption, scattering, medium);
+    }
+}
+
+fn lay(point_xy: vec2<f32>, reach_floor: f32, given: f32, fill: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     if (given <= 0.0) { return; }
     *load -= given;
     splat_film(point_xy, film_radius(fill), given, absorption, scattering, medium, reach_floor);
@@ -417,9 +444,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         if (height > point.z + select(film, max(film, SQUEEZED_LAYER), STEEL)) { continue; }
         let lift_carry = select(1.0, select(brush_motion, 0.0, BLADE), deposit.lifting != 0u);
-        let transfer = segment.motion;
-        let deposit_share = deposit.deposit_rate * share * transfer * deposit.contact * lift_carry;
-        release(point.xy, point.z - film, deposit_share, &load, absorption, scattering, medium);
+        let full_share = deposit.deposit_rate * share * segment.motion;
+        release(sample / deposit.samples_per_bristle, point.xy, point.z - film, full_share, deposit.contact * lift_carry, &load, absorption, scattering, medium);
     }
 
     sample_load[sample] = load;

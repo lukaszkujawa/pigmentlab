@@ -29,6 +29,8 @@ struct DepositUniform {
     film_height: f32,
     region_origin: [u32; 2],
     blade_flattening: f32,
+    step: u32,
+    padding: [u32; 3],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -56,6 +58,7 @@ pub struct Deposit {
     clear_marks: wgpu::ComputePipeline,
     sample_count: u32,
     bristle_count: u32,
+    steps: std::cell::Cell<u32>,
 }
 
 impl Deposit {
@@ -80,6 +83,8 @@ impl Deposit {
             film_height: CONTACT_HEIGHT,
             region_origin: [0; 2],
             blade_flattening: 0.0,
+            step: 0,
+            padding: [0; 3],
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let columns = window.columns();
@@ -184,6 +189,7 @@ impl Deposit {
             clear_marks: compute_pipeline("clear_marks"),
             sample_count,
             bristle_count: preset.bristle_count,
+            steps: std::cell::Cell::new(0),
         }
     }
 
@@ -206,6 +212,7 @@ impl Deposit {
             },
             region_origin: region.origin.to_array(),
             blade_flattening: brush.preset().blade_flattening(stroke.pressure),
+            step: self.steps.replace(self.steps.get().wrapping_add(1)),
             ..self.base
         };
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));

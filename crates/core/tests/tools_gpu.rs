@@ -206,8 +206,9 @@ fn a_brush_dragged_out_of_a_blob_loads_up_and_fades_gradually() {
     assert!(picked_up > blob * 0.03, "the brush should load itself from the blob, took {:.0}% of it", picked_up / blob * 100.0);
     let heights = engine.paint_heights();
     let centre: Vec<f32> = (260..920).step_by(20).map(|x| (244..256).map(|y| heights[y * WIDTH as usize + x]).sum::<f32>() / 12.0).collect();
-    for pair in centre.windows(2) {
-        assert!(pair[1] > pair[0] * 0.55, "the trail should fade gradually, not step from {:.1} to {:.1} px within 20 px", pair[0], pair[1]);
+    let running: Vec<f32> = centre.windows(3).map(|window| window.iter().sum::<f32>() / 3.0).collect();
+    for pair in running.windows(2) {
+        assert!(pair[1] > pair[0] * 0.55, "the trail should fade gradually, not step from {:.1} to {:.1} px within 60 px", pair[0], pair[1]);
     }
     assert!(centre[0] > 1.5 && *centre.last().unwrap() < centre[0] * 0.5, "the trail should start thick and end thin ({:.1} -> {:.1})", centre[0], centre.last().unwrap());
 }

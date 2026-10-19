@@ -44,7 +44,13 @@ fn a_dry_brush_catches_the_weave_peaks() {
     let in_stroke = |x: usize, y: usize| (300..800).contains(&x) && (236..276).contains(&y);
     let on_peaks = mean_paint_where(&paint, &relief, in_stroke, |r| r > 0.6);
     let in_valleys = mean_paint_where(&paint, &relief, in_stroke, |r| r < -0.3);
-    assert!(on_peaks > 0.02, "the dry brush should leave paint on the peaks, got {on_peaks:.3} px");
+    let covered_share = |pick: fn(f32) -> bool| {
+        let picked: Vec<usize> = (0..paint.len()).filter(|&i| in_stroke(i % WIDTH, i / WIDTH) && pick(relief[i])).collect();
+        picked.iter().filter(|&&i| paint[i] > 0.01).count() as f32 / picked.len() as f32
+    };
+    let (peaks_caught, valleys_caught) = (covered_share(|r| r > 0.6), covered_share(|r| r < -0.3));
+    assert!(peaks_caught > 0.15, "the dry brush should leave paint on many peaks, caught {:.0}%", peaks_caught * 100.0);
+    assert!(peaks_caught > valleys_caught * 3.0, "dry paint should catch peaks ({:.0}%) far more than valleys ({:.0}%)", peaks_caught * 100.0, valleys_caught * 100.0);
     assert!(on_peaks > in_valleys * 1.8, "dry paint should sit on the weave peaks ({on_peaks:.3}) more than in the valleys ({in_valleys:.3})");
 }
 

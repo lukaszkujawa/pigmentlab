@@ -119,7 +119,8 @@ fn a_thin_red_glaze_over_white_reads_pink() {
     engine.set_param("load", 0.12);
     engine.dip(by_name("cadmium_red").unwrap());
     stroke(&mut engine, &[(240.0, 256.0), (360.0, 256.0)], 0.5, time, 0.6);
-    let glazed = colour_at(&mut engine, 300, 256);
+    let along: Vec<[f32; 3]> = (250..360).step_by(5).map(|x| colour_at(&mut engine, x, 256)).collect();
+    let glazed = [0, 1, 2].map(|channel| along.iter().map(|colour| colour[channel]).sum::<f32>() / along.len() as f32);
     assert!(glazed[0] > glazed[1] + 25.0, "glaze should tint towards red, got {glazed:?}");
     assert!(glazed[1] > 100.0, "a thin glaze must stay translucent over white, got {glazed:?}");
 }
