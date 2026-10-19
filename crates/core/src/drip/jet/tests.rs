@@ -379,3 +379,21 @@ fn a_moving_nozzle_lays_translated_coils_then_meanders_then_a_straight_line() {
     assert!(spreads[1] < spreads[0], "meanders should be narrower than loops: {spreads:?}");
     assert!(spreads[2] < 0.25, "faster than the thread arrives it should lay a straight line: {spreads:?}");
 }
+
+#[test]
+fn a_thread_drawn_out_to_nothing_in_many_places_parts_at_all_of_them_at_once() {
+    let (segments, spacing, gaps) = (200, 4e-4, 20);
+    let nodes = (0..=segments).map(|k| Node { position: DVec3::new(spacing * k as f64, 0.0, 1.0), velocity: DVec3::ZERO }).collect();
+    let radius = |k: usize| if k % (segments / gaps) == segments / gaps / 2 { 0.5 * VANISHED_RADIUS } else { 5e-4 };
+    let volumes = (0..segments).map(|k| PI * radius(k).powi(2) * spacing).collect();
+    let thread = Piece::new(nodes, volumes, false);
+    let poured = thread.volume();
+    let mut jet = weightless(ENAMEL);
+    jet.pieces.push(thread);
+    let fallen = jet.step(1.0 / 240.0, None);
+    let vanished = jet.pieces().iter().any(|piece| (1..piece.segments().saturating_sub(1)).any(|segment| piece.radius(segment) < VANISHED_RADIUS));
+    assert!(!vanished, "no piece should keep a vanished stretch inside it");
+    assert!(jet.pieces().len() + fallen.drops.len() > gaps, "the thread should part at every vanished stretch");
+    let kept = jet.volume() + fallen.drops.iter().map(|drop| drop.volume).sum::<f64>();
+    assert!((kept - poured).abs() < poured * 1e-9, "parting the thread keeps its paint, {kept:e} of {poured:e}");
+}

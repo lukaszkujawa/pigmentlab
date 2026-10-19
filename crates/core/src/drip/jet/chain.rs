@@ -15,6 +15,29 @@ pub fn spacing_for(radius: f64) -> f64 {
     (radius * SPACING_PER_RADIUS).clamp(SHORTEST_SPACING, LONGEST_SPACING)
 }
 
+fn crowded_spacing(radius: f64, nodes: usize, coarseness: f64) -> f64 {
+    let crowding = (nodes as f64 / MOST_NODES as f64).max(1.0);
+    spacing_for(radius * crowding) * coarseness
+}
+
+fn length_between(from: &Node, to: &Node) -> f64 {
+    to.position.distance(from.position).max(1e-12)
+}
+
+fn radius_of(volume: f64, length: f64) -> f64 {
+    (volume / (PI * length)).sqrt()
+}
+
+fn first_half_share(radius: f64, before: f64, after: f64) -> f64 {
+    let tilt = ((after - before) / 8.0).clamp(-0.5 * radius, 0.5 * radius);
+    let (first, second) = ((radius - tilt).powi(2), (radius + tilt).powi(2));
+    if first + second > 0.0 { first / (first + second) } else { 0.5 }
+}
+
+fn blend(target: &mut Node, own: f64, removed: Node, share: f64) {
+    target.velocity = (target.velocity * own + removed.velocity * share) / (own + share);
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Node {
     pub position: DVec3,
@@ -54,7 +77,7 @@ impl Piece {
     }
 
     pub fn length(&self, segment: usize) -> f64 {
-        self.nodes[segment + 1].position.distance(self.nodes[segment].position).max(1e-12)
+        length_between(&self.nodes[segment], &self.nodes[segment + 1])
     }
 
     pub fn direction(&self, segment: usize) -> DVec3 {
@@ -62,7 +85,7 @@ impl Piece {
     }
 
     pub fn radius(&self, segment: usize) -> f64 {
-        (self.volumes[segment] / (PI * self.length(segment))).sqrt()
+        radius_of(self.volumes[segment], self.length(segment))
     }
 
     pub fn node_volume(&self, node: usize) -> f64 {
@@ -83,10 +106,6 @@ impl Piece {
         let volume = self.volume();
         let weighted = |of: fn(&Node) -> DVec3| (0..self.nodes.len()).map(|node| of(&self.nodes[node]) * self.node_volume(node)).sum::<DVec3>() / volume;
         (weighted(|node| node.position), weighted(|node| node.velocity))
-    }
-
-    pub fn has_cap(&self, segment: usize) -> bool {
-        self.caps(segment) > 0
     }
 
     pub fn caps(&self, segment: usize) -> usize {
@@ -114,59 +133,99 @@ impl Piece {
         tip < BREAKING_RADIUS || (tip < STUB_THINNESS * body && self.length(end) < CAP_LENGTH_PER_RADIUS * body)
     }
 
+    #[cfg(test)]
     fn spacing(&self, segment: usize, coarseness: f64) -> f64 {
-        let crowding = (self.nodes.len() as f64 / MOST_NODES as f64).max(1.0);
-        spacing_for(self.radius(segment) * crowding) * coarseness
+        crowded_spacing(self.radius(segment), self.nodes.len(), coarseness)
     }
 
     fn split_long_segments(&mut self, coarseness: f64) {
-        let mut segment = usize::from(self.pinned);
-        while segment < self.segments() {
-            let longest = match self.has_cap(segment) {
-                true => (SPLIT_AT * self.spacing(segment, coarseness)).max(CAP_LENGTH_PER_RADIUS * self.radius(segment)),
-                false => SPLIT_AT * self.spacing(segment, coarseness),
-            };
-            if self.length(segment) > longest && self.nodes.len() < MOST_NODES {
-                let (a, b) = (self.nodes[segment], self.nodes[segment + 1]);
-                let middle = Node { position: (a.position + b.position) * 0.5, velocity: (a.velocity + b.velocity) * 0.5 };
-                let first = self.first_half_share(segment);
-                let volume = self.volumes[segment];
-                self.nodes.insert(segment + 1, middle);
-                self.volumes[segment] = volume * first;
-                self.volumes.insert(segment + 1, volume * (1.0 - first));
-            } else {
-                segment += 1;
+        let start = usize::from(self.pinned);
+        if self.segments() <= start {
+            return;
+        }
+        let nodes = std::mem::take(&mut self.nodes);
+        let volumes = std::mem::take(&mut self.volumes);
+        self.nodes.extend_from_slice(&nodes[..=start]);
+        self.volumes.extend_from_slice(&volumes[..start]);
+        let mut halves: Vec<(Node, f64)> = Vec::new();
+        for segment in start..volumes.len() {
+            halves.push((nodes[segment + 1], volumes[segment]));
+            let following = volumes.get(segment + 1).map(|volume| (nodes[segment + 2], *volume));
+            while let Some(&(end, volume)) = halves.last() {
+                let begin = self.nodes[self.nodes.len() - 1];
+                let length = length_between(&begin, &end);
+                let radius = radius_of(volume, length);
+                let count = self.nodes.len() + halves.len() + nodes.len() - segment - 2;
+                let capped = (halves.len() == 1 && segment + 1 == volumes.len() && !self.stuck_tail) || (self.volumes.is_empty() && !self.pinned && !self.stuck_head);
+                let spaced = SPLIT_AT * crowded_spacing(radius, count, coarseness);
+                let longest = if capped { spaced.max(CAP_LENGTH_PER_RADIUS * radius) } else { spaced };
+                let splits = length > longest && count < MOST_NODES;
+                if !splits {
+                    halves.pop();
+                    self.nodes.push(end);
+                    self.volumes.push(volume);
+                    continue;
+                }
+                let before = self.volumes.last().map_or(radius, |before| radius_of(*before, length_between(&self.nodes[self.nodes.len() - 2], &begin)));
+                let next = if halves.len() > 1 { Some(halves[halves.len() - 2]) } else { following };
+                let after = next.map_or(radius, |(next, after)| radius_of(after, length_between(&end, &next)));
+                let first = first_half_share(radius, before, after);
+                let middle = Node { position: (begin.position + end.position) * 0.5, velocity: (begin.velocity + end.velocity) * 0.5 };
+                *halves.last_mut().expect("the segment being split") = (end, volume * (1.0 - first));
+                halves.push((middle, volume * first));
             }
         }
     }
 
-    fn first_half_share(&self, segment: usize) -> f64 {
-        let radius = self.radius(segment);
-        let before = if segment > 0 { self.radius(segment - 1) } else { radius };
-        let after = if segment + 1 < self.segments() { self.radius(segment + 1) } else { radius };
-        let tilt = ((after - before) / 8.0).clamp(-0.5 * radius, 0.5 * radius);
-        let (first, second) = ((radius - tilt).powi(2), (radius + tilt).powi(2));
-        first / (first + second)
-    }
-
     fn merge_short_segments(&mut self, coarseness: f64) {
         let first_free = if self.pinned { HELD_NODES } else { 1 };
-        let mut segment = first_free - 1;
-        while segment < self.segments() && self.segments() > first_free {
-            if self.length(segment) >= MERGE_AT * self.spacing(segment, coarseness) {
-                segment += 1;
+        if self.segments() <= first_free {
+            return;
+        }
+        let mut segments = self.segments();
+        let nodes = std::mem::take(&mut self.nodes);
+        let volumes = std::mem::take(&mut self.volumes);
+        self.nodes.extend_from_slice(&nodes[..first_free]);
+        self.volumes.extend_from_slice(&volumes[..first_free - 1]);
+        let mut rest = nodes[first_free..].iter().copied().zip(volumes[first_free - 1..].iter().copied()).peekable();
+        let Some(mut current) = rest.next() else { return };
+        loop {
+            let begin = self.nodes[self.nodes.len() - 1];
+            let length = length_between(&begin, &current.0);
+            let short = segments > first_free && length < MERGE_AT * crowded_spacing(radius_of(current.1, length), segments + 1, coarseness);
+            let has_previous = self.volumes.len() >= first_free;
+            let next = rest.peek().copied();
+            let into_next = short && next.is_some_and(|next| !has_previous || length_between(&current.0, &next.0) < length_between(&self.nodes[self.nodes.len() - 2], &begin));
+            if into_next {
+                let (mut after, after_volume) = rest.next().expect("the next segment");
+                let share = 0.25 * (current.1 + after_volume);
+                let before_volume = self.volumes.last().copied().unwrap_or(0.0);
+                let last = self.nodes.len() - 1;
+                blend(&mut self.nodes[last], 0.5 * (before_volume + current.1), current.0, share);
+                blend(&mut after, 0.5 * (after_volume + rest.peek().map_or(0.0, |beyond| beyond.1)), current.0, share);
+                current = (after, current.1 + after_volume);
+                segments -= 1;
                 continue;
             }
-            let node = match (segment + 1 < self.segments(), segment >= first_free) {
-                (true, true) if self.length(segment + 1) < self.length(segment - 1) => segment + 1,
-                (_, true) => segment,
-                (true, false) => segment + 1,
-                (false, false) => {
-                    segment += 1;
-                    continue;
-                }
-            };
-            self.remove_node(node);
+            if short && has_previous {
+                let removed = self.nodes.pop().expect("the shared node");
+                let previous = self.volumes[self.volumes.len() - 1];
+                let share = 0.25 * (previous + current.1);
+                let earlier = self.volumes.len().checked_sub(2).map_or(0.0, |earlier| self.volumes[earlier]);
+                let last = self.nodes.len() - 1;
+                blend(&mut self.nodes[last], 0.5 * (earlier + previous), removed, share);
+                blend(&mut current.0, 0.5 * (current.1 + next.map_or(0.0, |next| next.1)), removed, share);
+                *self.volumes.last_mut().expect("the previous segment") += current.1;
+                self.nodes.push(current.0);
+                segments -= 1;
+            } else {
+                self.nodes.push(current.0);
+                self.volumes.push(current.1);
+            }
+            match rest.next() {
+                Some(next) => current = next,
+                None => return,
+            }
         }
     }
 
@@ -175,8 +234,7 @@ impl Piece {
         let share = 0.5 * self.node_volume(node);
         for neighbour in [node - 1, node + 1] {
             let own = self.node_volume(neighbour);
-            let target = &mut self.nodes[neighbour];
-            target.velocity = (target.velocity * own + removed.velocity * share) / (own + share);
+            blend(&mut self.nodes[neighbour], own, removed, share);
         }
         self.nodes.remove(node);
         let joined = self.volumes.remove(node);

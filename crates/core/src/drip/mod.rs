@@ -210,7 +210,7 @@ impl Drips {
 
     pub fn is_moving(&self) -> bool {
         let dribbling = self.tap.is_some_and(|tap| tap.flow > 0.0) || self.dribble.is_some();
-        !self.paused && (dribbling || !self.bottles.is_empty() || !self.cut.is_empty() || !self.droplets.is_empty() || !self.puddles.is_empty() || !self.thrown.is_empty())
+        !self.paused && (dribbling || !self.bottles.is_empty() || !self.cut.is_empty() || !self.droplets.is_empty() || self.puddles.has_unlaid() || !self.thrown.is_empty())
     }
 
     pub fn step(&mut self, dt: f32) -> Vec<Mark> {

@@ -1,56 +1,168 @@
-use super::fluid::wetted_mound;
-use crate::paint::rheology::yield_stress;
+use super::laid::puddle_along;
 use crate::paint::{Mark, Profile};
+use glam::{Mat2, Vec2};
 
-const STILL_WET: f32 = 0.15;
+const RELEASE_EVERY: f32 = 0.15;
+const WET_MEMORY: f32 = 3.0;
 const JOINING_REACH: f32 = 0.9;
+const COALESCED_LENGTH: f32 = 0.7;
 const DOT: f32 = 0.5;
+const LAYER_REACH: f32 = 0.85;
 
 struct Puddle {
+    volume: f32,
+    moment: Vec2,
+    spread: Mat2,
+    released: f32,
+    ragged: f32,
     mark: Mark,
-    drying: f32,
+    unreleased_for: f32,
+    unfed_for: f32,
+}
+
+impl Puddle {
+    fn new(mark: Mark) -> Self {
+        let mut puddle = Self { volume: 0.0, moment: Vec2::ZERO, spread: Mat2::ZERO, released: 0.0, ragged: 0.0, mark, unreleased_for: 0.0, unfed_for: 0.0 };
+        puddle.feed(&mark);
+        puddle
+    }
+
+    fn feed(&mut self, mark: &Mark) {
+        let centre = (mark.from + mark.to) * 0.5;
+        let along = mark.to - mark.from;
+        let segment = Mat2::from_cols(along * along.x, along * along.y) / 12.0;
+        self.volume += mark.volume;
+        self.moment += centre * mark.volume;
+        self.spread += (Mat2::from_cols(centre * centre.x, centre * centre.y) + segment) * mark.volume;
+        self.ragged = self.ragged.max(mark.profile.ragged);
+        self.unfed_for = 0.0;
+        self.mark = self.shape();
+    }
+
+    fn shape(&self) -> Mark {
+        let centre = self.moment / self.volume;
+        let covariance = self.spread / self.volume - Mat2::from_cols(centre * centre.x, centre * centre.y);
+        let (variance, axis) = principal(covariance);
+        let half = axis * (3.0 * variance.max(0.0)).sqrt() * COALESCED_LENGTH;
+        let laid = puddle_along(centre - half, centre + half, self.volume, self.mark.paint, self.mark.medium);
+        Mark { profile: Profile { ragged: self.ragged, ..laid.profile }, ..laid }
+    }
+
+    fn takes_in(&self, mark: &Mark) -> bool {
+        let reach = JOINING_REACH * self.mark.radius;
+        self.mark.paint == mark.paint && mark.profile.open == [false; 2] && segment_distance(self.mark.from, self.mark.to, (mark.from + mark.to) * 0.5) < reach
+    }
+
+    fn release(&mut self) -> Option<Mark> {
+        let fresh = self.volume - self.released;
+        let layer = match self.released > 0.0 {
+            true => Mark { radius: self.mark.radius * LAYER_REACH, profile: Profile { stiffness: 0.0, ..self.mark.profile }, ..self.mark },
+            false => self.mark,
+        };
+        self.unreleased_for = 0.0;
+        self.released = self.volume;
+        (fresh > 0.0).then_some(Mark { volume: fresh, ..layer })
+    }
+}
+
+fn principal(covariance: Mat2) -> (f32, Vec2) {
+    let (a, b, d) = (covariance.x_axis.x, covariance.x_axis.y, covariance.y_axis.y);
+    let mean = 0.5 * (a + d);
+    let variance = mean + (0.25 * (a - d) * (a - d) + b * b).sqrt();
+    let axis = match b.abs() > 1e-6 {
+        true => Vec2::new(variance - d, b).normalize_or(Vec2::X),
+        false if a >= d => Vec2::X,
+        false => Vec2::Y,
+    };
+    (variance, axis)
+}
+
+fn segment_distance(from: Vec2, to: Vec2, point: Vec2) -> f32 {
+    let along = to - from;
+    let t = ((point - from).dot(along) / along.length_squared().max(1e-6)).clamp(0.0, 1.0);
+    point.distance(from + along * t)
 }
 
 #[derive(Default)]
 pub struct Puddles {
-    open: Vec<Puddle>,
+    wet: Vec<Puddle>,
 }
 
 impl Puddles {
     pub fn volume(&self) -> f32 {
-        self.open.iter().map(|puddle| puddle.mark.volume).sum()
+        self.wet.iter().map(|puddle| puddle.volume - puddle.released).sum()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.open.is_empty()
+    pub fn has_unlaid(&self) -> bool {
+        self.wet.iter().any(|puddle| puddle.released < puddle.volume)
     }
 
     pub fn settle(&mut self, landed: Vec<Mark>, dt: f32) -> Vec<Mark> {
         let mut laid = Vec::with_capacity(landed.len());
         for mark in landed {
-            let dot = mark.from.distance(mark.to) <= DOT;
-            let inside = |puddle: &Puddle| {
-                let reach = JOINING_REACH * if dot { puddle.mark.radius.max(mark.radius) } else { puddle.mark.radius };
-                mark.profile.open == [false; 2] && puddle.mark.paint == mark.paint && puddle.mark.from.distance(mark.from) < reach && puddle.mark.from.distance(mark.to) < reach
-            };
-            match self.open.iter_mut().find(|puddle| inside(puddle)) {
-                Some(puddle) => puddle.mark = merged(&puddle.mark, &mark),
-                None if dot => self.open.push(Puddle { mark, drying: 0.0 }),
+            match self.wet.iter_mut().find(|puddle| puddle.takes_in(&mark)) {
+                Some(puddle) => puddle.feed(&mark),
+                None if mark.from.distance(mark.to) <= DOT && mark.profile.open == [false; 2] => self.wet.push(Puddle::new(mark)),
                 None => laid.push(mark),
             }
         }
-        self.open.iter_mut().for_each(|puddle| puddle.drying += dt);
-        let (dry, wet): (Vec<Puddle>, Vec<Puddle>) = self.open.drain(..).partition(|puddle| puddle.drying >= STILL_WET);
-        self.open = wet;
-        laid.extend(dry.into_iter().map(|puddle| puddle.mark));
+        for puddle in &mut self.wet {
+            puddle.unreleased_for += dt;
+            puddle.unfed_for += dt;
+            if puddle.released < puddle.volume && (puddle.unfed_for >= RELEASE_EVERY || puddle.unreleased_for >= RELEASE_EVERY) {
+                laid.extend(puddle.release());
+            }
+        }
+        self.wet.retain(|puddle| puddle.released < puddle.volume || puddle.unfed_for < WET_MEMORY);
         laid
     }
 }
 
-fn merged(puddle: &Mark, joining: &Mark) -> Mark {
-    let volume = puddle.volume + joining.volume;
-    let mound = wetted_mound(volume, yield_stress(puddle.medium));
-    let radius = mound.radius.max(puddle.radius);
-    let profile = Profile { flatness: (1.0 - mound.height / radius).clamp(0.0, 1.0), ragged: puddle.profile.ragged.max(joining.profile.ragged), ..puddle.profile };
-    Mark { radius, volume, profile, ..*puddle }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pigment::Coefficients;
+    use glam::Vec3;
+
+    fn drop_at(centre: Vec2, volume: f32) -> Mark {
+        let paint = Coefficients { absorption: Vec3::ONE, scattering: Vec3::ONE };
+        Mark { radius: 10.0, ..Mark::dot(centre, 10.0, volume, paint, 0.4) }
+    }
+
+    fn settle_all(puddles: &mut Puddles, landed: Vec<Mark>) -> Vec<Mark> {
+        let mut laid = puddles.settle(landed, 1.0 / 240.0);
+        for _ in 0..240 {
+            laid.extend(puddles.settle(Vec::new(), 1.0 / 240.0));
+        }
+        laid
+    }
+
+    #[test]
+    fn a_drop_landing_in_a_wet_puddle_coalesces_into_one_puddle_stretched_along_the_line_between_them() {
+        let mut puddles = Puddles::default();
+        let laid = settle_all(&mut puddles, vec![drop_at(Vec2::new(100.0, 100.0), 300.0), drop_at(Vec2::new(106.0, 100.0), 300.0)]);
+        assert_eq!(laid.len(), 1, "two overlapping drops should merge");
+        let puddle = laid[0];
+        assert!((puddle.volume - 600.0).abs() < 1e-3);
+        assert!((puddle.from + puddle.to).distance(Vec2::new(206.0, 200.0)) < 1e-3, "the merged puddle should sit between the drops");
+        assert!((puddle.to - puddle.from).y.abs() < 1e-3 && (puddle.to - puddle.from).x.abs() > 2.0, "the merged puddle should stretch along the drops, {:?} to {:?}", puddle.from, puddle.to);
+    }
+
+    #[test]
+    fn paint_poured_onto_a_wet_puddle_spreads_it_wider_instead_of_stacking_a_new_dome() {
+        let mut puddles = Puddles::default();
+        let first = settle_all(&mut puddles, vec![drop_at(Vec2::new(100.0, 100.0), 300.0)]);
+        let second = settle_all(&mut puddles, vec![drop_at(Vec2::new(101.0, 100.0), 900.0)]);
+        assert_eq!((first.len(), second.len()), (1, 1));
+        assert!((second[0].volume - 900.0).abs() < 1e-3, "only the new paint is laid");
+        assert!(second[0].radius > first[0].radius * 1.2, "the new layer covers the grown puddle, {} vs {}", second[0].radius, first[0].radius);
+    }
+
+    #[test]
+    fn drops_apart_stay_apart() {
+        let mut puddles = Puddles::default();
+        let laid = settle_all(&mut puddles, vec![drop_at(Vec2::new(100.0, 100.0), 300.0), drop_at(Vec2::new(200.0, 100.0), 300.0)]);
+        assert_eq!(laid.len(), 2);
+        assert!(puddles.volume() == 0.0);
+    }
 }

@@ -1,24 +1,29 @@
 use super::flight::Droplet;
-use super::fluid::{Fluid, wetted_mound, wetted_strand};
+use super::fluid::{Fluid, Wetted, wetted_mound, wetted_strand};
 use super::jet::{Drop, Landing};
 use glam::Vec2;
 use crate::paint::{Mark, Profile};
-use crate::paint::rheology::{Mound, Strand, yield_stress};
+use crate::paint::rheology::yield_stress;
 use crate::pigment::Coefficients;
 use crate::units::METRES_PER_PIXEL;
 
 const RIBBON_EDGE: f32 = 0.04;
 const RIBBON_EDGE_PIXELS: f32 = 0.6;
 const SHORTEST_RIBBON: f32 = 4.0;
-const SLENDER: f32 = 1.9;
+const SLENDER: f32 = 1.0;
+const SLENDER_START: f32 = 2.5;
 const BLOB_PER_THREAD: f32 = 4.0;
-const POOLING_STRETCH: f32 = 2.5;
 const WETTED_WIGGLE: f32 = 12.0;
-const STILL_REACH: f32 = 6.0;
 const WIDTH_EASING: f32 = 0.5;
-const POOLED_LENGTH: f32 = 3.0;
-const POOL_EDGE: f32 = 0.1;
+const POOL_EDGE: f32 = 0.2;
 const RIBBON_LENGTH_PER_HALF_WIDTH: f32 = 2.0;
+const AREA_MEMORY: f32 = 6.0;
+const COILING: f32 = 3.0;
+const ABSORBED_SHARE: f32 = 0.5;
+const LONGEST_STEP: f32 = 40.0;
+const SHARPEST_JOIN: f32 = 0.5;
+const STILL_STEPS: u32 = 8;
+const PAUSE_STEPS: u32 = 6;
 
 fn ribbon_edge(radius: f32) -> f32 {
     RIBBON_EDGE.min(RIBBON_EDGE_PIXELS / radius.max(f32::EPSILON))
@@ -54,10 +59,21 @@ impl Threads {
             };
             self.ribbons[index].1.lay(landing, paint, medium, &mut marks);
         }
-        for (_, ribbon) in self.ribbons.iter_mut().filter(|(thread, _)| landed.iter().all(|landing| landing.thread != *thread)) {
-            ribbon.finish(paint, medium, &mut marks);
+        for (thread, ribbon) in &mut self.ribbons {
+            match landed.iter().any(|landing| landing.thread == *thread) {
+                true => {
+                    ribbon.idle = 0;
+                    ribbon.settle(paint, medium, &mut marks);
+                }
+                false => {
+                    ribbon.idle += 1;
+                    if ribbon.idle > PAUSE_STEPS {
+                        ribbon.finish(paint, medium, &mut marks);
+                    }
+                }
+            }
         }
-        self.ribbons.retain(|(thread, _)| landed.iter().any(|landing| landing.thread == *thread));
+        self.ribbons.retain(|(_, ribbon)| ribbon.idle <= PAUSE_STEPS);
         marks
     }
 }
@@ -65,98 +81,162 @@ impl Threads {
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Ribbon {
     path: Option<(Vec2, Vec2)>,
-    weighted: Vec2,
-    started: bool,
     start: Option<Vec2>,
     end: Vec2,
     volume: f32,
-    still: f32,
-    wandered: bool,
+    weighted: Vec2,
+    travelled: f32,
     continued: bool,
     width: f32,
+    area: f32,
+    steps: u32,
+    idle: u32,
+    held: Option<Mark>,
 }
 
 impl Ribbon {
     fn pending(&self) -> f32 {
-        self.volume
+        self.volume + self.held.map_or(0.0, |held| held.volume)
     }
 
     fn lay(&mut self, landing: &Landing, paint: Coefficients, medium: f32, marks: &mut Vec<Mark>) {
         let touched = landing.position.truncate().as_vec2() / METRES_PER_PIXEL;
+        if self.path.is_some_and(|(_, last)| last.distance(touched) > LONGEST_STEP) {
+            self.emit(paint, medium, false, marks);
+            *self = Self::default();
+        }
         let (followed, last) = self.path.unwrap_or((touched, touched));
         let at = followed + (touched - followed) * (touched.distance(last) / WETTED_WIGGLE).min(1.0);
         self.path = Some((at, touched));
         let volume = to_canvas(landing.volume);
         let thread = landing.radius as f32 / METRES_PER_PIXEL;
-        if wetted_mound(volume, yield_stress(medium)).radius > BLOB_PER_THREAD * thread.max(1.0) {
-            if self.start.is_some() && self.volume > 0.0 {
-                self.emit(paint, medium, false, marks);
-            }
+        if wetted_mound(volume, yield_stress(medium)).reach > BLOB_PER_THREAD * thread.max(1.0) {
+            self.emit(paint, medium, false, marks);
             marks.push(pool(at, volume, paint, medium));
-            *self = Self { path: self.path, start: Some(at), end: at, wandered: true, ..Self::default() };
+            *self = Self { path: self.path, ..Self::default() };
             return;
         }
-        let start = *self.start.get_or_insert(at);
+        if self.start.is_none() {
+            self.start = Some(at);
+            self.end = at;
+        }
+        self.travelled += self.end.distance(at);
         self.end = at;
         self.volume += volume;
-        if self.wandered || start.distance(at) > STILL_REACH {
-            self.weighted += at * volume;
-        }
-        self.wandered |= start.distance(at) > STILL_REACH;
-        if !self.wandered {
-            self.volume -= volume;
-            marks.push(pool(start, volume, paint, medium));
-            return;
-        }
-        let length = start.distance(at);
-        if length >= SHORTEST_RIBBON.max(RIBBON_LENGTH_PER_HALF_WIDTH * self.settled(self.volume - self.still, length.max(SHORTEST_RIBBON), medium).half_width) {
+        self.weighted += at * volume;
+        if self.travelled >= SHORTEST_RIBBON.max(RIBBON_LENGTH_PER_HALF_WIDTH * self.half_width(medium)) {
             self.emit(paint, medium, true, marks);
         }
     }
 
-    fn finish(&mut self, paint: Coefficients, medium: f32, marks: &mut Vec<Mark>) {
-        let Some(start) = self.start else { return };
-        let length = start.distance(self.end);
-        if !self.continued && length < SHORTEST_RIBBON.max(POOLED_LENGTH * self.settled(self.volume, length.max(SHORTEST_RIBBON), medium).half_width) {
-            self.still = self.volume;
+    fn settle(&mut self, paint: Coefficients, medium: f32, marks: &mut Vec<Mark>) {
+        if self.volume <= 0.0 {
+            return;
         }
+        self.steps += 1;
+        let chord = self.start.map_or(0.0, |start| start.distance(self.end));
+        let pooling_still = self.travelled < SHORTEST_RIBBON && self.steps >= STILL_STEPS;
+        let coiling = self.travelled > COILING * chord.max(self.half_width(medium));
+        if pooling_still || coiling {
+            self.emit(paint, medium, true, marks);
+        }
+    }
+
+    fn half_width(&self, medium: f32) -> f32 {
+        self.settled(self.volume, self.travelled.max(SHORTEST_RIBBON), medium).reach
+    }
+
+    fn finish(&mut self, paint: Coefficients, medium: f32, marks: &mut Vec<Mark>) {
         self.emit(paint, medium, false, marks);
         *self = Self::default();
     }
 
-    fn settled(&self, volume: f32, length: f32, medium: f32) -> Strand {
+    fn settled(&self, volume: f32, length: f32, medium: f32) -> Wetted {
         wetted_strand(volume / length, yield_stress(medium))
     }
 
     fn emit(&mut self, paint: Coefficients, medium: f32, continues: bool, marks: &mut Vec<Mark>) {
-        let start = self.start.expect("a ribbon being laid has a start");
-        if self.still > 0.0 {
-            marks.push(pool(start, self.still, paint, medium));
-        }
-        let flowing = self.volume - self.still;
-        let length = start.distance(self.end);
-        let pooled = flowing > 0.0 && (!self.started || !continues) && POOLING_STRETCH * wetted_mound(flowing, yield_stress(medium)).radius > length.max(SHORTEST_RIBBON);
-        if pooled {
-            marks.push(pool(self.weighted / flowing, flowing, paint, medium));
-        } else if flowing > 0.0 {
-            let strand = self.settled(flowing, start.distance(self.end).max(SHORTEST_RIBBON), medium);
-            let slender = SLENDER * strand.half_width < start.distance(self.end);
-            let from = if self.continued && self.width > 0.0 { self.width } else { strand.half_width };
-            let to = from + (strand.half_width - from) * WIDTH_EASING;
+        let Some(start) = self.start.filter(|_| self.volume > 0.0) else {
+            if !continues {
+                marks.extend(self.held.take().map(closed));
+            }
+            return;
+        };
+        let chord = start.distance(self.end);
+        let strand = self.settled(self.volume, chord.max(SHORTEST_RIBBON), medium);
+        let slender = chord >= strand.reach * if self.continued { SLENDER } else { SLENDER_START };
+        let mut kept = 0.0;
+        if slender {
+            let measured = self.volume / chord;
+            let area = match self.continued && self.area > 0.0 && continues {
+                true => self.area + (measured - self.area) * (1.0 - (-chord / (AREA_MEMORY * strand.reach)).exp()),
+                false => measured,
+            };
+            let laid = (area * chord).min(self.volume);
+            kept = self.volume - laid;
+            let strand = self.settled(laid, chord, medium);
+            let from = if self.continued && self.width > 0.0 { self.width } else { strand.reach };
+            let to = from + (strand.reach - from) * WIDTH_EASING;
+            let profile = Profile { open: [self.continued, continues], taper: to / from, ..strand.profile(ribbon_edge(from)) };
+            let mut mark = Mark { from: start, to: self.end, radius: from, volume: laid, paint, medium, profile };
+            if let Some(held) = self.held.as_mut().filter(|held| (held.to - held.from).normalize_or_zero().dot((mark.to - mark.from).normalize_or_zero()) < SHARPEST_JOIN) {
+                held.profile.open[1] = false;
+                mark.profile.open[0] = false;
+            }
+            marks.extend(self.held.replace(mark));
             self.width = to;
-            let profile = Profile { flatness: (1.0 - strand.height / strand.half_width).clamp(0.0, 1.0), ragged: ribbon_edge(from), open: [self.continued && slender, continues && slender], taper: to / from };
-            marks.push(Mark { from: start, to: self.end, radius: from, volume: flowing, paint, medium, profile });
+            self.area = area;
+        } else if let Some(held) = self.held.as_mut().filter(|held| self.volume <= ABSORBED_SHARE * held.volume) {
+            held.to = self.end;
+            held.volume += self.volume;
+        } else {
+            let centre = self.weighted / self.volume;
+            let half = (self.end - start) * 0.5;
+            marks.extend(self.held.take().map(closed));
+            marks.push(puddle_along(centre - half, centre + half, self.volume, paint, medium));
         }
-        *self = Self { path: self.path.filter(|_| continues), start: Some(self.end), end: self.end, volume: 0.0, still: 0.0, wandered: true, continued: continues && flowing > 0.0 && !pooled, weighted: Vec2::ZERO, started: self.started || flowing > 0.0, width: if continues { self.width } else { 0.0 } };
+        let continued = continues && slender;
+        if !continued {
+            marks.extend(self.held.take().map(closed));
+        }
+        *self = Self {
+            held: self.held,
+            path: self.path.filter(|_| continues),
+            start: continues.then_some(self.end),
+            end: self.end,
+            volume: kept,
+            weighted: self.end * kept,
+            continued,
+            width: if continued { self.width } else { 0.0 },
+            area: if continued { self.area } else { 0.0 },
+            ..Self::default()
+        };
     }
 }
 
-fn pool(centre: Vec2, volume: f32, paint: Coefficients, medium: f32) -> Mark {
-    let puddle = wetted_mound(volume, yield_stress(medium));
-    puddle_mark(centre, volume, puddle, paint, medium)
+fn closed(held: Mark) -> Mark {
+    match held.profile.open[0] {
+        true => Mark { profile: Profile { open: [true, false], ..held.profile }, ..held },
+        false => oval_of(held),
+    }
 }
 
-fn puddle_mark(centre: Vec2, volume: f32, puddle: Mound, paint: Coefficients, medium: f32) -> Mark {
-    let profile = Profile { flatness: (1.0 - puddle.height / puddle.radius).clamp(0.0, 1.0), ragged: POOL_EDGE, open: [false; 2], taper: 1.0 };
-    Mark { profile, ..Mark::dot(centre, puddle.radius, volume, paint, medium) }
+fn oval_of(capsule: Mark) -> Mark {
+    let half_length = 0.5 * capsule.from.distance(capsule.to);
+    let area = capsule.radius * (std::f32::consts::PI * capsule.radius + 4.0 * half_length) / std::f32::consts::PI;
+    let radius = 0.5 * ((half_length * half_length + 4.0 * area).sqrt() - half_length);
+    Mark { radius, profile: Profile { oval: true, open: [false; 2], taper: 1.0, ..capsule.profile }, ..capsule }
 }
+
+fn pool(centre: Vec2, volume: f32, paint: Coefficients, medium: f32) -> Mark {
+    puddle_along(centre, centre, volume, paint, medium)
+}
+
+pub fn puddle_along(from: Vec2, to: Vec2, volume: f32, paint: Coefficients, medium: f32) -> Mark {
+    let puddle = wetted_mound(volume, yield_stress(medium));
+    let half_length = 0.5 * from.distance(to);
+    let radius = 0.5 * ((half_length * half_length + 4.0 * puddle.reach * puddle.reach).sqrt() - half_length);
+    let profile = Profile { oval: true, ..Wetted { reach: radius, ..puddle }.profile(POOL_EDGE) };
+    Mark { from, to, radius, volume, paint, medium, profile }
+}
+

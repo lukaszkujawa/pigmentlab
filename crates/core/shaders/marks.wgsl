@@ -25,12 +25,30 @@ const COVERAGE_SCALE: f32 = 1024.0;
 const SMALLEST_RADIUS: f32 = 0.75;
 
 fn radius_of(mark: Mark) -> f32 {
-    return max(max(mark.shape.x, mark.form.x) * (1.0 + mark.form.y), SMALLEST_RADIUS);
+    let egg = select(1.0, 1.0 + EGG, (u32(round(mark.form.z)) & 4u) != 0u);
+    return max(max(mark.shape.x, mark.form.x) * (1.0 + mark.form.y) * egg, SMALLEST_RADIUS);
 }
 
+fn mark_hash(mark: Mark, salt: u32) -> f32 {
+    var hash = bitcast<u32>(mark.ends.x) * 0x8da6b343u ^ bitcast<u32>(mark.ends.y) * 0xd8163841u ^ bitcast<u32>(mark.ends.z) * 0xcb1ab31fu ^ bitcast<u32>(mark.ends.w) * 0x165667b1u ^ salt * 0x9e3779b9u;
+    hash ^= hash >> 16u;
+    hash *= 0x7feb352du;
+    hash ^= hash >> 15u;
+    hash *= 0x846ca68bu;
+    hash ^= hash >> 16u;
+    return f32(hash >> 8u) / 16777216.0;
+}
+
+const EGG: f32 = 0.35;
+const LOBES = array<f32, 5>(2.0, 3.0, 5.0, 8.0, 13.0);
+const LOBE_SIZES = array<f32, 5>(0.3, 0.2, 0.09, 0.05, 0.026);
+
 fn edge(mark: Mark, angle: f32) -> f32 {
-    let seed = fract(sin(dot(mark.ends.xy + mark.ends.zw * 0.37, vec2<f32>(12.9898, 78.233))) * 43758.5453) * 6.2831853;
-    let wobble = 0.35 * sin(3.0 * angle + seed) + 0.3 * sin(7.0 * angle + seed * 2.3) * fract(seed * 1.7) + 0.2 * sin(11.0 * angle + seed * 3.7) + 0.15 * sin(17.0 * angle + seed * 5.1) * fract(seed * 3.1);
+    var wobble = 0.0;
+    for (var lobe = 0u; lobe < 5u; lobe++) {
+        let size = LOBE_SIZES[lobe] * (0.5 + mark_hash(mark, 2u * lobe));
+        wobble += size * sin(LOBES[lobe] * angle + 6.2831853 * mark_hash(mark, 2u * lobe + 1u));
+    }
     return 1.0 + mark.form.y * wobble;
 }
 
@@ -53,27 +71,43 @@ fn tile_offset(tile: vec2<u32>, local: vec3<u32>) -> vec2<u32> {
     return vec2<u32>(tile.y & 0xffffu, tile.y >> 16u) * 16u + local.xy;
 }
 
+fn oval_offset(mark: Mark, p: vec2<f32>) -> f32 {
+    let along = mark.ends.zw - mark.ends.xy;
+    let extent = length(along);
+    let axis = select(vec2<f32>(1.0, 0.0), along / extent, extent > 1e-6);
+    let away = p - 0.5 * (mark.ends.xy + mark.ends.zw);
+    let radius = max(mark.shape.x, SMALLEST_RADIUS);
+    let lengthwise = dot(away, axis) / (0.5 * extent + radius);
+    let egg = 1.0 + EGG * (2.0 * mark_hash(mark, 11u) - 1.0) * clamp(lengthwise, -1.0, 1.0);
+    let local = vec2<f32>(lengthwise, (axis.x * away.y - axis.y * away.x) / (radius * egg));
+    return length(local) / edge(mark, atan2(local.y, local.x));
+}
+
 fn weight(mark: Mark, pixel: vec2<i32>) -> u32 {
     let p = vec2<f32>(pixel) + 0.5;
-    let along = mark.ends.zw - mark.ends.xy;
-    let span = dot(along, along);
-    let projected = select(0.0, dot(p - mark.ends.xy, along) / span, span > 1e-6);
-    let open = u32(round(mark.form.z));
-    let extent = sqrt(span);
-    let fade = min(max(min(mark.shape.x, mark.form.x), SMALLEST_RADIUS), 0.5 * extent);
+    let form = u32(round(mark.form.z));
     var share = 1.0;
-    if ((open & 1u) != 0u) { share *= clamp(0.5 + projected * extent / fade, 0.0, 1.0); }
-    if ((open & 2u) != 0u) { share *= clamp(0.5 - (projected - 1.0) * extent / fade, 0.0, 1.0); }
+    var offset = 0.0;
+    if ((form & 4u) != 0u) {
+        offset = oval_offset(mark, p);
+    } else {
+        let along = mark.ends.zw - mark.ends.xy;
+        let span = dot(along, along);
+        let projected = select(0.0, dot(p - mark.ends.xy, along) / span, span > 1e-6);
+        let extent = sqrt(span);
+        let fade = min(max(min(mark.shape.x, mark.form.x), SMALLEST_RADIUS), 0.5 * extent);
+        if ((form & 1u) != 0u) { share *= clamp(0.5 + projected * extent / fade, 0.0, 1.0); }
+        if ((form & 2u) != 0u) { share *= clamp(0.5 - (projected - 1.0) * extent / fade, 0.0, 1.0); }
+        let t = clamp(projected, select(0.0, -1.0, (form & 1u) != 0u), select(1.0, 2.0, (form & 2u) != 0u));
+        let away = p - (mark.ends.xy + along * t);
+        let radius = mix(mark.shape.x, mark.form.x, clamp(t, 0.0, 1.0));
+        let travelled = t * extent / max(radius, SMALLEST_RADIUS);
+        offset = length(away) / max(radius * edge(mark, atan2(away.y, away.x) + travelled), SMALLEST_RADIUS);
+    }
     if (share <= 0.0) { return 0u; }
-    let t = clamp(projected, 0.0, 1.0);
-    let away = p - (mark.ends.xy + along * t);
-    let radius = mix(mark.shape.x, mark.form.x, t);
-    let travelled = t * sqrt(span) / max(radius, SMALLEST_RADIUS);
-    let reach = max(radius * edge(mark, atan2(away.y, away.x) + travelled), SMALLEST_RADIUS);
-    let offset = length(away) / reach;
-    let steepness = 2.0 + 10.0 * mark.shape.w;
-    let rounding = 0.5 + 0.5 * mark.shape.w;
-    return u32(round(pow(max(1.0 - pow(offset, steepness), 0.0), rounding) * share * COVERAGE_SCALE));
+    let rim = clamp((1.0 - offset) / max(1.0 - mark.shape.w, 0.02), 0.0, 1.0);
+    let height = pow(1.0 - (1.0 - rim) * (1.0 - rim), 1.0 - 0.5 * mark.form.w);
+    return u32(round(height * share * COVERAGE_SCALE));
 }
 
 fn fixed(value: f32) -> i32 {

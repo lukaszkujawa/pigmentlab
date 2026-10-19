@@ -103,11 +103,13 @@ fn every_drop_of_paint_leaving_a_bottle_lands_on_the_canvas_or_is_still_falling(
 
 #[test]
 fn a_bottle_hanging_still_pools_its_thread_on_one_spot() {
-    let (mut engine, _) = Pour::still(ENAMEL).run();
+    let (mut engine, released) = Pour::still(ENAMEL).run();
     let heights = engine.paint_heights();
     let reach = painted(&heights).map(|(x, y)| Vec2::new(x as f32, y as f32).distance(centre())).fold(0.0f32, f32::max);
-    println!("still bottle pools within {reach:.1} px ({:.2} mm)", reach * METRES_PER_PIXEL * 1000.0);
-    assert!(reach > 4.0 && reach < cm(1.0), "a still bottle should pool its thread within a centimetre of the point under it, reaches {reach:.1} px");
+    let thinnest_puddle = cm(0.06) * METRES_PER_PIXEL;
+    let widest = (released as f32 / (std::f32::consts::PI * thinnest_puddle)).sqrt() / METRES_PER_PIXEL;
+    println!("still bottle pools {:.2} cm3 within {reach:.1} px ({:.2} mm), a puddle no thinner than 0.6 mm reaches {widest:.1} px", released * 1e6, reach * METRES_PER_PIXEL * 1000.0);
+    assert!(reach > 4.0 && reach < widest, "a still bottle should pool its thread in one puddle under it, reaches {reach:.1} px of at most {widest:.1} px");
 }
 
 #[test]

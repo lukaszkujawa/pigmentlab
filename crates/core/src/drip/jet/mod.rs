@@ -8,6 +8,7 @@ use super::fluid::Fluid;
 use crate::rng::SplitMix64;
 use forces::{capillary_tensions, explicit_forces, stable_step, stretching_resistance, tensions};
 use glam::DVec3;
+use rayon::prelude::*;
 use solve::{Ends, Stiffness, implicit_velocities};
 use std::f64::consts::PI;
 
@@ -29,6 +30,7 @@ const RAYLEIGH_WAVELENGTH: f64 = 9.02;
 const LONGEST_SPLAT: f64 = 3.0;
 const NOZZLE_COLUMN_PER_RADIUS: f64 = 0.2;
 const NOZZLE_JITTER: f64 = 1e-4;
+const UNNUMBERED: u64 = 1 << 63;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Source {
@@ -41,7 +43,6 @@ pub struct Source {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Landing {
     pub position: DVec3,
-    pub span: [DVec3; 2],
     pub velocity: DVec3,
     pub volume: f64,
     pub radius: f64,
@@ -127,9 +128,22 @@ impl Jet {
             _ => {}
         }
         self.nozzle = source.map(|source| source.position);
-        let mut waiting: Vec<(Piece, f64)> = self.pieces.drain(..).map(|piece| (piece, 0.0)).collect();
-        while let Some((piece, clock)) = waiting.pop() {
-            self.follow(piece, clock, dt, source, &mut waiting, &mut fallen);
+        let flow = Flow { viscosity: self.viscosity, gravity: self.gravity, coarseness: self.coarseness, frame: dt, source };
+        let jitter = &self.jitter;
+        let followed: Vec<Followed> = std::mem::take(&mut self.pieces).into_par_iter().rev().map(|piece| {
+            let nozzle_jitter = piece.pinned.then(|| jitter.clone());
+            flow.follow_all(piece, nozzle_jitter)
+        }).collect();
+        for followed in followed {
+            if let Some(jitter) = followed.jitter {
+                self.jitter = jitter;
+            }
+            let base = self.threads;
+            self.threads += followed.threads;
+            let numbered = |thread: u64| if thread & UNNUMBERED == 0 { thread } else { base + (thread & !UNNUMBERED) };
+            self.pieces.extend(followed.pieces.into_iter().map(|piece| Piece { thread: numbered(piece.thread), ..piece }));
+            fallen.landed.extend(followed.fallen.landed.into_iter().map(|landing| Landing { thread: numbered(landing.thread), ..landing }));
+            fallen.drops.extend(followed.fallen.drops);
         }
         fallen
     }
@@ -138,57 +152,106 @@ impl Jet {
         self.threads += 1;
         self.threads
     }
+}
 
-    fn follow(&mut self, mut piece: Piece, mut clock: f64, frame: f64, source: Option<&Source>, waiting: &mut Vec<(Piece, f64)>, fallen: &mut Fallen) {
+struct Flow<'a> {
+    viscosity: f64,
+    gravity: DVec3,
+    coarseness: f64,
+    frame: f64,
+    source: Option<&'a Source>,
+}
+
+#[derive(Default)]
+struct Followed {
+    pieces: Vec<Piece>,
+    fallen: Fallen,
+    threads: u64,
+    jitter: Option<SplitMix64>,
+}
+
+impl Followed {
+    fn fresh_thread(&mut self) -> u64 {
+        self.threads += 1;
+        UNNUMBERED | self.threads
+    }
+
+    fn shake(&mut self) -> DVec3 {
+        self.jitter.as_mut().map_or(DVec3::ZERO, |jitter| DVec3::new(jitter.range(-1.0, 1.0).into(), jitter.range(-1.0, 1.0).into(), jitter.range(-1.0, 1.0).into()) * NOZZLE_JITTER)
+    }
+}
+
+impl Flow<'_> {
+    fn follow_all(&self, piece: Piece, jitter: Option<SplitMix64>) -> Followed {
+        let mut followed = Followed { jitter, ..Followed::default() };
+        let mut waiting = vec![(piece, 0.0)];
+        while let Some((piece, clock)) = waiting.pop() {
+            self.follow(piece, clock, &mut waiting, &mut followed);
+        }
+        followed
+    }
+
+    fn follow(&self, mut piece: Piece, mut clock: f64, waiting: &mut Vec<(Piece, f64)>, followed: &mut Followed) {
+        let frame = self.frame;
         let longest = frame / FEWEST_SUBSTEPS as f64;
         let shortest = frame / MOST_SUBSTEPS as f64;
         loop {
             if piece.stuck_head && piece.stuck_tail {
-                fallen.landed.extend(lay_down(&piece));
+                followed.fallen.landed.extend(lay_down(&piece));
                 return;
             }
-            if touches_ground(&piece) && !piece.pinned && !piece.is_on_canvas() && is_compact(&piece) {
+            let grounded = touches_ground(&piece);
+            if grounded && !piece.pinned && !piece.is_on_canvas() && is_compact(&piece) {
                 let (position, velocity) = piece.centre_of_mass();
-                fallen.drops.push(Drop { position: position.with_z(0.0), velocity, volume: piece.volume() });
+                followed.fallen.drops.push(Drop { position: position.with_z(0.0), velocity, volume: piece.volume() });
                 return;
             }
-            if touches_ground(&piece) {
-                let fresh = self.fresh_thread();
-                let (landing, rest) = land_on_ground(piece, fresh);
-                fallen.landed.push(landing);
+            if grounded {
+                let (landing, rest) = land_on_ground(piece);
+                followed.fallen.landed.push(landing);
                 waiting.extend(rest.into_iter().map(|part| (part, clock)));
                 return;
             }
             if !piece.pinned && !piece.is_on_canvas() && is_round(&piece) {
                 let (position, velocity) = piece.centre_of_mass();
-                fallen.drops.push(Drop { position, velocity, volume: piece.volume() });
+                followed.fallen.drops.push(Drop { position, velocity, volume: piece.volume() });
                 return;
             }
             if clock >= frame {
                 break;
             }
-            if !piece.pinned && !piece.is_on_canvas() && SAFETY * stable_step(&piece, self.viscosity) < shortest {
-                fallen.drops.extend(atomise(&piece));
+            let stable = SAFETY * stable_step(&piece, self.viscosity);
+            if !piece.pinned && !piece.is_on_canvas() && stable < shortest {
+                followed.fallen.drops.extend(atomise(&piece));
                 return;
             }
-            let dt = (SAFETY * stable_step(&piece, self.viscosity)).min(STRIDE_GROWTH * piece.stride).clamp(shortest, longest).min(frame - clock);
+            let dt = stable.min(STRIDE_GROWTH * piece.stride).clamp(shortest, longest).min(frame - clock);
             piece.stride = dt;
-            let nozzle = source.filter(|_| piece.pinned).map(|source| Source { position: source.position - source.velocity * (frame - clock), ..*source });
+            let nozzle = self.source.filter(|_| piece.pinned).map(|source| Source { position: source.position - source.velocity * (frame - clock), ..*source });
             if let Some(nozzle) = &nozzle {
                 feed_from_nozzle(&mut piece, nozzle, nozzle.flow * dt);
             }
-            let shaking = DVec3::new(self.jitter.range(-1.0, 1.0).into(), self.jitter.range(-1.0, 1.0).into(), self.jitter.range(-1.0, 1.0).into()) * NOZZLE_JITTER;
-            let held = nozzle.map(|nozzle| nozzle.velocity + (nozzle.exit_velocity() - nozzle.velocity).length() * (DVec3::NEG_Z + shaking));
+            let held = nozzle.map(|nozzle| nozzle.velocity + (nozzle.exit_velocity() - nozzle.velocity).length() * (DVec3::NEG_Z + followed.shake()));
             advance(&mut piece, held, self.viscosity, self.gravity, dt);
             clock += dt;
             piece.remesh(self.coarseness);
-            let neck = (0..piece.segments()).find(|segment| is_breaking_neck(&piece, *segment));
-            if let Some(below) = neck.and_then(|segment| piece.cut(segment)) {
-                let thread = self.fresh_thread();
+            let mut radii = segment_radii(&piece);
+            let vanished = vanished_segments(&radii);
+            for &segment in vanished.iter().rev() {
+                if let Some(below) = piece.cut(segment) {
+                    let thread = followed.fresh_thread();
+                    waiting.push((Piece { thread, ..below }, clock));
+                }
+            }
+            if !vanished.is_empty() {
+                radii = segment_radii(&piece);
+            }
+            if let Some(below) = breaking_neck(&radii).and_then(|segment| piece.cut(segment)) {
+                let thread = followed.fresh_thread();
                 waiting.push((Piece { thread, ..below }, clock));
             }
         }
-        self.pieces.push(piece);
+        followed.pieces.push(piece);
     }
 }
 
@@ -239,7 +302,7 @@ fn is_touching(piece: &Piece, node: usize) -> bool {
     !resting && position.z < 2.0 * reach
 }
 
-fn land_on_ground(piece: Piece, fresh: u64) -> (Landing, Vec<Piece>) {
+fn land_on_ground(piece: Piece) -> (Landing, Vec<Piece>) {
     let node = (held_nodes(&piece)..piece.nodes.len()).rfind(|node| is_touching(&piece, *node)).unwrap_or(piece.nodes.len() - 1);
     let touching = piece.nodes[node];
     let on_canvas = |node: Node| Node { position: node.position.with_z(0.0), velocity: DVec3::ZERO };
@@ -248,7 +311,6 @@ fn land_on_ground(piece: Piece, fresh: u64) -> (Landing, Vec<Piece>) {
     let mut landed = 0.0;
     let mut radius = 0.0f64;
     let mut parts = Vec::new();
-    let mut span = [touching.position, touching.position];
     if node > 0 {
         let segment = node - 1;
         radius = radius.max(piece.radius(segment));
@@ -256,7 +318,6 @@ fn land_on_ground(piece: Piece, fresh: u64) -> (Landing, Vec<Piece>) {
         match grounded(segment) && segment >= held_nodes(&piece) {
             true => {
                 landed += piece.volumes[segment];
-                span[0] = piece.nodes[segment].position;
                 let last = upper.nodes.len() - 1;
                 upper.nodes[last] = on_canvas(upper.nodes[last]);
             }
@@ -264,7 +325,6 @@ fn land_on_ground(piece: Piece, fresh: u64) -> (Landing, Vec<Piece>) {
                 landed += 0.5 * piece.volumes[segment];
                 upper.nodes.push(midway(segment));
                 upper.volumes.push(0.5 * piece.volumes[segment]);
-                span[0] = midway(segment).position;
             }
         }
         parts.push(upper);
@@ -272,41 +332,48 @@ fn land_on_ground(piece: Piece, fresh: u64) -> (Landing, Vec<Piece>) {
     if node < piece.segments() {
         let segment = node;
         radius = radius.max(piece.radius(segment));
-        let mut lower = Piece { stuck_head: true, stuck_tail: piece.stuck_tail, stride: piece.stride, thread: fresh, ..Piece::new(piece.nodes[node + 1..].to_vec(), piece.volumes[node + 1..].to_vec(), false) };
+        let mut lower = Piece { stuck_head: true, stuck_tail: piece.stuck_tail, stride: piece.stride, thread: piece.thread, ..Piece::new(piece.nodes[node + 1..].to_vec(), piece.volumes[node + 1..].to_vec(), false) };
         match grounded(node + 1) {
             true => {
                 landed += piece.volumes[segment];
-                span[1] = piece.nodes[node + 1].position;
                 lower.nodes[0] = on_canvas(lower.nodes[0]);
             }
             false => {
                 landed += 0.5 * piece.volumes[segment];
                 lower.nodes.insert(0, midway(node + 1));
                 lower.volumes.insert(0, 0.5 * piece.volumes[segment]);
-                span[1] = midway(node + 1).position;
             }
         }
         parts.push(lower);
     }
     parts.retain(|part| part.segments() > 0 && !(part.is_on_canvas() && part.volume() <= 0.0));
-    (Landing { position: touching.position.with_z(0.0), span: span.map(|end| end.with_z(0.0)), velocity: touching.velocity, volume: landed, radius, attached: piece.pinned, thread: piece.thread }, parts)
+    (Landing { position: touching.position.with_z(0.0), velocity: touching.velocity, volume: landed, radius, attached: piece.pinned, thread: piece.thread }, parts)
 }
 
 fn lay_down(piece: &Piece) -> impl Iterator<Item = Landing> + '_ {
     (0..piece.segments()).map(move |segment| {
         let [from, to] = [piece.nodes[segment], piece.nodes[segment + 1]];
-        Landing { position: from.position.lerp(to.position, 0.5).with_z(0.0), span: [from.position.with_z(0.0), to.position.with_z(0.0)], velocity: from.velocity.lerp(to.velocity, 0.5), volume: piece.volumes[segment], radius: piece.radius(segment), attached: false, thread: piece.thread }
+        Landing { position: from.position.lerp(to.position, 0.5).with_z(0.0), velocity: from.velocity.lerp(to.velocity, 0.5), volume: piece.volumes[segment], radius: piece.radius(segment), attached: false, thread: piece.thread }
     })
 }
 
-fn is_breaking_neck(piece: &Piece, segment: usize) -> bool {
-    let radius = piece.radius(segment);
-    if segment == 0 || segment + 1 >= piece.segments() || radius >= BREAKING_RADIUS || radius >= piece.radius(segment - 1) || radius > piece.radius(segment + 1) {
-        return false;
-    }
-    let around = segment.saturating_sub(NECK_REACH)..(segment + NECK_REACH + 1).min(piece.segments());
-    let shoulders = around.map(|other| piece.radius(other)).fold(0.0, f64::max);
-    radius < NECK_DEPTH * shoulders || radius < VANISHED_RADIUS
+fn segment_radii(piece: &Piece) -> Vec<f64> {
+    (0..piece.segments()).map(|segment| piece.radius(segment)).collect()
+}
+
+fn breaking_neck(radii: &[f64]) -> Option<usize> {
+    (1..radii.len().saturating_sub(1)).find(|&segment| {
+        let radius = radii[segment];
+        if radius >= BREAKING_RADIUS || radius >= radii[segment - 1] || radius > radii[segment + 1] {
+            return false;
+        }
+        let around = segment.saturating_sub(NECK_REACH)..(segment + NECK_REACH + 1).min(radii.len());
+        radius < NECK_DEPTH * radii[around].iter().copied().fold(0.0, f64::max)
+    })
+}
+
+fn vanished_segments(radii: &[f64]) -> Vec<usize> {
+    (1..radii.len().saturating_sub(1)).filter(|segment| radii[*segment] < VANISHED_RADIUS).collect()
 }
 
 fn held_nodes(piece: &Piece) -> usize {

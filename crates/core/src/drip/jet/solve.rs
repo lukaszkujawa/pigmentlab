@@ -47,14 +47,16 @@ impl Banded {
 
     fn solve(mut self) -> Vec<DVec3> {
         let count = self.rows.len();
+        let mut inverses = Vec::with_capacity(count);
         for pivot in 0..count {
             let inverse = self.at(pivot, pivot).inverse();
+            inverses.push(inverse);
             for row in pivot + 1..(pivot + BAND + 1).min(count) {
                 let factor = self.at(row, pivot) * inverse;
                 if factor == DMat3::ZERO {
                     continue;
                 }
-                for column in pivot..(pivot + BAND + 1).min(count) {
+                for column in pivot + 1..(pivot + BAND + 1).min(count) {
                     let eliminated = self.at(row, column) - factor * self.at(pivot, column);
                     self.rows[row][column + BAND - row] = eliminated;
                 }
@@ -64,7 +66,7 @@ impl Banded {
         let mut velocities = vec![DVec3::ZERO; count];
         for row in (0..count).rev() {
             let known = (row + 1..(row + BAND + 1).min(count)).fold(self.right[row], |known, column| known - self.at(row, column) * velocities[column]);
-            velocities[row] = self.at(row, row).inverse() * known;
+            velocities[row] = inverses[row] * known;
         }
         velocities
     }

@@ -1,4 +1,4 @@
-use super::fluid::{DENSITY, Fluid, SURFACE_TENSION, wetted_mound};
+use super::fluid::{DENSITY, Fluid, SURFACE_TENSION, Wetted, wetted_mound};
 use super::splash::{Splash, finger_count, fingers};
 use crate::paint::rheology::yield_stress;
 use crate::paint::{Mark, Profile};
@@ -19,6 +19,7 @@ const BODY_SHARE: f32 = 0.6;
 const SPINE_WIDTH: f32 = 0.35;
 const SPINE_VOLUME: f32 = 0.15;
 const SPLASHED_EDGE: f32 = 0.12;
+const SPINE_TIP: f32 = 0.4;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Droplet {
@@ -60,15 +61,15 @@ impl Droplet {
         let kept = if impact.splashes { 1.0 - SPLASHED_SHARE } else { 1.0 };
         let puddle = wetted_mound(volume * kept, yield_stress(self.medium));
         let wetting = rng.range(1.0 - WETTING_SPREAD, 1.0 + WETTING_SPREAD);
-        let rim = pixels(width * 0.5).max(puddle.radius) * wetting;
+        let rim = pixels(width * 0.5).max(puddle.reach) * wetting;
         let tail = along * (elongation - 1.0) * 2.0 * rim;
-        let profile = Profile { flatness: (1.0 - puddle.height * wetting.recip().powi(2) / rim).clamp(0.0, 1.0), ragged: if impact.splashes { SPLASHED_EDGE } else { QUIET_EDGE * rng.range(0.4, 2.5) }, open: [false; 2], taper: 1.0 };
+        let profile = Wetted { reach: rim, height: puddle.height * wetting.recip().powi(2), ..puddle }.profile(if impact.splashes { SPLASHED_EDGE } else { QUIET_EDGE * rng.range(0.4, 2.5) });
         let stain = Mark { from: landing, to: landing + tail, radius: rim, volume: volume * kept, paint: self.paint, medium: self.medium, profile };
         let mut marks = match tail.length() > rim * SPINE_WIDTH {
             true => {
                 let body_end = landing + tail * BODY_SHARE;
-                let spine = Mark { from: body_end, to: landing + tail + along * rim * (1.0 - SPINE_WIDTH), radius: rim * SPINE_WIDTH, volume: stain.volume * SPINE_VOLUME, profile: Profile { ragged: QUIET_EDGE, ..profile }, ..stain };
-                vec![Mark { to: body_end, volume: stain.volume - spine.volume, ..stain }, spine]
+                let spine = Mark { from: body_end, to: landing + tail + along * rim * (1.0 - SPINE_WIDTH), radius: rim * SPINE_WIDTH, volume: stain.volume * SPINE_VOLUME, profile: Profile { ragged: QUIET_EDGE, taper: SPINE_TIP, ..profile }, ..stain };
+                vec![Mark { to: body_end, volume: stain.volume - spine.volume, profile: Profile { oval: true, ..profile }, ..stain }, spine]
             }
             false => vec![stain],
         };

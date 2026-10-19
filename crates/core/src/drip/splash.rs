@@ -9,7 +9,9 @@ const FINGERS_PER_IMPACT_REYNOLDS: f32 = 1.0 / 4.2;
 const FEWEST_FINGERS: f32 = 3.0;
 const MOST_FINGERS: f32 = 64.0;
 const ANGLE_JITTER: f32 = 0.45;
-const REACH_PER_RIM: f32 = 1.1;
+const REACH_PER_RIM: f32 = 0.6;
+const LONGEST_STRETCH: f32 = 2.5;
+const SHORTEST_STRETCH: f32 = 0.1;
 const ROOT_INSET: f32 = 0.8;
 const FINGER_FLATNESS: f32 = 0.6;
 const FINGER_EDGE: f32 = 0.1;
@@ -41,13 +43,13 @@ pub fn fingers(splash: &Splash, rng: &mut SplitMix64) -> Vec<Mark> {
     let lean = splash.lean.clamp(0.0, LONGEST_LEAN);
     let weights: Vec<f32> = (0..splash.count).map(|_| rng.unit().powi(2) + 0.05).collect();
     let total: f32 = weights.iter().sum();
-    let flat = Profile { flatness: FINGER_FLATNESS, ragged: FINGER_EDGE, open: [true, false], taper: FINGER_TIP };
+    let flat = Profile { flatness: FINGER_FLATNESS, stiffness: 0.0, ragged: FINGER_EDGE, open: [true, false], taper: FINGER_TIP, oval: false };
     let mut marks = Vec::with_capacity(2 * splash.count);
     for (finger, weight) in weights.iter().enumerate() {
         let direction = Vec2::from_angle(TAU * (finger as f32 + rng.range(-ANGLE_JITTER, ANGLE_JITTER)) / splash.count as f32);
         let downwind = direction.dot(heading);
         let root = splash.centre + direction * splash.rim * ROOT_INSET + splash.tail * 0.5 * downwind;
-        let reach = splash.rim * (REACH_PER_RIM * weight.sqrt() + (1.0 - ROOT_INSET)) * (1.0 + lean * downwind).max(0.1).powi(2);
+        let reach = splash.rim * (REACH_PER_RIM * weight.sqrt() + (1.0 - ROOT_INSET)) * (1.0 + lean * downwind).clamp(SHORTEST_STRETCH, LONGEST_STRETCH);
         let tip = root + direction * reach;
         let volume = splash.volume * weight / total;
         let shed = rng.unit() < SHEDDING * weight.sqrt();
@@ -58,7 +60,7 @@ pub fn fingers(splash: &Splash, rng: &mut SplitMix64) -> Vec<Mark> {
             let flight = tip + direction.rotate(Vec2::from_angle(rng.range(-0.2, 0.2))) * reach * rng.range(0.3, 1.6);
             let droplet = volume - kept;
             let radius = (2.0 * droplet / (PI * DROPLET_SLOPE)).cbrt();
-            marks.push(Mark { profile: Profile { flatness: FINGER_FLATNESS, ragged: FINGER_EDGE, open: [false; 2], taper: 1.0 }, ..Mark::dot(flight, radius, droplet, splash.paint, splash.medium) });
+            marks.push(Mark { profile: Profile { flatness: FINGER_FLATNESS, stiffness: 0.0, ragged: FINGER_EDGE, open: [false; 2], taper: 1.0, oval: false }, ..Mark::dot(flight, radius, droplet, splash.paint, splash.medium) });
         }
     }
     marks

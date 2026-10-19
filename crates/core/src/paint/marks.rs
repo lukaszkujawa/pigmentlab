@@ -10,6 +10,7 @@ const TILE_CAPACITY: usize = 1 << 18;
 const TILE_ROW: u32 = 65535;
 const SMALLEST_RADIUS: f32 = 0.75;
 const TILE: f32 = 16.0;
+const EGG: f32 = 0.35;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mark {
@@ -25,13 +26,15 @@ pub struct Mark {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Profile {
     pub flatness: f32,
+    pub stiffness: f32,
     pub ragged: f32,
     pub open: [bool; 2],
     pub taper: f32,
+    pub oval: bool,
 }
 
 impl Profile {
-    pub const ROUND: Self = Self { flatness: 0.0, ragged: 0.0, open: [false; 2], taper: 1.0 };
+    pub const ROUND: Self = Self { flatness: 0.0, stiffness: 1.0, ragged: 0.0, open: [false; 2], taper: 1.0, oval: false };
 }
 
 impl Mark {
@@ -40,7 +43,8 @@ impl Mark {
     }
 
     fn reach(&self) -> f32 {
-        (self.radius * self.profile.taper.max(1.0) * (1.0 + self.profile.ragged)).max(SMALLEST_RADIUS)
+        let egg = if self.profile.oval { 1.0 + EGG } else { 1.0 };
+        (self.radius * self.profile.taper.max(1.0) * (1.0 + self.profile.ragged) * egg).max(SMALLEST_RADIUS)
     }
 
     fn tiles(&self) -> (u32, u32) {
@@ -58,7 +62,7 @@ impl Mark {
             shape: [self.radius, self.volume, self.medium, self.profile.flatness],
             absorption: self.paint.absorption.extend(0.0).to_array(),
             scattering: self.paint.scattering.extend(0.0).to_array(),
-            form: [self.radius * self.profile.taper, self.profile.ragged, f32::from(u8::from(self.profile.open[0]) + 2 * u8::from(self.profile.open[1])), 0.0],
+            form: [self.radius * self.profile.taper, self.profile.ragged, f32::from(u8::from(self.profile.open[0]) + 2 * u8::from(self.profile.open[1]) + 4 * u8::from(self.profile.oval)), self.profile.stiffness],
         }
     }
 }
