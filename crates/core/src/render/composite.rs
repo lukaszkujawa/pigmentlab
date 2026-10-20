@@ -37,7 +37,7 @@ struct CompositeUniform {
     gloss: f32,
     ambient: f32,
     shadow_strength: f32,
-    padding: f32,
+    varnish: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -47,11 +47,12 @@ pub struct Lighting {
     pub gloss: f32,
     pub ambient: f32,
     pub shadow_strength: f32,
+    pub varnish: f32,
 }
 
 impl Default for Lighting {
     fn default() -> Self {
-        Self { azimuth_degrees: 225.0, elevation_degrees: 40.0, gloss: 0.5, ambient: 0.45, shadow_strength: 0.6 }
+        Self { azimuth_degrees: 225.0, elevation_degrees: 40.0, gloss: 0.5, ambient: 0.45, shadow_strength: 0.6, varnish: 0.0 }
     }
 }
 
@@ -186,7 +187,7 @@ impl Composite {
                 gloss: lighting.gloss,
                 ambient: lighting.ambient,
                 shadow_strength: lighting.shadow_strength,
-                padding: 0.0,
+                varnish: lighting.varnish,
             }),
         );
     }

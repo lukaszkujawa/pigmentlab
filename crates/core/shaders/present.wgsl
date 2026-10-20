@@ -156,7 +156,9 @@ fn shaded(p: vec2<f32>) -> vec3<f32> {
     let look = look_at(p);
     let q = p - 0.5;
     let height = relief(vec2<i32>(floor(q)) - 1, fract(q));
-    let glossy = look.finish.x;
+    let glossy = mix(look.finish.x, 1.0, composite.varnish);
+    let veil = OIL_REFLECTANCE * (1.0 - look.finish.x) * composite.varnish;
+    let albedo = max(look.albedo - veil, vec3<f32>(0.0)) / (1.0 - veil);
     let lit = look.finish.y;
     let occlusion = look.finish.z;
     let normal = normalize(vec3<f32>(-height.slope, 1.0));
@@ -165,7 +167,7 @@ fn shaded(p: vec2<f32>) -> vec3<f32> {
     let ambient = composite.ambient * occlusion;
     let lighting = max(ambient + (1.0 - composite.ambient) * diffuse * lit, LIGHTING_FLOOR);
     let specular = reflection(normal, light, glossy) * lit;
-    return clamp(look.albedo * lighting + vec3<f32>(specular), vec3<f32>(0.0), vec3<f32>(1.0));
+    return clamp(albedo * lighting + vec3<f32>(specular), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 @fragment

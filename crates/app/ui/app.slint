@@ -108,13 +108,14 @@ component Toggle {
 component ToolButton inherits Rectangle {
     in property <string> label;
     in property <bool> danger;
+    in property <bool> active;
     callback clicked;
     height: 30px;
     width: label.preferred-width + 24px;
     border-radius: 6px;
-    background: area.has-hover ? Theme.track : Theme.card;
+    background: root.active ? Theme.accent-soft : (area.has-hover ? Theme.track : Theme.card);
     border-width: 1px;
-    border-color: Theme.line;
+    border-color: root.active ? Theme.accent : Theme.line;
     label := Text {
         text: root.label;
         color: root.danger ? Theme.danger : Theme.text;
@@ -739,6 +740,7 @@ export component AppWindow inherits Window {
     in-out property <bool> new-canvas-open: false;
     in property <[color]> swatches: [];
     in-out property <int> active-swatch: 2;
+    in-out property <int> dip-part: 0;
     in property <float> brush-fill: 0;
     in property <color> brush-paint: #c0392b;
     in property <string> picker-hex: "";
@@ -798,6 +800,7 @@ export component AppWindow inherits Window {
     out property <float> light-azimuth <=> azimuth-slider.value;
     out property <float> light-elevation <=> elevation-slider.value;
     out property <float> gloss <=> gloss-slider.value;
+    out property <float> varnish <=> varnish-slider.value;
 
     callback pointer(kind: int, x: float, y: float);
     callback dip(index: int);
@@ -1172,6 +1175,16 @@ export component AppWindow inherits Window {
                                     ToolButton { label: "Wipe"; clicked => { root.wipe(); } }
                                     ToolButton { label: "Clean"; clicked => { root.clean(); } }
                                 }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: start;
+                                    Text { text: "Load"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                                    for part[index] in ["Whole", "Tip", "Side"]: ToolButton {
+                                        label: part;
+                                        active: index == root.dip-part;
+                                        clicked => { root.dip-part = index; }
+                                    }
+                                }
                                 Rectangle {
                                     height: ceil((root.swatches.length + (root.watercolour ? 3 : 2)) / root.swatch-columns) * root.swatch-cell - 8px;
                                     for swatch[index] in root.swatches: Swatch {
@@ -1264,6 +1277,7 @@ export component AppWindow inherits Window {
                                 azimuth-slider := ParamSlider { label: "Direction"; minimum: 0; maximum: 360; value: 225; value-text: round(self.value) + "°"; }
                                 elevation-slider := ParamSlider { label: "Elevation"; minimum: 10; maximum: 80; value: 40; value-text: round(self.value) + "°"; }
                                 gloss-slider := ParamSlider { label: "Gloss"; minimum: 0; maximum: 1; value: 0.5; value-text: round(self.value * 100) + "%"; }
+                                varnish-slider := ParamSlider { label: "Varnish"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; }
                             }
 
                             Card {

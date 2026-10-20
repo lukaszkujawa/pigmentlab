@@ -31,7 +31,8 @@ struct DepositUniform {
     blade_flattening: f32,
     step: u32,
     descent: f32,
-    padding: [u32; 2],
+    clump_count: u32,
+    padding: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -87,7 +88,8 @@ impl Deposit {
             blade_flattening: 0.0,
             step: 0,
             descent: 0.0,
-            padding: [0; 2],
+            clump_count: brush.clump_count(),
+            padding: 0,
         };
         gpu.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&base));
         let columns = window.columns();

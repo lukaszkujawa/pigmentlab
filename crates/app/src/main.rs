@@ -5,7 +5,7 @@ mod document;
 mod dock_icon;
 mod tablet;
 
-use pigmentlab_core::brush::{BrushAdjustments, PRESETS};
+use pigmentlab_core::brush::{BrushAdjustments, DipPart, PRESETS};
 use pigmentlab_core::engine::{DRIP_TOOL, PaintSettings, SPLATTER_TOOL, TUBE_TOOL, tool_names};
 use pigmentlab_core::paint::NOZZLE_RADIUS;
 use pigmentlab_core::scenario::Recorder;
@@ -33,10 +33,12 @@ const HOVER: i32 = 3;
 
 #[derive(Clone, Copy, Debug)]
 enum Dip {
-    Pigment(usize),
-    Colour([u8; 3]),
+    Pigment(usize, DipPart),
+    Colour([u8; 3], DipPart),
     Water,
 }
+
+const DIP_PARTS: [DipPart; 3] = [DipPart::Whole, DipPart::Tip, DipPart::Side];
 
 #[derive(Clone, Copy, Debug)]
 struct CanvasSpec {
@@ -153,11 +155,13 @@ fn main() -> Result<(), slint::PlatformError> {
     let app_weak = app.as_weak();
     let colours = custom.clone();
     app.on_dip(move |index| {
-        app_weak.unwrap().set_active_swatch(index);
+        let app = app_weak.unwrap();
+        app.set_active_swatch(index);
+        let part = DIP_PARTS[app.get_dip_part().clamp(0, DIP_PARTS.len() as i32 - 1) as usize];
         let index = index.max(0) as usize;
         shared.borrow_mut().dip = Some(match index.checked_sub(PALETTE.len()) {
-            Some(custom_index) => Dip::Colour(colours.borrow()[custom_index]),
-            None => Dip::Pigment(index),
+            Some(custom_index) => Dip::Colour(colours.borrow()[custom_index], part),
+            None => Dip::Pigment(index, part),
         });
     });
     let shared = requests.clone();
@@ -184,7 +188,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let rgb = [colour.red(), colour.green(), colour.blue()];
         let app = app_weak.unwrap();
         select_custom_colour(&app, &mut colours.borrow_mut(), rgb);
-        shared.borrow_mut().dip = Some(Dip::Colour(rgb));
+        shared.borrow_mut().dip = Some(Dip::Colour(rgb, DipPart::Whole));
     });
     let app_weak = app.as_weak();
     app.on_picker_changed(move |colour| {
@@ -371,6 +375,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         azimuth_degrees: app.get_light_azimuth(),
                         elevation_degrees: app.get_light_elevation(),
                         gloss: app.get_gloss(),
+                        varnish: app.get_varnish(),
                         ..Lighting::default()
                     });
                     if pen.present {
@@ -459,8 +464,8 @@ fn record(active: &mut Recorder, now: f64, requests: &Requests) {
         active.param(now, "dilution", paint.dilution);
     }
     match requests.dip {
-        Some(Dip::Pigment(index)) => active.dip(now, PALETTE[index].name),
-        Some(Dip::Colour(colour)) => active.dip_colour(now, colour),
+        Some(Dip::Pigment(index, part)) => active.dip(now, PALETTE[index].name, part),
+        Some(Dip::Colour(colour, part)) => active.dip_colour(now, colour, part),
         Some(Dip::Water) => active.dip_water(now),
         None => {}
     }
@@ -518,7 +523,7 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
         let colour = engine.colour_at(x, y);
         select_custom_colour(app, custom, colour);
         app.invoke_show_in_picker(slint::Color::from_rgb_u8(colour[0], colour[1], colour[2]));
-        requests.dip = Some(Dip::Colour(colour));
+        requests.dip = Some(Dip::Colour(colour, DipPart::Whole));
     }
     if let Some(surface) = requests.surface.take() {
         engine.set_surface(surface);
@@ -527,8 +532,8 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
         engine.set_paint(paint);
     }
     match requests.dip.take() {
-        Some(Dip::Pigment(index)) => engine.dip(PALETTE[index]),
-        Some(Dip::Colour(colour)) => engine.dip(Coefficients::from_srgb(colour)),
+        Some(Dip::Pigment(index, part)) => engine.dip_into(PALETTE[index], part),
+        Some(Dip::Colour(colour, part)) => engine.dip_into(Coefficients::from_srgb(colour), part),
         Some(Dip::Water) => engine.dip_water(),
         None => {}
     }
@@ -589,8 +594,8 @@ fn active_dip(app: &AppWindow, custom: &[[u8; 3]]) -> Dip {
     match app.get_active_swatch() {
         index if index < 0 => Dip::Water,
         index => match (index as usize).checked_sub(PALETTE.len()) {
-            Some(custom_index) => Dip::Colour(custom[custom_index]),
-            None => Dip::Pigment(index as usize),
+            Some(custom_index) => Dip::Colour(custom[custom_index], DipPart::Whole),
+            None => Dip::Pigment(index as usize, DipPart::Whole),
         },
     }
 }

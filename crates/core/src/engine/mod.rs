@@ -131,7 +131,7 @@ impl Engine {
         let window = ActiveWindow::new(&gpu, &canvas, SMALLEST_WINDOW);
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &canvas, &stroke_base);
-        let height_map = HeightMap::new(&gpu, &canvas, &window);
+        let height_map = HeightMap::new(&gpu, &canvas, &window, &stroke_base);
         let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base);
         let tube = Tube::new(&gpu, &window, &canvas, &height_map.heights, seed, SIMULATION_DT);
         let marks = Marks::new(&gpu, &window, &canvas);

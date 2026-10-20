@@ -8,6 +8,7 @@ pub use fractal::box_counting_dimension;
 pub use recorder::Recorder;
 pub use runner::{CheckpointResult, Report, run};
 
+use crate::brush::DipPart;
 use crate::canvas::CanvasSize;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -78,8 +79,16 @@ pub enum Action {
         #[serde(default)]
         rotation: f32,
     },
-    Dip { pigment: String },
-    DipColour { colour: [u8; 3] },
+    Dip {
+        pigment: String,
+        #[serde(default, skip_serializing_if = "DipPart::is_whole")]
+        part: DipPart,
+    },
+    DipColour {
+        colour: [u8; 3],
+        #[serde(default, skip_serializing_if = "DipPart::is_whole")]
+        part: DipPart,
+    },
     DipWater,
     Clean,
     Wipe,

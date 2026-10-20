@@ -1,4 +1,5 @@
 use super::{Action, Scenario, Step, Tolerance};
+use crate::brush::DipPart;
 use crate::canvas::CanvasSize;
 use crate::input::{PointerPhase, PointerSample};
 use std::path::Path;
@@ -25,12 +26,12 @@ impl Recorder {
         self.push(sample.time, action);
     }
 
-    pub fn dip(&mut self, time: f64, pigment: &str) {
-        self.push(time, Action::Dip { pigment: pigment.to_string() });
+    pub fn dip(&mut self, time: f64, pigment: &str, part: DipPart) {
+        self.push(time, Action::Dip { pigment: pigment.to_string(), part });
     }
 
-    pub fn dip_colour(&mut self, time: f64, colour: [u8; 3]) {
-        self.push(time, Action::DipColour { colour });
+    pub fn dip_colour(&mut self, time: f64, colour: [u8; 3], part: DipPart) {
+        self.push(time, Action::DipColour { colour, part });
     }
 
     pub fn dip_water(&mut self, time: f64) {
@@ -132,7 +133,7 @@ mod tests {
     #[test]
     fn recorded_scenario_round_trips() {
         let mut recorder = Recorder::start(CanvasSize { width: 64, height: 64 }, 1, 10.0, 1);
-        recorder.dip(10.0, "cadmium_red");
+        recorder.dip(10.0, "cadmium_red", DipPart::Whole);
         recorder.pointer(PointerSample { phase: PointerPhase::Down, x: 1.0, y: 2.0, pressure: 0.5, tilt: [0.0; 2], rotation: 0.0, time: 10.5 });
         recorder.pointer(PointerSample { phase: PointerPhase::Up, x: 1.0, y: 2.0, pressure: 0.5, tilt: [0.0; 2], rotation: 0.0, time: 11.0 });
         let scenario = recorder.finish(11.0);

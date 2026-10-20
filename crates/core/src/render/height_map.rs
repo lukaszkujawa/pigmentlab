@@ -14,19 +14,20 @@ pub struct HeightMap {
     pub surface: wgpu::Buffer,
     pub smooth_surface: wgpu::Buffer,
     pub smooth_paint: wgpu::Buffer,
-    pub tuft_base: wgpu::Buffer,
     build_region: wgpu::Buffer,
     blur_region: wgpu::Buffer,
     base_region: wgpu::Buffer,
+    worked_region: wgpu::Buffer,
     pass: ComputePass,
     smooth: ComputePass,
     base: ComputePass,
+    wear_worked: ComputePass,
     width: u32,
     height: u32,
 }
 
 impl HeightMap {
-    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow) -> Self {
+    pub fn new(gpu: &Gpu, canvas: &Canvas, window: &ActiveWindow, stroke_base: &wgpu::Buffer) -> Self {
         let heights = gpu.storage_buffer("height map", canvas.size.pixel_count() * 4);
         let surface = gpu.storage_buffer("surface map", canvas.size.pixel_count() * 4);
         let smooth_surface = gpu.storage_buffer("smooth surface map", canvas.size.pixel_count() * 4);
@@ -35,34 +36,43 @@ impl HeightMap {
         let build_region = gpu.uniform_buffer("height map build region", std::mem::size_of::<RegionUniform>() as u64);
         let blur_region = gpu.uniform_buffer("height map blur region", std::mem::size_of::<RegionUniform>() as u64);
         let base_region = gpu.uniform_buffer("height map base region", std::mem::size_of::<RegionUniform>() as u64);
+        let worked_region = gpu.uniform_buffer("height map worked region", std::mem::size_of::<RegionUniform>() as u64);
         let shader = gpu.shader(
             "height map",
             &[include_str!("../../shaders/window.wgsl"), include_str!("../../shaders/height_map.wgsl")],
         );
-        let maps = [&heights, &surface, &smooth_surface, &smooth_paint, &tuft_base];
+        let maps = [&heights, &surface, &smooth_surface, &smooth_paint, &tuft_base, stroke_base];
         let pass = ComputePass::new(gpu, "height map", &shader, "build", &bindings(window, canvas, maps, &build_region));
         let smooth = ComputePass::new(gpu, "smooth height map", &shader, "blur", &bindings(window, canvas, maps, &blur_region));
         let base = ComputePass::new(gpu, "tuft base map", &shader, "tuft_floor", &bindings(window, canvas, maps, &base_region));
+        let wear_worked = ComputePass::new(gpu, "worked stroke floor", &shader, "wear_worked_floor", &bindings(window, canvas, maps, &worked_region));
         Self {
             heights,
             surface,
             smooth_surface,
             smooth_paint,
-            tuft_base,
             build_region,
             blur_region,
             base_region,
+            worked_region,
             pass,
             smooth,
             base,
+            wear_worked,
             width: canvas.size.width,
             height: canvas.size.height,
         }
     }
 
-    pub fn encode_tuft_base(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, region: WetBounds) {
+    pub fn encode_stroke_floor(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, region: WetBounds) {
         if let Some(groups) = self.select(gpu, &self.base_region, region) {
             self.base.dispatch(encoder, groups);
+        }
+    }
+
+    pub fn encode_worked_stroke_floor(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, region: WetBounds) {
+        if let Some(groups) = self.select(gpu, &self.worked_region, region) {
+            self.wear_worked.dispatch(encoder, groups);
         }
     }
 
@@ -88,7 +98,7 @@ impl HeightMap {
     }
 }
 
-fn bindings<'a>(window: &'a ActiveWindow, canvas: &'a Canvas, maps: [&'a wgpu::Buffer; 5], region: &'a wgpu::Buffer) -> [(u32, Binding<'a>); 10] {
+fn bindings<'a>(window: &'a ActiveWindow, canvas: &'a Canvas, maps: [&'a wgpu::Buffer; 6], region: &'a wgpu::Buffer) -> [(u32, Binding<'a>); 11] {
     [
         (0, Binding::Uniform(&window.uniform)),
         (1, Binding::ReadOnly(&canvas.paint)),
@@ -100,5 +110,6 @@ fn bindings<'a>(window: &'a ActiveWindow, canvas: &'a Canvas, maps: [&'a wgpu::B
         (7, Binding::ReadWrite(maps[3])),
         (8, Binding::Uniform(region)),
         (9, Binding::ReadWrite(maps[4])),
+        (10, Binding::ReadWrite(maps[5])),
     ]
 }

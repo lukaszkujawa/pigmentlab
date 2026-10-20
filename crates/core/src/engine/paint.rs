@@ -1,5 +1,6 @@
 use super::{Engine, Tool};
 use crate::canvas::{PAINT_CHANNELS, PAINT_SCALE};
+use crate::brush::DipPart;
 use crate::gpu::read_buffer;
 use crate::paint::{BrushContents, Gauge, OVERLOADED_FILL};
 use crate::pigment::{Coefficients, Paint};
@@ -17,6 +18,10 @@ impl Engine {
     }
 
     pub fn dip(&mut self, paint: impl Into<Paint>) {
+        self.dip_into(paint, DipPart::Whole);
+    }
+
+    pub fn dip_into(&mut self, paint: impl Into<Paint>, part: DipPart) {
         let paint = paint.into();
         let load = self.paint.load.clamp(0.0, if self.watercolour.is_some() { 1.0 } else { OVERLOADED_FILL });
         let medium = paint.behaviour.carried_medium(self.paint.medium);
@@ -40,11 +45,14 @@ impl Engine {
         if self.tool != Tool::Brush {
             return;
         }
-        self.brush.dip(&self.gpu, thinned, load, medium);
+        self.brush.dip(&self.gpu, thinned, load, medium, part);
         self.drained = 0.0;
         self.lifted_load = None;
         self.gauge().invalidate();
-        self.brush_contents = BrushContents { fill: load, paint: thinned, concentration: 1.0 };
+        self.brush_contents = match part {
+            DipPart::Whole => BrushContents { fill: load, paint: thinned, concentration: 1.0 },
+            _ => BrushContents { fill: self.brush_load() / self.brush.paint_capacity(), paint: self.brush_pigment(), concentration: 1.0 },
+        };
     }
 
     pub fn dip_water(&mut self) {

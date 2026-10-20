@@ -7,6 +7,7 @@ const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
 const LEVELLING_SETTLE_SECONDS_PER_MEDIUM: f64 = 10.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
 const SUBSTEPS_PER_LEVELLING: u64 = 8;
+const SUBSTEPS_PER_WORKED_FLOOR: u64 = 24;
 const WET_MARGIN: i32 = 48;
 
 impl Engine {
@@ -49,8 +50,7 @@ impl Engine {
                     self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
                     self.snapshot(&mut encoder);
                     self.refresh_heights(&mut encoder);
-                    self.height_map.encode_tuft_base(&self.gpu, &mut encoder, self.whole_canvas());
-                    encoder.copy_buffer_to_buffer(&self.height_map.tuft_base, 0, &self.stroke_base, 0, self.stroke_base.size());
+                    self.height_map.encode_stroke_floor(&self.gpu, &mut encoder, self.whole_canvas());
                     if let Some(water_brush) = &self.water_brush {
                         water_brush.start_stroke(&mut encoder, &self.brush);
                     }
@@ -95,6 +95,9 @@ impl Engine {
                     None => self.wet.wet(touched, self.settles_at(self.carried_medium())),
                 }
                 self.mark_stale(WetBounds::around(self.tool_tip().truncate().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
+            }
+            if self.pressed && self.tool == Tool::Brush && self.substeps.is_multiple_of(SUBSTEPS_PER_WORKED_FLOOR) {
+                self.wear_worked_floor(&mut encoder, footprint_radius);
             }
             match self.tool {
                 Tool::Brush => {
@@ -180,6 +183,12 @@ impl Engine {
         }
         let descent = (self.position_at_last_deposit.z - self.pose.position.z).max(0.0);
         Some(StrokeState { travel, descent, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed, dt: SIMULATION_DT * substeps as f32 })
+    }
+
+    fn wear_worked_floor(&mut self, encoder: &mut wgpu::CommandEncoder, footprint_radius: f32) {
+        self.refresh_heights(encoder);
+        let under_brush = WetBounds::around(self.brush.tuft_centre().round().as_ivec2(), footprint_radius.ceil() as i32);
+        self.height_map.encode_worked_stroke_floor(&self.gpu, encoder, under_brush);
     }
 
     fn settles_at(&self, medium: f32) -> f64 {

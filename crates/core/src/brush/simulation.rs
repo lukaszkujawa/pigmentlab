@@ -1,7 +1,8 @@
+use super::dip::DipPart;
 use super::frame::BrushPose;
 use super::geometry::{VERTICES_PER_BRISTLE, clump_count, load_shares, rest_positions};
 use super::preset::BrushPreset;
-use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry};
+use crate::gpu::{Gpu, buffer_binding, buffer_layout_entry, read_buffer};
 use crate::canvas::Canvas;
 use crate::paint::ActiveWindow;
 use crate::pigment::{Coefficients, Paint};
@@ -168,14 +169,33 @@ impl Brush {
         gpu.queue.write_buffer(&self.sample_load, 0, &vec![0u8; samples * 4]);
     }
 
-    pub fn dip(&self, gpu: &Gpu, paint: Coefficients, load_fraction: f32, medium: f32) {
+    pub fn dip(&self, gpu: &Gpu, paint: Coefficients, load_fraction: f32, medium: f32, part: DipPart) {
         let samples = (self.preset.bristle_count * SAMPLES_PER_BRISTLE) as usize;
-        let loads: Vec<f32> = self.dipped_loads().map(|load| load * load_fraction).collect();
-        let absorption = vec![paint.absorption.extend(medium); samples];
-        let scattering = vec![paint.scattering.extend(0.0); samples];
+        let fresh_absorption = paint.absorption.extend(medium);
+        let fresh_scattering = paint.scattering.extend(0.0);
+        let (mut loads, mut absorption, mut scattering) = if part.is_whole() {
+            (vec![0.0; samples], vec![fresh_absorption; samples], vec![fresh_scattering; samples])
+        } else {
+            (read_buffer::<f32>(gpu, &self.sample_load), read_buffer::<Vec4>(gpu, &self.sample_absorption), read_buffer::<Vec4>(gpu, &self.sample_scattering))
+        };
+        for (sample, (dipped, (across, along))) in self.dipped_loads().zip(self.sample_places()).enumerate() {
+            let share = part.share(across, along);
+            let kept = loads[sample] * (1.0 - share);
+            let added = dipped * load_fraction * share;
+            let total = kept + added;
+            if total > 0.0 {
+                absorption[sample] = (absorption[sample] * kept + fresh_absorption * added) / total;
+                scattering[sample] = (scattering[sample] * kept + fresh_scattering * added) / total;
+            }
+            loads[sample] = total;
+        }
         gpu.queue.write_buffer(&self.sample_load, 0, bytemuck::cast_slice(&loads));
         gpu.queue.write_buffer(&self.sample_absorption, 0, bytemuck::cast_slice(&absorption));
         gpu.queue.write_buffer(&self.sample_scattering, 0, bytemuck::cast_slice(&scattering));
+    }
+
+    pub fn clump_count(&self) -> u32 {
+        clump_count(&self.preset)
     }
 
     pub fn paint_capacity(&self) -> f32 {
@@ -184,12 +204,20 @@ impl Brush {
 
     fn dipped_loads(&self) -> impl Iterator<Item = f32> + '_ {
         let held_blade = self.preset.is_knife();
-        (0..self.preset.bristle_count * SAMPLES_PER_BRISTLE).map(move |sample| {
-            let bristle = (sample / SAMPLES_PER_BRISTLE) as usize;
+        self.sample_places().enumerate().map(move |(sample, (_, along))| {
+            let bristle = sample / SAMPLES_PER_BRISTLE as usize;
             let offset = self.rest[bristle * VERTICES_PER_BRISTLE as usize + 1].x;
-            let along = (sample % SAMPLES_PER_BRISTLE) as f32 / (SAMPLES_PER_BRISTLE - 1) as f32;
             let loaded = !held_blade || super::knife::carries_paint(offset, along, self.preset.length, self.preset.width * 0.5, self.preset.tip_point);
             if loaded { self.preset.sample_capacity * self.load_shares[bristle] } else { 0.0 }
+        })
+    }
+
+    fn sample_places(&self) -> impl Iterator<Item = (f32, f32)> + '_ {
+        (0..self.preset.bristle_count * SAMPLES_PER_BRISTLE).map(move |sample| {
+            let bristle = (sample / SAMPLES_PER_BRISTLE) as usize;
+            let across = self.rest[bristle * VERTICES_PER_BRISTLE as usize + 1].x / (self.preset.width * 0.5);
+            let along = (sample % SAMPLES_PER_BRISTLE) as f32 / (SAMPLES_PER_BRISTLE - 1) as f32;
+            (across, along)
         })
     }
 

@@ -75,11 +75,11 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
                     comparison,
                 });
             }
-            Action::Dip { pigment } => {
+            Action::Dip { pigment, part } => {
                 let pigment = crate::pigment::by_name(pigment).unwrap_or_else(|| panic!("unknown pigment {pigment}"));
-                engine.dip(pigment);
+                engine.dip_into(pigment, *part);
             }
-            Action::DipColour { colour } => engine.dip(crate::pigment::Coefficients::from_srgb(*colour)),
+            Action::DipColour { colour, part } => engine.dip_into(crate::pigment::Coefficients::from_srgb(*colour), *part),
             Action::DipWater => engine.dip_water(),
             Action::Clean => engine.clean(),
             Action::Wipe => engine.wipe(),

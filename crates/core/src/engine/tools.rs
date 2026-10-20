@@ -1,7 +1,7 @@
 use super::{DEPOSIT_DT, DRIP_TOOL, Engine, FOOTPRINT_SLACK, PaintSettings, SIMULATION_DT, SPLATTER_TOOL, TUBE_TOOL, Tool};
 use crate::brush::{Brush, BrushAdjustments, BrushPreset, preset_by_name};
 use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Marks, Tube};
-use crate::render::{BrushLines, Composite, HeightMap};
+use crate::render::{BrushLines, Composite, HeightMap, Lighting};
 use crate::watercolour::WaterBrush;
 
 const FIT_SHRINK: f32 = 0.95;
@@ -56,6 +56,7 @@ impl Engine {
             "thickness" => self.set_brush_adjustments(BrushAdjustments { thickness: value, ..self.adjustments }),
             "point" => self.set_brush_adjustments(BrushAdjustments { point: value, ..self.adjustments }),
             "angle" => self.set_brush_angle(value),
+            "varnish" => self.set_lighting(Lighting { varnish: value.clamp(0.0, 1.0), ..self.lighting }),
             "load" => self.set_paint(PaintSettings { load: value, ..self.paint }),
             "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),
             "dilution" => self.set_paint(PaintSettings { dilution: value, ..self.paint }),
@@ -101,7 +102,7 @@ impl Engine {
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.gpu.queue.submit(Some(encoder.finish()));
         self.window = ActiveWindow::new(&self.gpu, &self.canvas, size);
-        self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window);
+        self.height_map = HeightMap::new(&self.gpu, &self.canvas, &self.window, &self.stroke_base);
         self.levelling = Levelling::new(&self.gpu, &self.canvas, &self.window, &self.height_map);
         self.composite = Composite::new(&self.gpu, &self.canvas, &self.window, &self.height_map, &self.frames);
         self.composite.set_lighting(&self.gpu, self.lighting);

@@ -8,8 +8,10 @@
 @group(0) @binding(7) var<storage, read_write> smooth_paint: array<f32>;
 @group(0) @binding(8) var<uniform> region: Region;
 @group(0) @binding(9) var<storage, read_write> tuft_base: array<f32>;
+@group(0) @binding(10) var<storage, read_write> stroke_base: array<f32>;
 
 const TUFT_FLOOR_RADIUS: i32 = 3;
+const WORKED_FLOOR_KEEP: f32 = 0.8;
 
 struct Region {
     origin: vec2<i32>,
@@ -65,16 +67,30 @@ fn blur(@builtin(global_invocation_id) id: vec3<u32>) {
     smooth_paint[index] = paint_total / 16.0;
 }
 
-@compute @workgroup_size(16, 16)
-fn tuft_floor(@builtin(global_invocation_id) id: vec3<u32>) {
-    let texel = region_texel(id.xy);
-    if (!on_canvas(texel)) { return; }
+fn tuft_mean(texel: vec2<i32>) -> f32 {
     var total = 0.0;
     for (var dy = -TUFT_FLOOR_RADIUS; dy <= TUFT_FLOOR_RADIUS; dy++) {
         for (var dx = -TUFT_FLOOR_RADIUS; dx <= TUFT_FLOOR_RADIUS; dx++) {
             total += heights[clamped_index(texel + vec2<i32>(dx, dy))];
         }
     }
-    let taps = f32((2 * TUFT_FLOOR_RADIUS + 1) * (2 * TUFT_FLOOR_RADIUS + 1));
-    tuft_base[u32(texel.y) * window.canvas_width + u32(texel.x)] = total / taps;
+    return total / f32((2 * TUFT_FLOOR_RADIUS + 1) * (2 * TUFT_FLOOR_RADIUS + 1));
+}
+
+@compute @workgroup_size(16, 16)
+fn tuft_floor(@builtin(global_invocation_id) id: vec3<u32>) {
+    let texel = region_texel(id.xy);
+    if (!on_canvas(texel)) { return; }
+    let index = u32(texel.y) * window.canvas_width + u32(texel.x);
+    tuft_base[index] = tuft_mean(texel);
+    stroke_base[index] = tuft_base[index];
+}
+
+@compute @workgroup_size(16, 16)
+fn wear_worked_floor(@builtin(global_invocation_id) id: vec3<u32>) {
+    let texel = region_texel(id.xy);
+    if (!on_canvas(texel)) { return; }
+    let index = u32(texel.y) * window.canvas_width + u32(texel.x);
+    let worked = tuft_mean(texel);
+    if (worked < tuft_base[index]) { stroke_base[index] = min(stroke_base[index], worked) * WORKED_FLOOR_KEEP; }
 }

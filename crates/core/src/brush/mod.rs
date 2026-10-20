@@ -1,3 +1,4 @@
+mod dip;
 mod frame;
 mod geometry;
 mod knife;
@@ -6,6 +7,7 @@ mod shaper;
 mod simulation;
 mod touch;
 
+pub use dip::DipPart;
 pub use frame::BrushPose;
 pub use knife::{carries_paint, working_point};
 pub use geometry::{VERTICES_PER_BRISTLE, blade_grid, clump_count};

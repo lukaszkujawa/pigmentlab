@@ -1,5 +1,5 @@
 use glam::{Vec2, Vec3, Vec4};
-use pigmentlab_core::brush::{Brush, BrushPose, BrushPreset, MAX_COMPRESSION, VERTICES_PER_BRISTLE, clump_count};
+use pigmentlab_core::brush::{Brush, BrushPose, BrushPreset, DipPart, MAX_COMPRESSION, SAMPLES_PER_BRISTLE, VERTICES_PER_BRISTLE, clump_count};
 use pigmentlab_core::pigment::by_name;
 use pigmentlab_core::canvas::Canvas;
 use pigmentlab_core::gpu::{Gpu, read_buffer};
@@ -20,7 +20,7 @@ fn run_loaded(preset: BrushPreset, load: f32, poses: impl Iterator<Item = BrushP
     let window = ActiveWindow::new(&gpu, &canvas, SMALLEST_WINDOW);
     let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
     let brush = Brush::new(&gpu, preset, 7, &window, &canvas, &flat_canvas);
-    brush.dip(&gpu, by_name("cadmium_red").unwrap().into(), load, 0.0);
+    brush.dip(&gpu, by_name("cadmium_red").unwrap().into(), load, 0.0, DipPart::Whole);
     let step = |pose: &BrushPose| {
         let mut encoder = gpu.device.create_command_encoder(&Default::default());
         brush.encode_step(&gpu, &mut encoder, pose, 1.0, 0.0, CANVAS);
@@ -283,4 +283,30 @@ fn wet_hairs_gather_into_clumps() {
     let dry = clump_spread(0.0);
     let wet = clump_spread(1.0);
     assert!(wet < dry * 0.7, "a loaded brush should pull its hairs into clumps: tips of a clump are {wet:.1} px apart wet vs {dry:.1} px dry");
+}
+
+#[test]
+fn dipping_the_tip_colours_the_tip_and_keeps_the_rest_of_the_load() {
+    let gpu = Gpu::headless();
+    let canvas = Canvas::new(&gpu, CanvasSize { width: 512, height: 512 }, 1);
+    let window = ActiveWindow::new(&gpu, &canvas, SMALLEST_WINDOW);
+    let flat_canvas = gpu.storage_buffer("flat stroke base", 512 * 512 * 4);
+    let brush = Brush::new(&gpu, BrushPreset::flat(400, cm(1.2), cm(0.3), cm(2.0)), 7, &window, &canvas, &flat_canvas);
+    let yellow = by_name("cadmium_yellow").unwrap().coefficients;
+    let red = by_name("cadmium_red").unwrap().coefficients;
+    brush.dip(&gpu, yellow, 1.0, 0.0, DipPart::Whole);
+    let full = read_buffer::<f32>(&gpu, &brush.sample_load);
+    brush.dip(&gpu, red, 1.0, 0.0, DipPart::Tip);
+    let loads = read_buffer::<f32>(&gpu, &brush.sample_load);
+    let absorption = read_buffer::<Vec4>(&gpu, &brush.sample_absorption);
+    let per_bristle = SAMPLES_PER_BRISTLE as usize;
+    for (sample, colour) in absorption.iter().enumerate() {
+        let expected = match sample % per_bristle {
+            0 => yellow.absorption,
+            along if along == per_bristle - 1 => red.absorption,
+            _ => continue,
+        };
+        assert!(colour.truncate().distance(expected) < 1e-4, "sample {sample} holds {colour}");
+        assert!((loads[sample] - full[sample]).abs() < 1e-3 * full[sample].max(1.0));
+    }
 }
