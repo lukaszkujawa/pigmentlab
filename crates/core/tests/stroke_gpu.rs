@@ -1,4 +1,5 @@
 use pigmentlab_core::brush::{BrushAdjustments, SAMPLES_PER_BRISTLE};
+use pigmentlab_core::paint::OVERLOADED_FILL;
 use pigmentlab_core::pigment::by_name;
 use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
@@ -152,28 +153,46 @@ fn releasing_a_still_brush_leaves_the_paint_alone() {
     assert!(changed < total * 0.005, "lifting a still brush reshaped {:.1}% of the paint", changed / total * 100.0);
 }
 
-#[test]
-fn a_loaded_brush_runs_out_over_a_few_long_strokes() {
-    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: 512 }, 1);
+fn strokes_until_dry(load: f32, strokes: usize) -> (Vec<f32>, Vec<f32>, f32) {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH as u32, height: (strokes * 80) as u32 }, 1);
     engine.set_levelling_enabled(false);
     engine.select_brush("Round medium");
+    engine.set_param("load", load);
     engine.dip(by_name("cadmium_red").unwrap());
     let full = engine.brush_load();
-    let mut peaks = Vec::new();
-    for row in 0..6 {
-        let y = 40.0 + row as f32 * 80.0;
+    let (mut peaks, mut coats) = (Vec::new(), Vec::new());
+    for row in 0..strokes {
+        let y = 40 + row * 80;
         let start = row as f64 * 1.4;
-        engine.pointer(sample(PointerPhase::Down, 80.0, y, 0.6, start));
-        engine.pointer(sample(PointerPhase::Move, 940.0, y, 0.6, start + 1.2));
-        engine.pointer(sample(PointerPhase::Up, 940.0, y, 0.0, start + 1.2));
+        engine.pointer(sample(PointerPhase::Down, 80.0, y as f32, 0.6, start));
+        engine.pointer(sample(PointerPhase::Move, 940.0, y as f32, 0.6, start + 1.2));
+        engine.pointer(sample(PointerPhase::Up, 940.0, y as f32, 0.0, start + 1.2));
         engine.advance_exact(start + 1.4);
         let heights = engine.paint_heights();
-        peaks.push((y as usize - 20..y as usize + 20).map(|row| heights[row * WIDTH + 500]).fold(0.0f32, f32::max));
+        peaks.push((y - 20..y + 20).map(|row| heights[row * WIDTH + 500]).fold(0.0f32, f32::max));
+        let mut painted: Vec<f32> = (y - 40..y + 40).flat_map(|row| (300..700).map(move |x| row * WIDTH + x)).map(|i| heights[i]).filter(|h| *h > 0.05).collect();
+        painted.sort_by(f32::total_cmp);
+        coats.push(painted.get(painted.len() / 2).copied().unwrap_or(0.0));
     }
-    let remaining = engine.brush_load() / full;
+    (peaks, coats, engine.brush_load() / full)
+}
+
+#[test]
+fn a_loaded_brush_runs_out_over_a_few_long_strokes() {
+    let (peaks, _, remaining) = strokes_until_dry(1.0, 10);
     assert!(peaks[0] > 2.0, "the first stroke should lay down thick paint, peak {:.2} px", peaks[0]);
-    assert!(peaks[5] < peaks[0] * 0.25, "the brush should be nearly empty after six strokes: peaks {peaks:?}");
+    assert!(peaks[9] < peaks[0] * 0.25, "the brush should be nearly empty after ten strokes: peaks {peaks:?}");
     assert!(remaining < 0.25, "the brush still holds {:.0}% of its paint", remaining * 100.0);
+}
+
+#[test]
+fn an_overloaded_brush_lays_impasto_that_thins_to_the_fitting_coat() {
+    let (_, fitting, _) = strokes_until_dry(1.0, 2);
+    let (_, overloaded, _) = strokes_until_dry(OVERLOADED_FILL, 6);
+    assert!(fitting[0] < 2.5, "a fitting load should lay a thin coat, got {:.2} px", fitting[0]);
+    assert!(overloaded[0] > fitting[0] * 2.0, "an overloaded brush should lay impasto: {:.2} px vs a fitting {:.2} px", overloaded[0], fitting[0]);
+    assert!(overloaded.windows(2).all(|pair| pair[1] < pair[0] * 1.1), "the overloaded coat should only thin stroke by stroke: {overloaded:?}");
+    assert!((overloaded[5] - fitting[0]).abs() < fitting[0] * 0.5, "once the excess is spent the coat should settle near the fitting one: {overloaded:?} vs {:.2}", fitting[0]);
 }
 
 fn settled_contents(engine: &mut Engine) -> pigmentlab_core::paint::BrushContents {

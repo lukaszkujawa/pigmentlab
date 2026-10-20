@@ -210,7 +210,7 @@ fn a_brush_dragged_out_of_a_blob_loads_up_and_fades_gradually() {
     for pair in running.windows(2) {
         assert!(pair[1] > pair[0] * 0.55, "the trail should fade gradually, not step from {:.1} to {:.1} px within 60 px", pair[0], pair[1]);
     }
-    assert!(centre[0] > 1.5 && *centre.last().unwrap() < centre[0] * 0.5, "the trail should start thick and end thin ({:.1} -> {:.1})", centre[0], centre.last().unwrap());
+    assert!(centre[0] > 1.0 && *centre.last().unwrap() < centre[0] * 0.6, "the trail should start thick and end thin ({:.1} -> {:.1})", centre[0], centre.last().unwrap());
 }
 
 #[test]

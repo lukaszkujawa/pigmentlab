@@ -13,6 +13,7 @@ const WEAVE_PEAK_REACH: i32 = 3;
 const VALLEY_SOFTNESS: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const RETAINED_FILL: f32 = 0.05;
+const FITTING_FILM: f32 = 0.25;
 const STRAND_FILL: f32 = 0.5;
 const STRAND_STEPS: u32 = 24u;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
@@ -24,6 +25,9 @@ const MAX_PUSH_REACH: f32 = 16.0;
 const MAX_PUSH_TARGETS: u32 = 6u;
 const FORWARD_SHARE: f32 = 0.8;
 const PUSH_RADIUS: f32 = 2.0;
+const HAIR_RADIUS: f32 = 1.0;
+const LONE_HAIR_DEPTH: f32 = 2.0;
+const MIN_OPENNESS: f32 = 0.03;
 const LIMIT_ENCODING: i32 = 0x7fffffff;
 const MIN_DISPLACING_SPEED: f32 = 48.0;
 const DRAG_RADIUS: i32 = 2;
@@ -112,7 +116,9 @@ fn handle_motion() -> f32 {
 
 fn film_reach(load: f32) -> f32 {
     if (deposit.rigidity >= 0.5) { return deposit.film_height; }
-    return mix(FILM_MIN_RADIUS, deposit.film_height, clamp(load / deposit.sample_capacity, 0.0, 1.0));
+    let fill = load / deposit.sample_capacity;
+    let fitting = mix(FILM_MIN_RADIUS, FITTING_FILM * deposit.film_height, clamp(fill, 0.0, 1.0));
+    return fitting + (1.0 - FITTING_FILM) * deposit.film_height * sqrt(clamp(fill - 1.0, 0.0, 1.0));
 }
 
 fn exchange_portion(segment: Segment) -> f32 {
@@ -134,8 +140,10 @@ fn pickup_wanted(segment: Segment, point: vec3<f32>, pixel: vec2<i32>, state: ve
     let brush_motion = min(handle_motion() / (REFERENCE_SPEED * deposit.dt), 1.0);
     let buried = buried_depth(point, pixel, state);
     let share = (deposit.pickup_rate + buried * WIPE_RATE_PER_SECOND * deposit.dt) / f32(segment.steps) * min(segment.motion, brush_motion);
-    let wanted = min(share * exchange_portion(segment), *remaining);
-    *remaining -= wanted * (1.0 - returned_portion(segment));
+    let kept = 1.0 - returned_portion(segment);
+    let exchanged = share * exchange_portion(segment);
+    let wanted = select(min(exchanged, max(*remaining, 0.0) / kept), exchanged, kept <= 1e-6);
+    *remaining -= wanted * kept;
     return wanted;
 }
 
@@ -354,6 +362,29 @@ fn near_marks(local: vec2<u32>) -> bool {
     return false;
 }
 
+fn imprint_hair(point: vec3<f32>, film: f32, direction: vec2<f32>, drag: f32) {
+    if (BLADE) {
+        let pixel = vec2<i32>(floor(point.xy));
+        let state = column_state[column_index(vec2<u32>(pixel - window.origin))];
+        mark_displacement(vec2<u32>(pixel - window.origin), state.x + state.w, point.z, film, direction, drag);
+        return;
+    }
+    let centre = vec2<i32>(floor(point.xy));
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let pixel = centre + vec2<i32>(dx, dy);
+            if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
+            let off_axis = distance(vec2<f32>(pixel) + 0.5, point.xy);
+            if (off_axis >= HAIR_RADIUS) { continue; }
+            let underside = point.z + HAIR_RADIUS - sqrt(HAIR_RADIUS * HAIR_RADIUS - off_axis * off_axis);
+            let local = vec2<u32>(pixel - window.origin);
+            let state = column_state[column_index(local)];
+            let height = state.x + state.w;
+            if (height > underside) { mark_displacement(local, height, underside, film, direction, drag * (1.0 - off_axis / HAIR_RADIUS)); }
+        }
+    }
+}
+
 fn mark_displacement(local: vec2<u32>, height: f32, hair_level: f32, film: f32, direction: vec2<f32>, drag: f32) {
     let weight = max(height - hair_level, 0.0);
     let slot = column_index(local) * DISPLACEMENT_SLOTS;
@@ -445,7 +476,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         let height = state.x + state.w;
         if (point.z > height + film) { continue; }
         if (brush_moving && travelled > 1e-3 && height > point.z && !(BLADE && deposit.lifting != 0u)) {
-            mark_displacement(local, height, point.z, film, direction, DRAG_RATE_PER_SECOND * deposit.dt * segment.motion);
+            imprint_hair(point, film, direction, DRAG_RATE_PER_SECOND * deposit.dt * segment.motion);
         }
         if (height > point.z + select(film, max(film, SQUEEZED_LAYER), STEEL)) { continue; }
         let lift_carry = select(1.0, select(brush_motion, 0.0, BLADE), deposit.lifting != 0u);
@@ -561,6 +592,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     var level_code = 0;
     var drag_code = 0;
     var push = vec2<f32>(0.0);
+    var marked = 0.0;
     let groove_radius = select(GROOVE_RADIUS, BLADE_GROOVE_RADIUS, BLADE);
     for (var dy = -DRAG_RADIUS; dy <= DRAG_RADIUS; dy++) {
         for (var dx = -DRAG_RADIUS; dx <= DRAG_RADIUS; dx++) {
@@ -569,6 +601,7 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
             let slot = column_index(vec2<u32>(mark)) * DISPLACEMENT_SLOTS;
             let code = atomicLoad(&displacement[slot]);
             if (code == 0) { continue; }
+            marked += 1.0;
             limit_code = max(limit_code, code);
             if (abs(dx) <= groove_radius && abs(dy) <= groove_radius) { groove_code = max(groove_code, code); }
             level_code = max(level_code, atomicLoad(&displacement[slot + 1u]));
@@ -580,16 +613,20 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     let pixel = vec2<i32>(local) + window.origin;
     let paint_here = column_height(local);
     let height = paint_here + ground_at(pixel);
-    let hair_level = f32(LIMIT_ENCODING - level_code) / PAINT_SCALE;
+    let crowding = marked / f32((2 * DRAG_RADIUS + 1) * (2 * DRAG_RADIUS + 1));
+    let deepest = select(-1e9, base_surface(pixel) - LONE_HAIR_DEPTH / max(1.0 - crowding, MIN_OPENNESS), !BLADE);
+    let hair_level = max(f32(LIMIT_ENCODING - level_code) / PAINT_SCALE, deepest);
     let drag = f32(drag_code) / PAINT_SCALE * (1.0 - MEDIUM_THINNING * column_state[column_index(local)].z);
-    var excess = ridge_amount(height, f32(LIMIT_ENCODING - limit_code) / PAINT_SCALE, drag);
+    var excess = ridge_amount(height, max(f32(LIMIT_ENCODING - limit_code) / PAINT_SCALE, deepest), drag);
     if (groove_code != 0) {
-        excess = groove_amount(height, hair_level, f32(LIMIT_ENCODING - groove_code) / PAINT_SCALE, base_surface(pixel), drag);
+        excess = groove_amount(height, hair_level, max(f32(LIMIT_ENCODING - groove_code) / PAINT_SCALE, deepest), base_surface(pixel), drag);
     }
     excess = min(excess, paint_here);
     if (excess <= 1e-4 || length(push) <= 1e-3) { return; }
     let forward = normalize(push);
     let side = vec2<f32>(-forward.y, forward.x);
+    let sliding = select(deposit.brush_travel / max(handle_motion(), 1e-6), 1.0, BLADE);
+    let forward_share = FORWARD_SHARE * sliding;
     let nearest = min(max(deposit.brush_travel + PUSH_RADIUS * deposit.rigidity, PUSH_DISTANCE), MAX_PUSH_REACH);
     let reach = clamp(deposit.brush_travel * PUSH_PACE, nearest, MAX_PUSH_REACH);
     let hops = max(u32(ceil((reach - nearest) / PUSH_RADIUS)) + 1u, 1u);
@@ -597,12 +634,12 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     var shares: array<f32, MAX_PUSH_TARGETS>;
     offsets[0] = side * PUSH_DISTANCE;
     offsets[1] = -side * PUSH_DISTANCE;
-    shares[0] = 0.5 * (1.0 - FORWARD_SHARE);
+    shares[0] = 0.5 * (1.0 - forward_share);
     shares[1] = shares[0];
     for (var hop = 0u; hop < hops; hop++) {
         let along = mix(nearest, reach, f32(hop) / f32(max(hops - 1u, 1u)));
         offsets[2u + hop] = forward * along;
-        shares[2u + hop] = FORWARD_SHARE / f32(hops);
+        shares[2u + hop] = forward_share / f32(hops);
     }
     let targets = 2u + hops;
     let centre = vec2<f32>(pixel) + 0.5;

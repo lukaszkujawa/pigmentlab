@@ -1,5 +1,6 @@
 use super::{Engine, SIMULATION_DT, Tool};
 use crate::film::FILM_CHANGE_CAPACITY;
+use crate::paint::OVERLOADED_FILL;
 use crate::drip::{Drips, Fluid, Hanging, Rig, Setting, Spatter, Tap, Throw, Tuft, drain_flow, shed_share};
 use crate::input::PointerState;
 use crate::units::{METRES_PER_PIXEL, cm, metres};
@@ -86,7 +87,7 @@ impl Engine {
     }
 
     fn throw(&self, from: Vec2, aim: Vec2) -> Throw {
-        let volume = SPLATTER_VOLUME * self.paint.load.clamp(0.0, 1.0);
+        let volume = SPLATTER_VOLUME * self.paint.load.clamp(0.0, OVERLOADED_FILL);
         Throw { at: from * METRES_PER_PIXEL, toward: aim * METRES_PER_PIXEL, height: metres(self.splatter_height), speed: self.splatter_force, volume, paint: self.paint_on_tool.coefficients, medium: self.paint.medium.clamp(0.0, 1.0) }
     }
 

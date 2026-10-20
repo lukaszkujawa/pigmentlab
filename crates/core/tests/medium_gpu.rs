@@ -1,3 +1,4 @@
+use pigmentlab_core::paint::OVERLOADED_FILL;
 use pigmentlab_core::pigment::{Coefficients, by_name};
 use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
@@ -134,8 +135,8 @@ fn dilution_turns_a_covering_stroke_into_a_glaze_over_dry_paint() {
     let hiding: Vec<f32> = columns
         .iter()
         .map(|&x| {
-            let alone = average_colour(&image, x - 6..x + 6, 380..400);
-            let over_band = average_colour(&image, x - 6..x + 6, 172..188);
+            let alone = average_colour(&image, x - 30..x + 30, 380..400);
+            let over_band = average_colour(&image, x - 30..x + 30, 172..188);
             1.0 - distance(over_band, alone) / distance(band, alone).max(1.0)
         })
         .collect();
@@ -150,6 +151,7 @@ fn dilution_turns_a_covering_stroke_into_a_glaze_over_dry_paint() {
 fn crossing(medium: f32, dilution: f32) -> (Engine, Coefficients, Coefficients) {
     let mut engine = fresh_engine();
     engine.select_brush("Flat");
+    engine.set_param("load", OVERLOADED_FILL);
     paint_with(&mut engine, medium, dilution, "cadmium_red");
     let red = engine.brush_pigment();
     let time = stroke(&mut engine, (150.0, LANE), (850.0, LANE), 0.0);

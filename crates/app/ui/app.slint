@@ -317,7 +317,7 @@ component BrushGauge inherits Rectangle {
     }
     Rectangle {
         x: root.tuft-start;
-        width: root.tuft-length * root.shown;
+        width: root.tuft-length * min(root.shown, 1);
         height: root.height;
         clip: true;
         Path {
@@ -1067,7 +1067,7 @@ export component AppWindow inherits Window {
                                 Rectangle { height: 1px; background: Theme.line; }
                                 ParamSlider { label: root.brush-has-thickness ? "Width" : "Size"; minimum: 0.13; maximum: 5; value <=> root.brush-scale; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
                                 ParamSlider { visible: root.brush-has-thickness || root.brush-has-length; height: root.brush-has-thickness || root.brush-has-length ? self.preferred-height : 0; label: root.brush-has-length ? "Length" : "Thickness"; minimum: 0.25; maximum: 3; value <=> root.brush-thickness; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
-                                ParamSlider { label: "Bristles"; minimum: 20; maximum: 600; value <=> root.brush-bristles; value-text: round(self.value); released => { root.brush-adjusted(); } }
+                                ParamSlider { label: "Bristles"; minimum: 1; maximum: 600; value <=> root.brush-bristles; value-text: round(self.value); released => { root.brush-adjusted(); } }
                                 ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value <=> root.brush-stiffness; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
                                 ParamSlider { label: "Angle"; minimum: 0; maximum: 360; value <=> root.brush-angle; value-text: round(self.value) + "°"; }
                                 ParamSlider { label: "Pressure"; minimum: 0; maximum: 1; value <=> root.pressure; value-text: round(self.value * 100) + "%"; }
@@ -1239,7 +1239,7 @@ export component AppWindow inherits Window {
 
                             Card {
                                 title: "PAINT";
-                                load-slider := ParamSlider { label: root.watercolour ? "Water" : "Load"; minimum: 0.05; maximum: 1; value: 1; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
+                                load-slider := ParamSlider { label: root.watercolour ? "Water" : "Load"; minimum: 0.05; maximum: root.watercolour ? 1 : 2; value: 1; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
                                 medium-slider := ParamSlider { visible: !root.watercolour; height: root.watercolour ? 0 : self.preferred-height; label: "Medium"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
                                 dilution-slider := ParamSlider { label: "Dilution"; minimum: 0; maximum: 1; value: 0; value-text: round(self.value * 100) + "%"; released => { root.paint-changed(); } }
                             }

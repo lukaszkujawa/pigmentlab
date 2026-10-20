@@ -7,7 +7,7 @@ mod squeeze;
 mod tube;
 mod window;
 
-pub use gauge::{BrushContents, GAUGE_CHANNELS, Gauge};
+pub use gauge::{BrushContents, GAUGE_CHANNELS, Gauge, OVERLOADED_FILL};
 pub use deposit::{Deposit, MEDIUM_THINNING, StrokeState};
 pub use level::{Levelling, WetBounds};
 pub use marks::{MARK_CAPACITY, Mark, Marks, Profile};

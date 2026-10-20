@@ -1,7 +1,7 @@
 use super::{Engine, Tool};
 use crate::canvas::{PAINT_CHANNELS, PAINT_SCALE};
 use crate::gpu::read_buffer;
-use crate::paint::{BrushContents, Gauge};
+use crate::paint::{BrushContents, Gauge, OVERLOADED_FILL};
 use crate::pigment::{Coefficients, Paint};
 use glam::{Vec3, Vec4};
 
@@ -14,7 +14,7 @@ const LOAD_KEPT_AFTER_WIPE: f32 = 0.15;
 impl Engine {
     pub fn dip(&mut self, paint: impl Into<Paint>) {
         let paint = paint.into();
-        let load = self.paint.load.clamp(0.0, 1.0);
+        let load = self.paint.load.clamp(0.0, if self.watercolour.is_some() { 1.0 } else { OVERLOADED_FILL });
         let medium = self.paint.medium.clamp(0.0, 1.0);
         let dilution = self.paint.dilution.clamp(0.0, 1.0);
         if self.watercolour.is_some() {

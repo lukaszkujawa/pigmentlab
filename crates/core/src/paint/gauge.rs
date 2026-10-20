@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 pub const GAUGE_CHANNELS: usize = 8;
+pub const OVERLOADED_FILL: f32 = 2.0;
 const VIEW_THICKNESS: f32 = 200.0;
 const VIEW_SUBSTRATE: f32 = 0.92;
 const IDLE: u8 = 0;
@@ -87,7 +88,7 @@ impl Gauge {
         let [load, ka, kb, kc, sa, sb, sc, pigment] = values.map(|v| v as f32 / self.scale);
         let weight = pigment.max(1e-6);
         Some(BrushContents {
-            fill: (load / self.capacity).clamp(0.0, 1.0),
+            fill: (load / self.capacity).clamp(0.0, OVERLOADED_FILL),
             paint: Coefficients { absorption: Vec3::new(ka, kb, kc) / weight, scattering: Vec3::new(sa, sb, sc) / weight },
             concentration: pigment / load.max(1e-6),
         })

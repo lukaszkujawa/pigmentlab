@@ -1,3 +1,4 @@
+use pigmentlab_core::paint::OVERLOADED_FILL;
 use pigmentlab_core::pigment::by_name;
 use pigmentlab_core::{CanvasSize, Engine, Gpu, PointerPhase, PointerSample};
 
@@ -25,7 +26,7 @@ fn a_full_brush_picks_up_colour_without_gaining_paint() {
     let released = yellow_bar(&mut engine, 0.0);
     let canvas_before = engine.paint_mass();
     engine.select_brush("Round medium");
-    engine.set_param("load", 1.0);
+    engine.set_param("load", OVERLOADED_FILL);
     engine.dip(by_name("cadmium_red").unwrap());
     let load_before = engine.brush_load();
     let colour_before = engine.brush_pigment();
