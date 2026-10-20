@@ -45,7 +45,7 @@ impl Engine {
 
     pub fn set_paint(&mut self, paint: PaintSettings) {
         self.paint = paint;
-        self.deposit.set_medium(paint.medium);
+        self.deposit.set_medium(self.carried_medium());
     }
 
     pub fn set_param(&mut self, name: &str, value: f32) -> bool {
@@ -78,13 +78,13 @@ impl Engine {
             adjustments.scale *= FIT_SHRINK;
         }
         self.set_brush(self.base_preset.adjusted(adjustments));
-        self.deposit.set_medium(self.paint.medium);
+        self.deposit.set_medium(self.carried_medium());
     }
 
     pub fn set_brush(&mut self, preset: BrushPreset) {
         self.fit_window(preset.reach_from_handle() + FOOTPRINT_SLACK);
         self.brush = Brush::new(&self.gpu, preset, self.seed, &self.window, &self.canvas, &self.stroke_base);
-        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.canvas, &self.stroke_base, DEPOSIT_DT);
+        self.deposit = Deposit::new(&self.gpu, &self.brush, &self.window, &self.canvas, &self.stroke_base);
         self.brush_lines = BrushLines::new(&self.gpu, &self.brush, &self.frames);
         self.brush.teleport(&self.gpu, &self.pose);
         self.rebuild_water_brush();

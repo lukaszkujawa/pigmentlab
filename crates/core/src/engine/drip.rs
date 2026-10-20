@@ -20,7 +20,7 @@ impl Engine {
         self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
         self.snapshot(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
-        self.drips.hang(Rig { pour_at_once: true, ..self.rig }, hanging, self.paint_on_tool.coefficients, self.paint.medium.clamp(0.0, 1.0));
+        self.drips.hang(Rig { pour_at_once: true, ..self.rig }, hanging, self.paint_on_tool.coefficients, self.carried_medium());
     }
 
     pub(super) fn set_rig_param(&mut self, name: &str, value: f32) -> bool {
@@ -45,7 +45,7 @@ impl Engine {
         if pointer.fresh_press {
             self.holding_hook = at.distance(self.rig.hook) <= HOOK_REACH / self.stage_view.map_or(1.0, |view| view.scale);
             if !self.holding_hook && !self.drips.grab(at) {
-                let id = self.drips.hang(self.rig, Hanging { pivot: self.rig.hook, release: at, push: Vec2::ZERO }, self.paint_on_tool.coefficients, self.paint.medium.clamp(0.0, 1.0));
+                let id = self.drips.hang(self.rig, Hanging { pivot: self.rig.hook, release: at, push: Vec2::ZERO }, self.paint_on_tool.coefficients, self.carried_medium());
                 self.drips.take_hold(id);
             }
         }
@@ -88,7 +88,7 @@ impl Engine {
 
     fn throw(&self, from: Vec2, aim: Vec2) -> Throw {
         let volume = SPLATTER_VOLUME * self.paint.load.clamp(0.0, OVERLOADED_FILL);
-        Throw { at: from * METRES_PER_PIXEL, toward: aim * METRES_PER_PIXEL, height: metres(self.splatter_height), speed: self.splatter_force, volume, paint: self.paint_on_tool.coefficients, medium: self.paint.medium.clamp(0.0, 1.0) }
+        Throw { at: from * METRES_PER_PIXEL, toward: aim * METRES_PER_PIXEL, height: metres(self.splatter_height), speed: self.splatter_force, volume, paint: self.paint_on_tool.coefficients, medium: self.carried_medium() }
     }
 
     pub fn aim(&self) -> Option<[Vec2; 2]> {
@@ -101,7 +101,7 @@ impl Engine {
 
     pub(super) fn flick_brush(&mut self) {
         let velocity = self.touch.velocity() * METRES_PER_PIXEL;
-        let medium = self.paint.medium.clamp(0.0, 1.0);
+        let medium = self.carried_medium();
         let share = shed_share(velocity.length(), Fluid::of(medium));
         if share <= 0.0 || self.watercolour.is_some() {
             return;
@@ -138,7 +138,7 @@ impl Engine {
         let cubic = METRES_PER_PIXEL.powi(3);
         let along = self.pose.orientation * Vec3::Z;
         let tuft = Tuft { capacity: capacity * cubic, cross_section: PI * metres(preset.width) * metres(preset.thickness) * 0.25, droop: along.z };
-        let medium = self.paint.medium.clamp(0.0, 1.0);
+        let medium = self.carried_medium();
         let flow = if touching { 0.0 } else { drain_flow((held - self.drained).max(0.0) * cubic, &tuft, Fluid::of(medium)) };
         self.drained += flow * SIMULATION_DT / cubic;
         let tip = (self.pose.position - along * preset.length) * METRES_PER_PIXEL;

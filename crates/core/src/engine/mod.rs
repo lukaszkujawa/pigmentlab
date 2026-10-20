@@ -20,6 +20,7 @@ mod tools;
 
 pub const SIMULATION_DT: f32 = 1.0 / 240.0;
 const SUBSTEPS_PER_DEPOSIT: u64 = 2;
+const DEPOSIT_TRAVEL: f32 = 2.0;
 const SUBSTEPS_PER_FILM_STEP: u64 = 8;
 const DEPOSIT_DT: f32 = SIMULATION_DT * SUBSTEPS_PER_DEPOSIT as f32;
 const UNDO_DEPTH: usize = 6;
@@ -83,6 +84,7 @@ pub struct Engine {
     hover: Option<Hover>,
     pose: BrushPose,
     position_at_last_deposit: Vec3,
+    substep_at_last_deposit: u64,
     touch: Touch,
     watercolour: Option<Watercolour>,
     water_brush: Option<WaterBrush>,
@@ -130,7 +132,7 @@ impl Engine {
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &canvas, &stroke_base);
         let height_map = HeightMap::new(&gpu, &canvas, &window);
-        let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base, DEPOSIT_DT);
+        let deposit = Deposit::new(&gpu, &brush, &window, &canvas, &stroke_base);
         let tube = Tube::new(&gpu, &window, &canvas, &height_map.heights, seed, SIMULATION_DT);
         let marks = Marks::new(&gpu, &window, &canvas);
         let film_deltas = FilmDeltas::new(&gpu, &window, &canvas);
@@ -188,6 +190,7 @@ impl Engine {
             hover: None,
             pose: BrushPose::upright(lifted),
             position_at_last_deposit: lifted,
+            substep_at_last_deposit: 0,
             touch: Touch::default(),
             watercolour: None,
             water_brush: None,

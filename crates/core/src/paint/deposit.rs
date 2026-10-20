@@ -41,6 +41,7 @@ pub struct StrokeState {
     pub pressure: f32,
     pub contact: f32,
     pub lifting: bool,
+    pub dt: f32,
 }
 
 pub struct Deposit {
@@ -64,19 +65,18 @@ pub struct Deposit {
 }
 
 impl Deposit {
-    pub fn new(gpu: &Gpu, brush: &Brush, window: &ActiveWindow, canvas: &Canvas, stroke_base: &wgpu::Buffer, dt: f32) -> Self {
+    pub fn new(gpu: &Gpu, brush: &Brush, window: &ActiveWindow, canvas: &Canvas, stroke_base: &wgpu::Buffer) -> Self {
         let preset = brush.preset();
-        let cadence = dt / crate::engine::SIMULATION_DT;
         let sample_count = preset.bristle_count * SAMPLES_PER_BRISTLE;
         let uniform = gpu.uniform_buffer("deposit uniform", std::mem::size_of::<DepositUniform>() as u64);
         let base = DepositUniform {
             sample_count,
             samples_per_bristle: SAMPLES_PER_BRISTLE,
-            deposit_rate: preset.deposit_rate * cadence,
-            pickup_rate: preset.pickup_rate * cadence,
+            deposit_rate: preset.deposit_rate,
+            pickup_rate: preset.pickup_rate,
             sample_capacity: preset.sample_capacity,
             contact_height: CONTACT_HEIGHT,
-            dt,
+            dt: crate::engine::SIMULATION_DT,
             brush_travel: 0.0,
             rigidity: if preset.is_rigid() { 1.0 } else { 0.0 },
             wet_floor_keep: 1.0,
@@ -202,8 +202,11 @@ impl Deposit {
 
     pub fn encode(&self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder, brush: &Brush, stroke: StrokeState, region: WindowRegion) {
         let flow = 1.0 + FLOW_PER_MEDIUM * self.medium;
+        let cadence = stroke.dt / crate::engine::SIMULATION_DT;
         let uniform = DepositUniform {
-            deposit_rate: self.base.deposit_rate * flow,
+            deposit_rate: self.base.deposit_rate * flow * cadence,
+            pickup_rate: self.base.pickup_rate * cadence,
+            dt: stroke.dt,
             brush_travel: stroke.travel,
             wet_floor_keep: brush.preset().wet_floor_keep(stroke.pressure),
             contact: stroke.contact,

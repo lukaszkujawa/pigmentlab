@@ -12,10 +12,14 @@ const WATERCOLOUR_PIGMENT: f32 = 0.08;
 const LOAD_KEPT_AFTER_WIPE: f32 = 0.15;
 
 impl Engine {
+    pub(super) fn carried_medium(&self) -> f32 {
+        self.paint_on_tool.behaviour.carried_medium(self.paint.medium)
+    }
+
     pub fn dip(&mut self, paint: impl Into<Paint>) {
         let paint = paint.into();
         let load = self.paint.load.clamp(0.0, if self.watercolour.is_some() { 1.0 } else { OVERLOADED_FILL });
-        let medium = self.paint.medium.clamp(0.0, 1.0);
+        let medium = paint.behaviour.carried_medium(self.paint.medium);
         let dilution = self.paint.dilution.clamp(0.0, 1.0);
         if self.watercolour.is_some() {
             self.paint_on_tool = paint;
@@ -31,6 +35,7 @@ impl Engine {
         let strength = PIGMENT_AT_FULL_DILUTION.powf(dilution.sqrt());
         let thinned = Coefficients { absorption: paint.coefficients.absorption * strength, scattering: paint.coefficients.scattering * strength };
         self.paint_on_tool = Paint { coefficients: thinned, ..paint };
+        self.deposit.set_medium(medium);
         self.drips.refill_selected(thinned, medium);
         if self.tool != Tool::Brush {
             return;

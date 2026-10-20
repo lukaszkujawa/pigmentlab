@@ -11,6 +11,7 @@ const PACKING_SCALE: f32 = 256.0;
 const PACKING_RATE: f32 = 0.3;
 const CLUMP_SCALE: f32 = 1024.0;
 const CLUMP_RATE: f32 = 0.08;
+const BRIDGING_WETNESS: f32 = 0.3;
 const CONTACT_BAND: f32 = 0.75;
 const HAIR_WIDTH: f32 = 0.8;
 const HAIR_TIP_WIDTH: f32 = 0.5;
@@ -253,7 +254,7 @@ fn solve(@builtin(global_invocation_id) id: vec3<u32>) {
     let stiffness = clamp(mix(max(brush.stiffness, AIRBORNE_STIFFNESS), brush.stiffness, grounded) * (0.8 + 0.4 * traits.w), 0.0, 1.0);
     let friction = brush.friction * (0.7 + 0.6 * fract(traits.w * 13.37));
     let clump = bristle % brush.clump_count;
-    let cohesion = select(0.0, CLUMP_RATE * brush.cohesion * wetness(bristle), clump_members(clump) > 1u);
+    let cohesion = select(0.0, CLUMP_RATE * brush.cohesion * smoothstep(BRIDGING_WETNESS, 1.0, wetness(bristle)), clump_members(clump) > 1u);
     let keep = 1.0 - DAMPING;
     let rest_tip = to_canvas(rest[base + BRISTLE_VERTICES - 1u].xyz);
     let pressed_load = PRESSED_LOAD * segment * clamp((floor_under(rest_tip.xy) - rest_tip.z) / (segment * f32(BRISTLE_VERTICES - 2u)), 0.0, 1.0);

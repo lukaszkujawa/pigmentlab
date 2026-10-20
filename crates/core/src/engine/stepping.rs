@@ -1,4 +1,4 @@
-use super::{Engine, FOOTPRINT_SLACK, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
+use super::{DEPOSIT_TRAVEL, Engine, FOOTPRINT_SLACK, SIMULATION_DT, SUBSTEPS_PER_DEPOSIT, SUBSTEPS_PER_WATER_STEP, Tool, WATER_SETTLE_SECONDS};
 use crate::paint::{Mark, Marks, StrokeState, WetBounds};
 use glam::IVec2;
 
@@ -92,7 +92,7 @@ impl Engine {
                         watercolour.wet(touched);
                         self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
                     }
-                    None => self.wet.wet(touched, self.settles_at(self.paint.medium)),
+                    None => self.wet.wet(touched, self.settles_at(self.carried_medium())),
                 }
                 self.mark_stale(WetBounds::around(self.tool_tip().truncate().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
             }
@@ -102,20 +102,18 @@ impl Engine {
                     if let Some(water_brush) = self.water_brush.as_ref().filter(|_| self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT)) {
                         water_brush.encode(&mut encoder, &self.brush);
                         self.contents_version += 1;
-                    } else if self.water_brush.is_none() && self.touch.engaged() && self.substeps.is_multiple_of(SUBSTEPS_PER_DEPOSIT) {
-                        let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
-                        let descent = (self.position_at_last_deposit.z - self.pose.position.z).max(0.0);
-                        let stroke = StrokeState { travel, descent, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed };
+                    } else if let Some(stroke) = self.due_deposit() {
                         let region = self.window.region_around(self.brush.tuft_centre(), footprint_radius + DEPOSIT_REACH as f32);
                         self.deposit.encode(&self.gpu, &mut encoder, &self.brush, stroke, region);
                         self.contents_version += 1;
                         self.position_at_last_deposit = self.pose.position;
+                        self.substep_at_last_deposit = self.substeps;
                     }
                 }
                 Tool::Tube => {
                     if self.pressed {
                         let path = [self.position_at_last_deposit.truncate(), self.tool_tip().truncate()];
-                        let medium = self.paint.medium.clamp(0.0, 1.0);
+                        let medium = self.carried_medium();
                         let nozzle_radius = self.nozzle_radius();
                         match (&self.water_tube, &mut self.watercolour) {
                             (Some(tube), Some(water)) => {
@@ -171,6 +169,19 @@ impl Engine {
         self.mark_stale(bounds.expand(1));
     }
 
+    fn due_deposit(&self) -> Option<StrokeState> {
+        if self.water_brush.is_some() || !self.touch.engaged() {
+            return None;
+        }
+        let travel = self.pose.position.truncate().distance(self.position_at_last_deposit.truncate());
+        let substeps = (self.substeps - self.substep_at_last_deposit).min(SUBSTEPS_PER_DEPOSIT);
+        if substeps < SUBSTEPS_PER_DEPOSIT && (travel < DEPOSIT_TRAVEL || self.brush.preset().is_rigid()) {
+            return None;
+        }
+        let descent = (self.position_at_last_deposit.z - self.pose.position.z).max(0.0);
+        Some(StrokeState { travel, descent, pressure: self.touch.pressure, contact: self.contact(), lifting: !self.pressed, dt: SIMULATION_DT * substeps as f32 })
+    }
+
     fn settles_at(&self, medium: f32) -> f64 {
         self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(medium.clamp(0.0, 1.0))
     }
@@ -184,7 +195,7 @@ impl Engine {
     fn tube_reach(&self) -> f32 {
         match self.watercolour {
             Some(_) => self.nozzle_radius(),
-            None => self.tube.reach(self.nozzle_radius(), self.paint.medium.clamp(0.0, 1.0)),
+            None => self.tube.reach(self.nozzle_radius(), self.carried_medium()),
         }
     }
 

@@ -1,6 +1,8 @@
 
 const OCCLUSION_STRENGTH: f32 = 0.6;
 const EDGE_PAINT: f32 = 0.02;
+const GLOSSY_PAINT: f32 = 0.015 * PIXELS_PER_CM;
+const DRIED_SHEEN: f32 = 0.4;
 const SHADOW_STEPS: i32 = 24;
 const OCCLUSION_RADII: array<f32, 3> = array<f32, 3>(0.05 * PIXELS_PER_CM, 0.1 * PIXELS_PER_CM, 0.18 * PIXELS_PER_CM);
 
@@ -101,7 +103,8 @@ struct Surface {
 
 fn surface_of(albedo: vec3<f32>, texel: vec2<i32>, paint_height: f32, medium: f32, covered: bool) -> Surface {
     let height = height_at(texel);
-    let glossy = smoothstep(0.0, 0.015 * PIXELS_PER_CM, paint_height) * mix(0.7, 1.0, medium);
+    let wet = smoothstep(0.0, GLOSSY_PAINT, paint_height) * mix(0.7, 1.0, medium);
+    let glossy = max(wet, smoothstep(0.0, GLOSSY_PAINT, dry[clamped_index(texel)].x) * DRIED_SHEEN);
     var surface: Surface;
     surface.albedo = vec4<f32>(clamp(albedo, vec3<f32>(0.0), vec3<f32>(1.0)), select(0.0, 1.0, covered));
     surface.finish = vec4<f32>(glossy, shadow(texel, height, light_direction()), occlusion(texel, height), 0.0);

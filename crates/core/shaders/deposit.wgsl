@@ -315,9 +315,13 @@ fn squeeze_outward(sample: u32, point: vec2<f32>, heading: vec2<f32>) -> vec2<f3
     return side * clamp(dot(point - blade.xy, side) / max(reach, 1.0), -1.0, 1.0);
 }
 
-fn above_floor(point: vec3<f32>, pixel: vec2<i32>, segment: Segment) -> vec3<f32> {
+fn hair_floor(pixel: vec2<i32>, segment: Segment) -> f32 {
     let support = select(bridged_ground(pixel, segment), weave_peak(pixel), BLADE);
-    return vec3<f32>(point.xy, max(point.z, support + base_height(pixel) * deposit.wet_floor_keep));
+    return support + base_height(pixel) * deposit.wet_floor_keep;
+}
+
+fn above_floor(point: vec3<f32>, floor_level: f32) -> vec3<f32> {
+    return vec3<f32>(point.xy, max(point.z, floor_level));
 }
 
 fn bridged_ground(pixel: vec2<i32>, segment: Segment) -> f32 {
@@ -437,25 +441,26 @@ fn hashed(value: u32) -> u32 {
     return x ^ (x >> 16u);
 }
 
-fn release(bristle: u32, point_xy: vec2<f32>, reach_floor: f32, full_share: f32, strength: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
+fn release(bristle: u32, point_xy: vec2<f32>, reach_floor: f32, full_share: f32, strength: f32, touch: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     let fill = clamp(*load / deposit.sample_capacity, 0.0, 1.0);
     if (BLADE) {
-        lay(point_xy, reach_floor, min(full_share * strength * sqrt(fill), *load), fill, load, absorption, scattering, medium);
+        lay(point_xy, reach_floor, min(full_share * strength * sqrt(fill), *load), film_radius(fill), load, absorption, scattering, medium);
         return;
     }
-    let flow = strength * pow(releasable(fill), 1.5);
+    let radius = film_radius(fill * touch);
+    let flow = strength * touch * pow(releasable(fill), 1.5);
     let strand_flow = pow(releasable(STRAND_FILL * (1.0 - medium)), 1.5);
     if (flow >= strand_flow) {
-        lay(point_xy, reach_floor, min(full_share * flow, *load), fill, load, absorption, scattering, medium);
+        lay(point_xy, reach_floor, min(full_share * flow, *load), radius, load, absorption, scattering, medium);
     } else if (strand_roll(bristle) < flow / strand_flow) {
-        lay(point_xy, reach_floor, min(full_share * strand_flow, *load), fill, load, absorption, scattering, medium);
+        lay(point_xy, reach_floor, min(full_share * strand_flow, *load), radius, load, absorption, scattering, medium);
     }
 }
 
-fn lay(point_xy: vec2<f32>, reach_floor: f32, given: f32, fill: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
+fn lay(point_xy: vec2<f32>, reach_floor: f32, given: f32, radius: f32, load: ptr<function, f32>, absorption: vec3<f32>, scattering: vec3<f32>, medium: f32) {
     if (given <= 0.0) { return; }
     *load -= given;
-    splat_film(point_xy, film_radius(fill), given, absorption, scattering, medium, reach_floor);
+    splat_film(point_xy, radius, given, absorption, scattering, medium, reach_floor);
 }
 
 @compute @workgroup_size(128)
@@ -484,7 +489,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var i = 1u; i <= segment.steps; i++) {
         let pixel = vec2<i32>(floor(mix(segment.start.xy, segment.end.xy, f32(i) / f32(segment.steps))));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
-        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel, segment);
+        let floor_level = hair_floor(pixel, segment);
+        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), floor_level);
         let local = vec2<u32>(pixel - window.origin);
         let state = column_state[column_index(local)];
         let wanted = pickup_wanted(segment, point, pixel, state, &remaining_capacity);
@@ -507,7 +513,8 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
         if (height > point.z + select(film, max(film, SQUEEZED_LAYER), STEEL)) { continue; }
         let lift_carry = select(1.0, select(brush_motion, 0.0, BLADE), deposit.lifting != 0u);
         let full_share = deposit.deposit_rate * share * segment.motion;
-        release(sample / deposit.samples_per_bristle, point.xy, point.z - film, full_share, deposit.contact * lift_carry, &load, absorption, scattering, medium);
+        let touch = 1.0 - clamp((point.z - max(height, floor_level)) / max(film, 1e-3), 0.0, 1.0);
+        release(sample / deposit.samples_per_bristle, point.xy, point.z - film, full_share, deposit.contact * lift_carry, touch, &load, absorption, scattering, medium);
     }
 
     sample_load[sample] = load;
@@ -709,7 +716,7 @@ fn apply_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var i = 1u; i <= segment.steps; i++) {
         let pixel = vec2<i32>(floor(mix(segment.start.xy, segment.end.xy, f32(i) / f32(segment.steps))));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
-        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel, segment);
+        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), hair_floor(pixel, segment));
         let column = column_index(vec2<u32>(pixel - window.origin));
         let wanted = pickup_wanted(segment, point, pixel, column_state[column], &remaining_capacity);
         if (wanted <= 0.0) { continue; }

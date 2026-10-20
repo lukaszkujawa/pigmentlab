@@ -14,10 +14,16 @@ pub struct Behaviour {
     pub density: f32,
     pub staining: f32,
     pub granulation: f32,
+    pub oil: f32,
+    pub thirst: f32,
 }
 
 impl Behaviour {
-    pub const MIXED: Behaviour = Behaviour { density: 0.03, staining: 3.0, granulation: 0.4 };
+    pub const MIXED: Behaviour = Behaviour { density: 0.03, staining: 3.0, granulation: 0.4, oil: 0.0, thirst: 0.0 };
+
+    pub fn carried_medium(self, added: f32) -> f32 {
+        (added.clamp(0.0, 1.0) * (1.0 - self.thirst) + self.oil).clamp(0.0, 1.0)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
