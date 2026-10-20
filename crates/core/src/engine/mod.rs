@@ -5,7 +5,7 @@ use crate::film::{Film, FilmDeltas, FilmWorker};
 use crate::gpu::{Gpu, read_rgba8, read_texel};
 use crate::history::History;
 use crate::input::{Hover, PointerSample, PointerTrack};
-use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Mark, Marks, SMALLEST_WINDOW, Tube, WetBounds};
+use crate::paint::{ActiveWindow, BrushContents, Deposit, Levelling, Mark, Marks, SMALLEST_WINDOW, Tube, WetBounds, WetRegions};
 use crate::pigment::{Coefficients, Paint};
 use crate::watercolour::{WaterBrush, WaterTube, Watercolour};
 use crate::render::{BrushLines, Composite, DripOverlay, Frame, Guides, HeightMap, Lighting, Stage, Target, ViewFrames, Viewport, create_presented_texture, display_view};
@@ -92,12 +92,11 @@ pub struct Engine {
     contents_version: u64,
     gauge_version: u64,
     pressed: bool,
-    levelling_active_until: f64,
     show_bristles: bool,
     time: f64,
     substeps: u64,
     levelling_enabled: bool,
-    wet_bounds: Option<WetBounds>,
+    wet: WetRegions,
     stale_heights: Option<WetBounds>,
     stale_blur: Option<WetBounds>,
     needs_render: bool,
@@ -198,12 +197,11 @@ impl Engine {
             contents_version: 0,
             gauge_version: 0,
             pressed: false,
-            levelling_active_until: 0.0,
             show_bristles: false,
             time: 0.0,
             substeps: 0,
             levelling_enabled: true,
-            wet_bounds: None,
+            wet: WetRegions::default(),
             stale_heights: None,
             stale_blur: None,
             needs_render: true,

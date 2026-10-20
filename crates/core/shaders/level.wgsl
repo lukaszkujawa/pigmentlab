@@ -63,9 +63,10 @@ fn flow_between(surface: f32, other_surface: f32, slope: f32, wet: f32, medium: 
     let step = surface - other_surface;
     let difference = step * mobility;
     let yield_stress = geometric_mix(YIELD_STRESS_STIFF, YIELD_STRESS_OILY, medium);
+    let flowing = pow(medium, 1.0 / 3.0);
     let stress = max(slope, abs(step)) * wet;
-    let yielding = max(1.0 - yield_stress / max(stress, 1e-6), 0.0);
-    let creeping = select(0.0, difference * min(yielding * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) + tension, LEVEL_RATE_OILY), creeps);
+    let yielding = max(1.0 - geometric_mix(YIELD_STRESS_STIFF, YIELD_STRESS_OILY, flowing) / max(stress, 1e-6), 0.0);
+    let creeping = select(0.0, difference * min(yielding * mix(LEVEL_RATE, LEVEL_RATE_OILY, flowing) + tension, LEVEL_RATE_OILY), creeps);
     let toppling = max(abs(step) - COLLAPSE_OVERSTRESS * yield_stress / max(wet, 1e-6), 0.0) * (1.0 - medium);
     return sign(step) * max(abs(creeping), toppling) * 0.25;
 }
@@ -77,9 +78,10 @@ fn shared_medium(paint: f32, medium: f32, other_paint: f32, other_medium: f32) -
 fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32, slope: f32, medium: f32, creeps: bool) -> f32 {
     let oiliness = clamp(medium, 0.0, 1.0);
     let both_wet = min(paint, other_paint) > WET_FILM;
-    if (!both_wet && max(paint, other_paint) <= geometric_mix(SPREAD_MIN_HEIGHT, SPREAD_MIN_HEIGHT_OILY, smoothstep(RUNS_FROM_MEDIUM, 1.0, oiliness))) { return 0.0; }
+    let runs = smoothstep(RUNS_FROM_MEDIUM, 1.0, oiliness);
+    if (!both_wet && max(paint, other_paint) <= geometric_mix(SPREAD_MIN_HEIGHT, SPREAD_MIN_HEIGHT_OILY, runs)) { return 0.0; }
     let cohesion = clamp(min(paint, other_paint) / COHESIVE_HEIGHT, 0.0, 1.0);
-    let flow = flow_between(surface, other_surface, slope * cohesion, max(paint, other_paint), oiliness, SURFACE_TENSION_OILY * oiliness * cohesion, creeps);
+    let flow = flow_between(surface, other_surface, slope * cohesion, max(paint, other_paint), oiliness, SURFACE_TENSION_OILY * oiliness * cohesion, creeps && (both_wet || runs > 0.0));
     return clamp(flow, -other_paint * MAX_SHARE_PER_NEIGHBOUR, paint * MAX_SHARE_PER_NEIGHBOUR);
 }
 

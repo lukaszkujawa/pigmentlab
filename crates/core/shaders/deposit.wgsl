@@ -10,12 +10,13 @@ override STEEL: bool = false;
 const SQUEEZE_OUTWARD: f32 = 3.0;
 const SQUEEZED_LAYER: f32 = 4.0;
 const WEAVE_PEAK_REACH: i32 = 3;
+const HAIR_BRIDGE: i32 = 3;
 const VALLEY_SOFTNESS: f32 = 0.5;
 const WICKING_PER_SECOND: f32 = 6.0;
 const RETAINED_FILL: f32 = 0.05;
 const FITTING_FILM: f32 = 0.25;
-const STRAND_FILL: f32 = 0.5;
-const STRAND_STEPS: u32 = 24u;
+const STRAND_FILL: f32 = 0.3;
+const STRAND_STEPS: u32 = 96u;
 const JUMP_DISTANCE: f32 = 0.4 * PIXELS_PER_CM;
 const GROOVE_RADIUS: i32 = 0;
 const BLADE_GROOVE_RADIUS: i32 = 1;
@@ -314,9 +315,21 @@ fn squeeze_outward(sample: u32, point: vec2<f32>, heading: vec2<f32>) -> vec2<f3
     return side * clamp(dot(point - blade.xy, side) / max(reach, 1.0), -1.0, 1.0);
 }
 
-fn above_floor(point: vec3<f32>, pixel: vec2<i32>) -> vec3<f32> {
-    let support = select(ground_at(pixel), weave_peak(pixel), BLADE);
+fn above_floor(point: vec3<f32>, pixel: vec2<i32>, segment: Segment) -> vec3<f32> {
+    let support = select(bridged_ground(pixel, segment), weave_peak(pixel), BLADE);
     return vec3<f32>(point.xy, max(point.z, support + base_height(pixel) * deposit.wet_floor_keep));
+}
+
+fn bridged_ground(pixel: vec2<i32>, segment: Segment) -> f32 {
+    let travel = segment.end.xy - segment.start.xy;
+    var peak = ground_at(pixel);
+    if (length(travel) < 1e-3) { return peak; }
+    let along = travel / length(travel);
+    for (var reach = -HAIR_BRIDGE; reach <= HAIR_BRIDGE; reach++) {
+        let neighbour = pixel + vec2<i32>(round(along * f32(reach)));
+        if (on_canvas(neighbour)) { peak = max(peak, ground_at(neighbour)); }
+    }
+    return peak;
 }
 
 fn weave_peak(pixel: vec2<i32>) -> f32 {
@@ -434,8 +447,8 @@ fn release(bristle: u32, point_xy: vec2<f32>, reach_floor: f32, full_share: f32,
     let strand_flow = pow(releasable(STRAND_FILL * (1.0 - medium)), 1.5);
     if (flow >= strand_flow) {
         lay(point_xy, reach_floor, min(full_share * flow, *load), fill, load, absorption, scattering, medium);
-    } else if (strand_roll(bristle) < sqrt(flow / strand_flow)) {
-        lay(point_xy, reach_floor, min(full_share * sqrt(flow * strand_flow), *load), fill, load, absorption, scattering, medium);
+    } else if (strand_roll(bristle) < flow / strand_flow) {
+        lay(point_xy, reach_floor, min(full_share * strand_flow, *load), fill, load, absorption, scattering, medium);
     }
 }
 
@@ -471,7 +484,7 @@ fn step(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var i = 1u; i <= segment.steps; i++) {
         let pixel = vec2<i32>(floor(mix(segment.start.xy, segment.end.xy, f32(i) / f32(segment.steps))));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
-        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel);
+        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel, segment);
         let local = vec2<u32>(pixel - window.origin);
         let state = column_state[column_index(local)];
         let wanted = pickup_wanted(segment, point, pixel, state, &remaining_capacity);
@@ -696,7 +709,7 @@ fn apply_pickups(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var i = 1u; i <= segment.steps; i++) {
         let pixel = vec2<i32>(floor(mix(segment.start.xy, segment.end.xy, f32(i) / f32(segment.steps))));
         if (!window_contains(pixel) || !on_canvas(pixel)) { continue; }
-        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel);
+        let point = above_floor(mix(segment.start, segment.end, f32(i) / f32(segment.steps)), pixel, segment);
         let column = column_index(vec2<u32>(pixel - window.origin));
         let wanted = pickup_wanted(segment, point, pixel, column_state[column], &remaining_capacity);
         if (wanted <= 0.0) { continue; }

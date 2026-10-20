@@ -25,10 +25,55 @@ impl WetBounds {
         Self { min: self.min - margin, max: self.max + margin }
     }
 
+    pub fn overlaps(self, other: Self) -> bool {
+        self.min.cmplt(other.max).all() && other.min.cmplt(self.max).all()
+    }
+
     pub fn clamped(self, width: u32, height: u32) -> (IVec2, IVec2) {
         let min = self.min.clamp(IVec2::ZERO, IVec2::new(width as i32, height as i32));
         let max = self.max.clamp(min, IVec2::new(width as i32, height as i32));
         (min, max - min)
+    }
+}
+
+#[derive(Default)]
+pub struct WetRegions {
+    regions: Vec<(WetBounds, f64)>,
+    open: bool,
+}
+
+impl WetRegions {
+    pub fn begin(&mut self) {
+        self.open = false;
+    }
+
+    pub fn wet(&mut self, bounds: WetBounds, until: f64) {
+        match self.regions.last_mut().filter(|(region, _)| self.open && region.overlaps(bounds)) {
+            Some((region, settles)) => {
+                *region = region.include(bounds);
+                *settles = settles.max(until);
+            }
+            None => self.regions.push((bounds, until)),
+        }
+        self.open = true;
+    }
+
+    pub fn cover(&mut self, bounds: WetBounds) {
+        if let Some(until) = self.regions.iter().map(|(_, until)| *until).reduce(f64::max) {
+            self.regions = vec![(bounds, until)];
+        }
+    }
+
+    pub fn settle(&mut self, time: f64) {
+        self.regions.retain(|(_, until)| *until >= time);
+    }
+
+    pub fn clear(&mut self) {
+        self.regions.clear();
+    }
+
+    pub fn bounds(&self) -> Option<WetBounds> {
+        self.regions.iter().map(|(region, _)| *region).reduce(WetBounds::include)
     }
 }
 

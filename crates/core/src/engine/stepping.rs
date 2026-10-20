@@ -4,7 +4,7 @@ use glam::IVec2;
 
 const DEPOSIT_REACH: i32 = 24;
 const LEVELLING_SETTLE_SECONDS: f64 = 2.0;
-const LEVELLING_SETTLE_SECONDS_PER_MEDIUM: f64 = 4.0;
+const LEVELLING_SETTLE_SECONDS_PER_MEDIUM: f64 = 10.0;
 const MAX_SUBSTEPS_PER_ADVANCE: u32 = 32;
 const SUBSTEPS_PER_LEVELLING: u64 = 8;
 const WET_MARGIN: i32 = 48;
@@ -40,10 +40,8 @@ impl Engine {
                 if lifted && self.tool == Tool::Brush {
                     self.flick_brush();
                 }
-                if self.touch.engaged() {
-                    self.levelling_active_until = self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(self.paint.medium.clamp(0.0, 1.0));
-                }
                 if state.fresh_press {
+                    self.wet.begin();
                     self.position_at_last_deposit = self.tool_tip();
                     self.tube.press(&self.gpu, self.tool_tip().truncate());
                     self.brush.teleport(&self.gpu, &self.pose);
@@ -94,7 +92,7 @@ impl Engine {
                         watercolour.wet(touched);
                         self.water_settles_at = self.time + WATER_SETTLE_SECONDS;
                     }
-                    None => self.wet_bounds = Some(self.wet_bounds.map_or(touched, |bounds| bounds.include(touched))),
+                    None => self.wet.wet(touched, self.settles_at(self.paint.medium)),
                 }
                 self.mark_stale(WetBounds::around(self.tool_tip().truncate().round().as_ivec2(), footprint_radius.ceil() as i32 + DEPOSIT_REACH));
             }
@@ -143,8 +141,8 @@ impl Engine {
                 self.needs_render = true;
             }
             self.substeps += 1;
-            let levelling_due = self.levelling_enabled && self.time <= self.levelling_active_until;
-            if let Some(wet) = self.wet_bounds.filter(|_| levelling_due && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING)) {
+            self.wet.settle(self.time);
+            if let Some(wet) = self.wet.bounds().filter(|_| self.levelling_enabled && self.substeps.is_multiple_of(SUBSTEPS_PER_LEVELLING)) {
                 self.refresh_heights(&mut encoder);
                 self.levelling.encode(&self.gpu, &mut encoder, &self.window, wet);
                 self.mark_stale(wet.expand(1));
@@ -168,11 +166,13 @@ impl Engine {
         }
         let laid: Vec<Mark> = self.pending_marks.drain(..Marks::fitting(&self.pending_marks)).collect();
         let Some(bounds) = self.marks.encode(&self.gpu, encoder, &self.window, &laid) else { return };
-        let oiliest = laid.iter().map(|mark| mark.medium).fold(0.0, f32::max).clamp(0.0, 1.0);
-        self.levelling_active_until = self.levelling_active_until.max(self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(oiliest));
-        let wet = bounds.expand(WET_MARGIN);
-        self.wet_bounds = Some(self.wet_bounds.map_or(wet, |bounds| bounds.include(wet)));
+        let oiliest = laid.iter().map(|mark| mark.medium).fold(0.0, f32::max);
+        self.wet.wet(bounds.expand(WET_MARGIN), self.settles_at(oiliest));
         self.mark_stale(bounds.expand(1));
+    }
+
+    fn settles_at(&self, medium: f32) -> f64 {
+        self.time + LEVELLING_SETTLE_SECONDS + LEVELLING_SETTLE_SECONDS_PER_MEDIUM * f64::from(medium.clamp(0.0, 1.0))
     }
 
     pub(super) fn request_gauge_reading(&mut self, encoder: &mut wgpu::CommandEncoder) {

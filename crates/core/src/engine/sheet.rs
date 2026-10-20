@@ -52,7 +52,7 @@ impl Engine {
         self.gpu.queue.submit(Some(encoder.finish()));
         self.history.forget();
         self.dry_history.forget();
-        self.wet_bounds = None;
+        self.wet.clear();
         self.mark_whole_canvas_stale();
     }
 
@@ -72,7 +72,7 @@ impl Engine {
         self.canvas.clear(&self.gpu, &mut encoder);
         self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
-        self.wet_bounds = None;
+        self.wet.clear();
         self.mark_whole_canvas_stale();
     }
 
@@ -88,7 +88,7 @@ impl Engine {
         self.canvas.encode_dry(&mut encoder);
         self.window.encode_unbake(&mut encoder);
         self.gpu.queue.submit(Some(encoder.finish()));
-        self.wet_bounds = None;
+        self.wet.clear();
         self.mark_whole_canvas_stale();
     }
 
@@ -104,7 +104,7 @@ impl Engine {
             }
             self.canvas.encode_refresh_ground(&mut encoder);
             self.window.encode_unbake(&mut encoder);
-            self.wet_bounds = Some(self.whole_canvas());
+            self.wet.cover(self.whole_canvas());
         }
         self.gpu.queue.submit(Some(encoder.finish()));
         self.mark_whole_canvas_stale();

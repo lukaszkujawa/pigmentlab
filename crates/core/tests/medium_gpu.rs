@@ -183,3 +183,21 @@ fn crossed_strokes_with_generous_medium_keep_their_edges() {
     }
 }
 
+
+#[test]
+fn a_settled_stroke_stays_put_while_painting_continues_elsewhere() {
+    let mut engine = fresh_engine();
+    engine.select_brush("Flat");
+    paint_with(&mut engine, 0.3, 0.0, "ivory_black");
+    let mut time = stroke(&mut engine, (100.0, 120.0), (600.0, 120.0), 0.0);
+    engine.advance_exact(SETTLED);
+    let settled = engine.paint_heights();
+    time = time.max(SETTLED);
+    for _ in 0..15 {
+        time = stroke(&mut engine, (850.0, 400.0), (950.0, 400.0), time + 1.0);
+    }
+    let later = engine.paint_heights();
+    let moved: f32 = (60..200).flat_map(|y| (80..640).map(move |x| y * WIDTH + x)).map(|index| (later[index] - settled[index]).abs()).sum();
+    let laid: f32 = (60..200).flat_map(|y| (80..640).map(move |x| y * WIDTH + x)).map(|index| settled[index]).sum();
+    assert!(moved < 0.01 * laid, "a settled stroke kept flowing while painting elsewhere: {:.1}% of its paint moved", 100.0 * moved / laid);
+}
