@@ -315,7 +315,7 @@ fn squeeze_outward(sample: u32, point: vec2<f32>, heading: vec2<f32>) -> vec2<f3
 }
 
 fn above_floor(point: vec3<f32>, pixel: vec2<i32>) -> vec3<f32> {
-    let support = select(ground_at(pixel), weave_peak(pixel), STEEL);
+    let support = select(ground_at(pixel), weave_peak(pixel), BLADE);
     return vec3<f32>(point.xy, max(point.z, support + base_height(pixel) * deposit.wet_floor_keep));
 }
 
@@ -338,6 +338,18 @@ fn groove_amount(height: f32, hair_level: f32, limit: f32, base: f32, drag: f32)
     let above_film = max(height - limit, 0.0);
     let dragged = max(min(min(height, limit), base) - hair_level, 0.0);
     return above_film + dragged * drag;
+}
+
+fn roll_overflow(centre: vec2<f32>, forward: vec2<f32>, nearest: f32, reach: f32, blade_level: f32, medium: f32) -> f32 {
+    var roll = 0.0;
+    for (var along = nearest; along <= reach; along += PUSH_RADIUS) {
+        let landing = vec2<i32>(floor(centre + forward * along));
+        if (!window_contains(landing)) { continue; }
+        let state = column_state[column_index(vec2<u32>(landing - window.origin))];
+        roll = max(roll, state.x + state.w - blade_level);
+    }
+    let yield_stress = exp(mix(log(YIELD_STRESS_STIFF), log(YIELD_STRESS_OILY), medium));
+    return clamp(roll / sqrt(2.0 * yield_stress * reach) - 1.0, 0.0, 1.0);
 }
 
 fn ridge_amount(height: f32, limit: f32, drag: f32) -> f32 {
@@ -626,14 +638,15 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     let forward = normalize(push);
     let side = vec2<f32>(-forward.y, forward.x);
     let sliding = select(deposit.brush_travel / max(handle_motion(), 1e-6), 1.0, BLADE);
-    let forward_share = FORWARD_SHARE * sliding;
     let nearest = min(max(deposit.brush_travel + PUSH_RADIUS * deposit.rigidity, PUSH_DISTANCE), MAX_PUSH_REACH);
     let reach = clamp(deposit.brush_travel * PUSH_PACE, nearest, MAX_PUSH_REACH);
     let hops = max(u32(ceil((reach - nearest) / PUSH_RADIUS)) + 1u, 1u);
+    let spill = select(0.0, roll_overflow(vec2<f32>(pixel) + 0.5, forward, nearest, reach, f32(LIMIT_ENCODING - limit_code) / PAINT_SCALE, column_state[column_index(local)].z), BLADE);
+    let forward_share = FORWARD_SHARE * sliding * (1.0 - spill);
     var offsets: array<vec2<f32>, MAX_PUSH_TARGETS>;
     var shares: array<f32, MAX_PUSH_TARGETS>;
-    offsets[0] = side * PUSH_DISTANCE;
-    offsets[1] = -side * PUSH_DISTANCE;
+    offsets[0] = side * (PUSH_DISTANCE + spill * reach);
+    offsets[1] = -offsets[0];
     shares[0] = 0.5 * (1.0 - forward_share);
     shares[1] = shares[0];
     for (var hop = 0u; hop < hops; hop++) {

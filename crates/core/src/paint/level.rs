@@ -44,6 +44,7 @@ struct WetUniform {
 pub struct Levelling {
     snapshot: ComputePass,
     window: ComputePass,
+    topple: ComputePass,
     store_even: ComputePass,
     store_odd: ComputePass,
     wet_uniform: wgpu::Buffer,
@@ -81,6 +82,7 @@ impl Levelling {
         Self {
             snapshot: pass("snapshot columns", "snapshot_columns"),
             window: pass("level window", "level_window"),
+            topple: pass("topple window", "topple_window"),
             store_even: pass("level store even", "level_store_even"),
             store_odd: pass("level store odd", "level_store_odd"),
             wet_uniform,
@@ -106,5 +108,13 @@ impl Levelling {
         let store_groups = [(size.x as u32).div_ceil(32), (size.y as u32).div_ceil(16), 1];
         self.store_even.dispatch(encoder, store_groups);
         self.store_odd.dispatch(encoder, store_groups);
+    }
+
+    pub fn encode_toppling(&self, encoder: &mut wgpu::CommandEncoder, window: &ActiveWindow, wet: WetBounds) {
+        let region = window.region_of(wet.min - NEIGHBOUR_REACH, wet.max + NEIGHBOUR_REACH);
+        if !region.is_empty() {
+            self.snapshot.dispatch(encoder, region.groups());
+            self.topple.dispatch(encoder, region.groups());
+        }
     }
 }

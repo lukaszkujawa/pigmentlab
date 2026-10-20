@@ -6,10 +6,10 @@ const SPREAD_MIN_HEIGHT: f32 = 0.08 * PIXELS_PER_CM;
 const SPREAD_MIN_HEIGHT_OILY: f32 = 0.01 * PIXELS_PER_CM;
 const SURFACE_TENSION_OILY: f32 = 0.1;
 const COHESIVE_HEIGHT: f32 = 1.5;
+const COLLAPSE_OVERSTRESS: f32 = 4.0;
 const WET_FILM: f32 = 0.25;
 const TOP_LAYER: f32 = 0.5;
 const RUNS_FROM_MEDIUM: f32 = 0.75;
-const YIELD_DEPTH: f32 = 0.5 * PIXELS_PER_CM;
 
 @group(0) @binding(0) var<uniform> window: WindowUniform;
 @group(0) @binding(1) var<storage, read_write> volume: array<i32>;
@@ -32,8 +32,9 @@ fn pixel_index(pixel: vec2<i32>) -> u32 {
     return u32(pixel.y) * window.canvas_width + u32(pixel.x);
 }
 
-fn height_of(pixel: vec2<i32>) -> f32 {
+fn height_of(pixel: vec2<i32>, snapshot: bool) -> f32 {
     if (!on_canvas(pixel)) { return -1.0; }
+    if (snapshot && window_contains(pixel) && inside(pixel - window.origin, region)) { return columns[column_slot(vec2<u32>(pixel - window.origin))].x; }
     return heights[pixel_index(pixel)];
 }
 
@@ -57,24 +58,28 @@ fn steepness(pixel: vec2<i32>) -> f32 {
     return 0.5 * length(vec2<f32>(dx, dy));
 }
 
-fn flow_between(surface: f32, other_surface: f32, slope: f32, wet: f32, medium: f32, tension: f32) -> f32 {
+fn flow_between(surface: f32, other_surface: f32, slope: f32, wet: f32, medium: f32, tension: f32, creeps: bool) -> f32 {
     let mobility = min(wet / geometric_mix(LEVEL_FULL_MOBILITY_HEIGHT, LEVEL_FULL_MOBILITY_HEIGHT_OILY, medium), 1.0);
-    let difference = (surface - other_surface) * mobility;
-    let stress = min(max(slope, abs(surface - other_surface)), 1.0) * min(wet, YIELD_DEPTH);
-    let yielding = max(1.0 - geometric_mix(YIELD_STRESS_STIFF, YIELD_STRESS_OILY, medium) / max(stress, 1e-6), 0.0);
-    return difference * min(yielding * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) + tension, LEVEL_RATE_OILY) * 0.25;
+    let step = surface - other_surface;
+    let difference = step * mobility;
+    let yield_stress = geometric_mix(YIELD_STRESS_STIFF, YIELD_STRESS_OILY, medium);
+    let stress = max(slope, abs(step)) * wet;
+    let yielding = max(1.0 - yield_stress / max(stress, 1e-6), 0.0);
+    let creeping = select(0.0, difference * min(yielding * mix(LEVEL_RATE, LEVEL_RATE_OILY, medium) + tension, LEVEL_RATE_OILY), creeps);
+    let toppling = max(abs(step) - COLLAPSE_OVERSTRESS * yield_stress / max(wet, 1e-6), 0.0) * (1.0 - medium);
+    return sign(step) * max(abs(creeping), toppling) * 0.25;
 }
 
 fn shared_medium(paint: f32, medium: f32, other_paint: f32, other_medium: f32) -> f32 {
     return (paint * medium + other_paint * other_medium) / max(paint + other_paint, 1e-6);
 }
 
-fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32, slope: f32, medium: f32) -> f32 {
+fn pair_flow(paint: f32, surface: f32, other_paint: f32, other_surface: f32, slope: f32, medium: f32, creeps: bool) -> f32 {
     let oiliness = clamp(medium, 0.0, 1.0);
     let both_wet = min(paint, other_paint) > WET_FILM;
     if (!both_wet && max(paint, other_paint) <= geometric_mix(SPREAD_MIN_HEIGHT, SPREAD_MIN_HEIGHT_OILY, smoothstep(RUNS_FROM_MEDIUM, 1.0, oiliness))) { return 0.0; }
     let cohesion = clamp(min(paint, other_paint) / COHESIVE_HEIGHT, 0.0, 1.0);
-    let flow = flow_between(surface, other_surface, slope * cohesion, max(paint, other_paint), oiliness, SURFACE_TENSION_OILY * oiliness * cohesion);
+    let flow = flow_between(surface, other_surface, slope * cohesion, max(paint, other_paint), oiliness, SURFACE_TENSION_OILY * oiliness * cohesion, creeps);
     return clamp(flow, -other_paint * MAX_SHARE_PER_NEIGHBOUR, paint * MAX_SHARE_PER_NEIGHBOUR);
 }
 
@@ -109,13 +114,13 @@ fn levelled(pixel: vec2<i32>) -> bool {
     return inside(pixel, wet);
 }
 
-fn column_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, local: vec2<i32>) -> f32 {
+fn column_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, local: vec2<i32>, creeps: bool) -> f32 {
     let pixel = local + window.origin;
-    let other = height_of(pixel);
+    let other = height_of(pixel, !creeps);
     if (other < 0.0 || !levelled(pixel)) { return 0.0; }
     let other_medium = neighbour_pigment(local)[6];
     let slope = 0.5 * (steepness(own) + steepness(pixel));
-    return pair_flow(paint, surface, other, other + ground_of(pixel), slope, shared_medium(paint, medium, other, other_medium));
+    return pair_flow(paint, surface, other, other + ground_of(pixel), slope, shared_medium(paint, medium, other, other_medium), creeps);
 }
 
 fn dither(pixel: vec2<u32>, salt: u32) -> f32 {
@@ -200,10 +205,19 @@ fn snapshot_columns(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute @workgroup_size(16, 16)
 fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
-    let local = region_column(id.xy);
+    level_column(id.xy, true);
+}
+
+@compute @workgroup_size(16, 16)
+fn topple_window(@builtin(global_invocation_id) id: vec3<u32>) {
+    level_column(id.xy, false);
+}
+
+fn level_column(id: vec2<u32>, creeps: bool) {
+    let local = region_column(id);
     if (local.x < 0) { return; }
     let pixel = local + window.origin;
-    let paint = height_of(pixel);
+    let paint = height_of(pixel, !creeps);
     if (paint < 0.0) { return; }
     let surface = paint + ground_of(pixel);
     let medium = column_pigment[column_slot(vec2<u32>(local))].w;
@@ -214,7 +228,7 @@ fn level_window(@builtin(global_invocation_id) id: vec3<u32>) {
     var incoming_scattering = vec3<f32>(0.0);
     var incoming_medium = 0.0;
     for (var n = 0u; n < 4u; n++) {
-        let flow = column_flow(pixel, paint, surface, medium, local + offsets[n]);
+        let flow = column_flow(pixel, paint, surface, medium, local + offsets[n], creeps);
         if (flow > 0.0) {
             outgoing += flow;
         } else if (flow < 0.0) {
@@ -238,7 +252,7 @@ fn store_flow(own: vec2<i32>, paint: f32, surface: f32, medium: f32, neighbour: 
     if (!on_canvas(neighbour) || !levelled(neighbour)) { return 0.0; }
     let other = heights[pixel_index(neighbour)];
     let slope = 0.5 * (steepness(own) + steepness(neighbour));
-    return pair_flow(paint, surface, other, other + ground_of(neighbour), slope, shared_medium(paint, medium, other, store_medium(neighbour)));
+    return pair_flow(paint, surface, other, other + ground_of(neighbour), slope, shared_medium(paint, medium, other, store_medium(neighbour)), true);
 }
 
 fn level_store_pixel(pixel: vec2<i32>) {

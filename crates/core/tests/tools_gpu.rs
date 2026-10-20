@@ -1,3 +1,4 @@
+use pigmentlab_core::paint::YIELD_STRESS_STIFF;
 use pigmentlab_core::pigment::by_name;
 use pigmentlab_core::brush::VERTICES_PER_BRISTLE;
 use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, PointerPhase, PointerSample};
@@ -90,20 +91,22 @@ fn blob(medium: f32) -> (f32, usize, usize) {
 fn shaper_scrapes_a_bead_flat_and_pushes_it_ahead() {
     let mut engine = fresh_engine();
     let released = squeeze_bead(&mut engine, 0.0, 1.0);
-    let before = row_profile(&engine.paint_heights(), 400);
+    let heights_before = engine.paint_heights();
+    let before = row_profile(&heights_before, 400);
     let mass_before = engine.paint_mass();
     engine.select_brush("Colour shaper");
-    engine.set_param("angle", 90.0);
     engine.pointer(sample(PointerPhase::Down, 250.0, 400.0, 0.9, released));
     engine.pointer(sample(PointerPhase::Move, 550.0, 400.0, 0.9, released + 0.6));
     engine.pointer(sample(PointerPhase::Up, 550.0, 400.0, 0.0, released + 0.6));
     engine.advance_exact(released + 0.7);
-    let after = row_profile(&engine.paint_heights(), 400);
+    let heights_after = engine.paint_heights();
+    let after = row_profile(&heights_after, 400);
     let scraped: f32 = after[320..500].iter().sum::<f32>() / 180.0;
     let untouched: f32 = before[320..500].iter().sum::<f32>() / 180.0;
     assert!(scraped < untouched * 0.35, "shaper should scrape the bead thin ({untouched:.1} -> {scraped:.1} px)");
-    let ahead_before: f32 = before[540..620].iter().sum();
-    let ahead_after: f32 = after[540..620].iter().sum();
+    let ahead = |heights: &[f32]| (340..460).flat_map(|y| (540..620).map(move |x| heights[y * WIDTH as usize + x])).sum::<f32>();
+    let ahead_before = ahead(&heights_before);
+    let ahead_after = ahead(&heights_after);
     assert!(ahead_after > ahead_before * 1.3, "scraped paint should pile up ahead of the blade ({ahead_before:.0} -> {ahead_after:.0})");
     let drift = (engine.paint_mass() + engine.brush_load() - mass_before).abs() / mass_before;
     assert!(drift < 0.02, "shaper changed total paint by {:.2}%", drift * 100.0);
@@ -566,4 +569,57 @@ fn the_angle_control_turns_the_knife_all_the_way_round() {
     assert!(unturned.dot(quarter).abs() < 0.05, "a quarter turn should point the knife across ({unturned} vs {quarter})");
     assert!(unturned.dot(half) < -0.99, "half a turn should point the knife the other way ({unturned} vs {half})");
     assert!(quarter.dot(three_quarters) < -0.99, "three quarters should point opposite a quarter turn ({quarter} vs {three_quarters})");
+}
+
+fn scrape_through_a_heap(tool: &str) -> Vec<f32> {
+    let mut engine = Engine::new(Gpu::headless(), CanvasSize { width: WIDTH, height: 768 }, 1);
+    engine.select_brush("Paint tube");
+    engine.set_param("size", 2.0);
+    engine.dip(by_name("cadmium_red").unwrap());
+    engine.pointer(sample(PointerPhase::Down, 600.0, 384.0, 1.0, 0.0));
+    engine.pointer(sample(PointerPhase::Move, 600.0, 384.0, 1.0, 1.5));
+    engine.pointer(sample(PointerPhase::Up, 600.0, 384.0, 0.0, 1.5));
+    engine.advance_exact(1.6);
+    engine.select_brush(tool);
+    let steps = 120;
+    engine.pointer(sample(PointerPhase::Down, 700.0, 384.0, 1.0, 1.6));
+    for i in 1..=steps {
+        engine.pointer(sample(PointerPhase::Move, 700.0 - 450.0 * i as f32 / steps as f32, 384.0, 1.0, 1.6 + 2.0 * f64::from(i) / f64::from(steps)));
+    }
+    engine.pointer(sample(PointerPhase::Up, 250.0, 384.0, 0.0, 3.6));
+    engine.advance_exact(7.0);
+    engine.paint_heights()
+}
+
+fn worst_overstress(heights: &[f32]) -> f32 {
+    let width = WIDTH as usize;
+    let mut worst = 0.0f32;
+    for y in 1..767 {
+        for x in 1..width - 1 {
+            let here = heights[y * width + x];
+            for there in [heights[y * width + x + 1], heights[(y + 1) * width + x]] {
+                worst = worst.max(here.max(there) * (here - there).abs());
+            }
+        }
+    }
+    worst / YIELD_STRESS_STIFF
+}
+
+#[test]
+fn scraped_stiff_paint_slumps_into_ridges_instead_of_standing_walls() {
+    for tool in ["Painting knife", "Colour shaper"] {
+        let heights = scrape_through_a_heap(tool);
+        let overstress = worst_overstress(&heights);
+        println!("{tool}: steepest step holds {overstress:.2} times the yield stress, tallest {:.0} px", heights.iter().fold(0.0f32, |a, b| a.max(*b)));
+        assert!(overstress < 12.0, "{tool}: scraped paint stands {overstress:.1} times steeper than stiff paint can hold");
+    }
+}
+
+#[test]
+fn a_firmly_pressed_shaper_leaves_paint_in_the_weave() {
+    let heights = scrape_through_a_heap("Colour shaper");
+    let channel: Vec<f32> = (380..389).flat_map(|y| (560..640).map(move |x| y * WIDTH as usize + x)).map(|i| heights[i]).collect();
+    let painted = channel.iter().filter(|h| **h > 0.1).count() as f32 / channel.len() as f32;
+    println!("shaper channel: {:.0}% painted, mean {:.2} px", painted * 100.0, channel.iter().sum::<f32>() / channel.len() as f32);
+    assert!(painted > 0.5, "a flat blade rides the weave peaks and leaves paint between them, {:.0}% painted", painted * 100.0);
 }

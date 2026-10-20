@@ -148,6 +148,7 @@ impl Engine {
                 self.refresh_heights(&mut encoder);
                 self.levelling.encode(&self.gpu, &mut encoder, &self.window, wet);
                 self.mark_stale(wet.expand(1));
+                self.levelling.encode_toppling(&mut encoder, &self.window, wet);
             }
             self.request_gauge_reading(&mut encoder);
             self.gpu.queue.submit(Some(encoder.finish()));
