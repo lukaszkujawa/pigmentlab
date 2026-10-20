@@ -776,6 +776,7 @@ export component AppWindow inherits Window {
     in property <bool> brush-has-thickness: false;
     in property <bool> brush-has-length: false;
     in-out property <float> brush-thickness: 1.0;
+    in-out property <float> brush-point: 0.0;
     in-out property <float> brush-scale: 1.0;
     in-out property <float> brush-bristles: 200;
     in-out property <float> brush-stiffness: 0.5;
@@ -1067,6 +1068,7 @@ export component AppWindow inherits Window {
                                 Rectangle { height: 1px; background: Theme.line; }
                                 ParamSlider { label: root.brush-has-thickness ? "Width" : "Size"; minimum: 0.13; maximum: 5; value <=> root.brush-scale; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
                                 ParamSlider { visible: root.brush-has-thickness || root.brush-has-length; height: root.brush-has-thickness || root.brush-has-length ? self.preferred-height : 0; label: root.brush-has-length ? "Length" : "Thickness"; minimum: 0.25; maximum: 3; value <=> root.brush-thickness; value-text: "×" + round(self.value * 100) / 100; released => { root.brush-adjusted(); } }
+                                ParamSlider { visible: root.brush-has-length; height: root.brush-has-length ? self.preferred-height : 0; label: "Point"; minimum: 0; maximum: 1; value <=> root.brush-point; value-text: self.value < 0.01 ? "Round" : round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
                                 ParamSlider { label: "Bristles"; minimum: 1; maximum: 600; value <=> root.brush-bristles; value-text: round(self.value); released => { root.brush-adjusted(); } }
                                 ParamSlider { label: "Stiffness"; minimum: 0; maximum: 1; value <=> root.brush-stiffness; value-text: round(self.value * 100) + "%"; released => { root.brush-adjusted(); } }
                                 ParamSlider { label: "Angle"; minimum: 0; maximum: 360; value <=> root.brush-angle; value-text: round(self.value) + "°"; }

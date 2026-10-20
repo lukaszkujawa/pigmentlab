@@ -8,6 +8,7 @@ const LONGEST_REACH: f32 = 3.0;
 const NECK_LENGTH: f32 = 0.15;
 const NECK_WIDTH: f32 = 0.35;
 const TIP_TAPER: f32 = 0.15;
+const POINTED_TIP: f32 = 0.5;
 const WORKING_POINT: f32 = 0.92;
 const LOADED_FROM: f32 = 0.8;
 
@@ -53,33 +54,35 @@ pub fn working_point(pose: &BrushPose, length: f32) -> Vec3 {
     spine(pose, length).at(length * WORKING_POINT)
 }
 
-pub fn blade_extent(offset: f32, length: f32, half_width: f32) -> (f32, f32) {
+pub fn blade_extent(offset: f32, length: f32, half_width: f32, point: f32) -> (f32, f32) {
     let distance = offset.abs().min(half_width);
     let neck_end = NECK_LENGTH * length;
     let start = neck_end * ((distance / half_width - NECK_WIDTH) / (1.0 - NECK_WIDTH)).max(0.0);
     let tip_half_width = half_width * (1.0 - TIP_TAPER);
     let rounding_starts = (length - tip_half_width).max(neck_end);
-    let end = if distance <= tip_half_width {
+    let rounded = if distance <= tip_half_width {
         rounding_starts + (tip_half_width * tip_half_width - distance * distance).sqrt()
     } else {
         neck_end + (rounding_starts - neck_end) * (half_width - distance) / (half_width - tip_half_width)
     };
+    let pointed = length * (1.0 - POINTED_TIP * distance / half_width);
+    let end = rounded + (pointed - rounded) * point.clamp(0.0, 1.0);
     (start, end.min(length).max(start))
 }
 
-pub fn carries_paint(offset: f32, along: f32, length: f32, half_width: f32) -> bool {
-    let (start, end) = blade_extent(offset, length, half_width);
+pub fn carries_paint(offset: f32, along: f32, length: f32, half_width: f32, point: f32) -> bool {
+    let (start, end) = blade_extent(offset, length, half_width, point);
     start + (end - start) * along >= length * LOADED_FROM
 }
 
-pub fn blade_chain(pose: &BrushPose, rest: &[Vec4], vertices_per_spine: usize, length: f32, half_width: f32) -> Vec<Vec4> {
+pub fn blade_chain(pose: &BrushPose, rest: &[Vec4], vertices_per_spine: usize, length: f32, half_width: f32, point: f32) -> Vec<Vec4> {
     let spine = spine(pose, length);
     let across = pose.orientation * Vec3::X;
     let drawn = vertices_per_spine - 1;
     rest.chunks(vertices_per_spine)
         .flat_map(|spine_rest| {
             let offset = spine_rest[1].x;
-            let (start, end) = blade_extent(offset, length, half_width);
+            let (start, end) = blade_extent(offset, length, half_width, point);
             let points: Vec<Vec4> = (0..drawn)
                 .map(|i| {
                     let point = spine.at(start + (end - start) * i as f32 / (drawn - 1) as f32) + across * offset;
@@ -143,12 +146,20 @@ mod tests {
 
     #[test]
     fn the_blade_is_a_gently_tapered_rectangle_with_a_rounded_end() {
-        assert_eq!(blade_extent(0.0, 100.0, 10.0), (0.0, 100.0));
-        let (start, end) = blade_extent(3.0, 100.0, 10.0);
+        assert_eq!(blade_extent(0.0, 100.0, 10.0, 0.0), (0.0, 100.0));
+        let (start, end) = blade_extent(3.0, 100.0, 10.0, 0.0);
         assert!(start == 0.0 && end > 99.0, "the neck is narrow but the middle runs the whole length: {start}..{end}");
-        let (start, end) = blade_extent(8.0, 100.0, 10.0);
+        let (start, end) = blade_extent(8.0, 100.0, 10.0, 0.0);
         assert!(start > 5.0 && start < 15.0 && end > 92.0 && end < 97.0, "near the side it starts past the neck and ends on the rounded tip: {start}..{end}");
-        let (start, end) = blade_extent(9.5, 100.0, 10.0);
+        let (start, end) = blade_extent(9.5, 100.0, 10.0, 0.0);
         assert!(end > 30.0 && end < 92.0, "the outermost edge tapers in gently along the blade: {start}..{end}");
+    }
+
+    #[test]
+    fn the_point_control_narrows_the_rounded_end_to_a_sharp_point() {
+        let reach = |offset: f32, point: f32| blade_extent(offset, 100.0, 10.0, point).1;
+        assert_eq!(reach(0.0, 1.0), 100.0, "the centre line always runs to the tip");
+        assert!(reach(5.0, 1.0) < reach(5.0, 0.5) && reach(5.0, 0.5) < reach(5.0, 0.0), "a pointier blade ends sooner away from its centre line");
+        assert!((reach(5.0, 1.0) - 75.0).abs() < 1e-3, "a sharp blade tapers in straight lines to its point, got {}", reach(5.0, 1.0));
     }
 }

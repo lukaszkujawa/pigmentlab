@@ -37,6 +37,7 @@ pub struct BrushPreset {
     pub blade_layer: f32,
     pub pressed_blade_layer: f32,
     pub handle_lean: f32,
+    pub tip_point: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -51,11 +52,12 @@ pub struct BrushAdjustments {
     pub bristle_count: Option<u32>,
     pub stiffness: f32,
     pub thickness: f32,
+    pub point: f32,
 }
 
 impl Default for BrushAdjustments {
     fn default() -> Self {
-        Self { scale: 1.0, bristle_count: None, stiffness: 0.5, thickness: 1.0 }
+        Self { scale: 1.0, bristle_count: None, stiffness: 0.5, thickness: 1.0, point: 0.0 }
     }
 }
 
@@ -79,6 +81,7 @@ impl BrushPreset {
             blade_layer: 0.0,
             pressed_blade_layer: 0.0,
             handle_lean: 0.0,
+            tip_point: 0.0,
         }
     }
 
@@ -103,7 +106,7 @@ impl BrushPreset {
     }
 
     pub fn reach_from_handle(&self) -> f32 {
-        let held_blade = if self.handle_lean > 0.0 { self.length } else { 0.0 };
+        let held_blade = if self.is_knife() { self.length } else { 0.0 };
         self.bend_reach() + self.splayed_radius() + held_blade
     }
 
@@ -156,7 +159,12 @@ impl BrushPreset {
     }
 
     pub fn blade_flattening(&self, pressure: f32) -> f32 {
-        if self.is_rigid() { pressure.clamp(0.0, 1.0).powi(3) } else { 0.0 }
+        let pressure = pressure.clamp(0.0, 1.0);
+        match (self.is_knife(), self.is_rigid()) {
+            (true, _) => pressure.powi(3),
+            (false, true) => pressure,
+            (false, false) => 0.0,
+        }
     }
 
     pub fn has_thickness(&self) -> bool {
@@ -171,6 +179,10 @@ impl BrushPreset {
         self.shape == BrushShape::Blade
     }
 
+    pub fn is_knife(&self) -> bool {
+        self.handle_lean > 0.0
+    }
+
     pub fn default_round() -> Self {
         Self::round(200, cm(0.35), cm(2.2))
     }
@@ -182,14 +194,15 @@ impl BrushPreset {
     pub fn adjusted(self, adjustments: BrushAdjustments) -> Self {
         let scale = adjustments.scale.clamp(0.1, 5.0);
         let thickness = if self.has_thickness() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
-        let blade_length = if self.is_rigid() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
+        let blade_length = if self.is_knife() { adjustments.thickness.clamp(0.25, 3.0) } else { 1.0 };
         let natural_count = (self.bristle_count as f32 * scale * scale * thickness).round() as u32;
         let bristle_count = adjustments.bristle_count.unwrap_or(natural_count).clamp(1, 600);
         let share_per_hair = (natural_count as f32 / bristle_count as f32).min(MAX_SHARE_PER_HAIR);
         let stiffness = adjustments.stiffness.clamp(0.0, 1.0);
         let scaled = Self { length: self.length * scale.sqrt() * blade_length, width: self.width * scale, thickness: self.thickness * scale * thickness, ..self };
         if self.is_rigid() {
-            return Self { bristle_count: (self.bristle_count as f32 * scale * scale).round() as u32, ..scaled };
+            let tip_point = if self.is_knife() { adjustments.point.clamp(0.0, 1.0) } else { 0.0 };
+            return Self { bristle_count: (self.bristle_count as f32 * scale * scale).round() as u32, tip_point, ..scaled };
         }
         Self {
             bristle_count,

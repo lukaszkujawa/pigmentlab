@@ -213,7 +213,7 @@ fn main() -> Result<(), slint::PlatformError> {
             app.set_brush_bristles(preset.adjusted(adjustments_of(&app, None)).bristle_count as f32);
         }
         app.set_brush_has_thickness(preset.is_some_and(|preset| preset.has_thickness()));
-        app.set_brush_has_length(preset.is_some_and(|preset| preset.is_rigid()));
+        app.set_brush_has_length(preset.is_some_and(|preset| preset.is_knife()));
         app.set_tube_selected(tool_name(index.max(0) as usize) == TUBE_TOOL);
         app.set_splatter_selected(tool_name(index.max(0) as usize) == SPLATTER_TOOL);
         shared.borrow_mut().brush = Some((index.max(0) as usize, adjustments_of(&app, None)));
@@ -478,6 +478,7 @@ fn record(active: &mut Recorder, now: f64, requests: &Requests) {
         }
         active.param(now, "stiffness", adjustments.stiffness);
         active.param(now, "thickness", adjustments.thickness);
+        active.param(now, "point", adjustments.point);
     }
     if let Some(tooth) = requests.tooth {
         active.param(now, "tooth", tooth);
@@ -664,7 +665,7 @@ fn paint_settings_of(app: &AppWindow) -> PaintSettings {
 }
 
 fn adjustments_of(app: &AppWindow, bristle_count: Option<u32>) -> BrushAdjustments {
-    BrushAdjustments { scale: app.get_brush_scale(), bristle_count, stiffness: app.get_brush_stiffness(), thickness: app.get_brush_thickness() }
+    BrushAdjustments { scale: app.get_brush_scale(), bristle_count, stiffness: app.get_brush_stiffness(), thickness: app.get_brush_thickness(), point: app.get_brush_point() }
 }
 
 #[cfg(test)]

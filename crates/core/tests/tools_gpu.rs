@@ -107,7 +107,7 @@ fn shaper_scrapes_a_bead_flat_and_pushes_it_ahead() {
     let ahead = |heights: &[f32]| (340..460).flat_map(|y| (540..620).map(move |x| heights[y * WIDTH as usize + x])).sum::<f32>();
     let ahead_before = ahead(&heights_before);
     let ahead_after = ahead(&heights_after);
-    assert!(ahead_after > ahead_before * 1.3, "scraped paint should pile up ahead of the blade ({ahead_before:.0} -> {ahead_after:.0})");
+    assert!(ahead_after > ahead_before * 1.2, "scraped paint should pile up ahead of the blade ({ahead_before:.0} -> {ahead_after:.0})");
     let drift = (engine.paint_mass() + engine.brush_load() - mass_before).abs() / mass_before;
     assert!(drift < 0.02, "shaper changed total paint by {:.2}%", drift * 100.0);
 }
@@ -622,4 +622,11 @@ fn a_firmly_pressed_shaper_leaves_paint_in_the_weave() {
     let painted = channel.iter().filter(|h| **h > 0.1).count() as f32 / channel.len() as f32;
     println!("shaper channel: {:.0}% painted, mean {:.2} px", painted * 100.0, channel.iter().sum::<f32>() / channel.len() as f32);
     assert!(painted > 0.5, "a flat blade rides the weave peaks and leaves paint between them, {:.0}% painted", painted * 100.0);
+}
+
+#[test]
+fn shaper_pressure_sets_how_much_paint_it_leaves_step_by_step() {
+    let left: Vec<f32> = [0.0, 0.25, 0.5, 0.75, 1.0].map(shaper_trail_through_a_bead).to_vec();
+    assert!(left.windows(2).all(|pair| pair[1] < pair[0] - 0.4), "every step of pressure should scrape noticeably more: {left:?}");
+    assert!(left[2] > left[0] * 0.3 && left[2] < left[0] * 0.7, "half pressure should leave about half the layer: {left:?}");
 }

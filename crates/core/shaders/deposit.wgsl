@@ -349,7 +349,8 @@ fn roll_overflow(centre: vec2<f32>, forward: vec2<f32>, nearest: f32, reach: f32
         roll = max(roll, state.x + state.w - blade_level);
     }
     let yield_stress = exp(mix(log(YIELD_STRESS_STIFF), log(YIELD_STRESS_OILY), medium));
-    return clamp(roll / sqrt(2.0 * yield_stress * reach) - 1.0, 0.0, 1.0);
+    let roll_width = select(max(reach, roll), reach, STEEL);
+    return clamp(roll / sqrt(2.0 * yield_stress * roll_width) - 1.0, 0.0, 1.0);
 }
 
 fn ridge_amount(height: f32, limit: f32, drag: f32) -> f32 {
@@ -645,8 +646,10 @@ fn grant_displacement(@builtin(global_invocation_id) id: vec3<u32>) {
     let forward_share = FORWARD_SHARE * sliding * (1.0 - spill);
     var offsets: array<vec2<f32>, MAX_PUSH_TARGETS>;
     var shares: array<f32, MAX_PUSH_TARGETS>;
-    offsets[0] = side * (PUSH_DISTANCE + spill * reach);
-    offsets[1] = -offsets[0];
+    let spread = side * (PUSH_DISTANCE + spill * reach);
+    let lead = forward * select(spill * nearest, 0.0, STEEL);
+    offsets[0] = spread + lead;
+    offsets[1] = lead - spread;
     shares[0] = 0.5 * (1.0 - forward_share);
     shares[1] = shares[0];
     for (var hop = 0u; hop < hops; hop++) {

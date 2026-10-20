@@ -124,7 +124,7 @@ fn working_face(preset: &BrushPreset, rest: &[Vec4], id: u32) -> u32 {
     let level = id % per_spine;
     let offset = rest[(id - level) as usize + 1].x;
     let along = (level - 1) as f32 / (per_spine - 2) as f32;
-    let meets_paint = preset.handle_lean > 0.0 && carries_paint(offset, along, preset.length, preset.width * 0.5);
+    let meets_paint = preset.is_knife() && carries_paint(offset, along, preset.length, preset.width * 0.5, preset.tip_point);
     if meets_paint { WORKING_FACE_FLAG } else { 0 }
 }
 

@@ -38,6 +38,8 @@ pub struct BrushUniform {
 }
 
 const PACKING_GRID: u32 = 64;
+const TRAIL_FOLLOW: f32 = 0.1;
+const TRAIL_MIN_TRAVEL: f32 = 0.05;
 const AREA_PER_HAIR_LAYER: f32 = 6.0;
 const MIN_CONTACT_LAYERS: f32 = 0.4;
 
@@ -58,6 +60,7 @@ fn contact_layers(preset: &BrushPreset) -> f32 {
 struct Motion {
     previous: BrushPose,
     tuft_centre: Vec2,
+    trailing: Vec2,
 }
 
 pub struct Brush {
@@ -150,7 +153,7 @@ impl Brush {
             velocity,
             relative,
             packing: packing_buffer,
-            motion: Cell::new(Motion { previous: start, tuft_centre: Vec2::ZERO }),
+            motion: Cell::new(Motion { previous: start, tuft_centre: Vec2::ZERO, trailing: Vec2::ZERO }),
             bind_group,
             prepare: pipeline("prepare"),
             gather: pipeline("gather"),
@@ -180,12 +183,12 @@ impl Brush {
     }
 
     fn dipped_loads(&self) -> impl Iterator<Item = f32> + '_ {
-        let held_blade = self.preset.handle_lean > 0.0;
+        let held_blade = self.preset.is_knife();
         (0..self.preset.bristle_count * SAMPLES_PER_BRISTLE).map(move |sample| {
             let bristle = (sample / SAMPLES_PER_BRISTLE) as usize;
             let offset = self.rest[bristle * VERTICES_PER_BRISTLE as usize + 1].x;
             let along = (sample % SAMPLES_PER_BRISTLE) as f32 / (SAMPLES_PER_BRISTLE - 1) as f32;
-            let loaded = !held_blade || super::knife::carries_paint(offset, along, self.preset.length, self.preset.width * 0.5);
+            let loaded = !held_blade || super::knife::carries_paint(offset, along, self.preset.length, self.preset.width * 0.5, self.preset.tip_point);
             if loaded { self.preset.sample_capacity * self.load_shares[bristle] } else { 0.0 }
         })
     }
@@ -218,14 +221,14 @@ impl Brush {
         gpu.queue.write_buffer(&self.chain, 0, bytemuck::cast_slice(&canvas));
         gpu.queue.write_buffer(&self.velocity, 0, bytemuck::cast_slice(&zeros));
         gpu.queue.write_buffer(&self.relative, 0, bytemuck::cast_slice(&zeros));
-        self.motion.set(Motion { previous: *pose, tuft_centre: pose.position.truncate() });
+        self.motion.set(Motion { previous: *pose, tuft_centre: pose.position.truncate(), trailing: Vec2::ZERO });
     }
 
-    fn place_blade(&self, gpu: &Gpu, pose: &BrushPose) {
-        let chain = if self.preset.handle_lean > 0.0 {
-            super::knife::blade_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize, self.preset.length, self.preset.width * 0.5)
+    fn place_blade(&self, gpu: &Gpu, pose: &BrushPose, trailing: Vec2) {
+        let chain = if self.preset.is_knife() {
+            super::knife::blade_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize, self.preset.length, self.preset.width * 0.5, self.preset.tip_point)
         } else {
-            super::shaper::flexed_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize)
+            super::shaper::flexed_chain(pose, &self.rest, VERTICES_PER_BRISTLE as usize, trailing)
         };
         let to_brush = pose.canvas_to_brush();
         let positions: Vec<Vec4> = chain
@@ -275,10 +278,12 @@ impl Brush {
             wet_floor_keep: self.preset.wet_floor_keep(pressure),
             _padding: [0.0; 2],
         };
-        self.motion.set(Motion { previous: *pose, tuft_centre });
+        let travel = (pose.position - motion.previous.position).truncate();
+        let trailing = if travel.length() > TRAIL_MIN_TRAVEL { motion.trailing.lerp(-travel.normalize(), TRAIL_FOLLOW) } else { motion.trailing };
+        self.motion.set(Motion { previous: *pose, tuft_centre, trailing });
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         if self.preset.is_rigid() {
-            self.place_blade(gpu, pose);
+            self.place_blade(gpu, pose, trailing.normalize_or_zero());
             return;
         }
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("bristles"), timestamp_writes: None });

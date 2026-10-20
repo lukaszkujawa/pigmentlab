@@ -54,6 +54,7 @@ impl Engine {
             "bristles" => self.set_brush_adjustments(BrushAdjustments { bristle_count: Some(value as u32), ..self.adjustments }),
             "stiffness" => self.set_brush_adjustments(BrushAdjustments { stiffness: value, ..self.adjustments }),
             "thickness" => self.set_brush_adjustments(BrushAdjustments { thickness: value, ..self.adjustments }),
+            "point" => self.set_brush_adjustments(BrushAdjustments { point: value, ..self.adjustments }),
             "angle" => self.set_brush_angle(value),
             "load" => self.set_paint(PaintSettings { load: value, ..self.paint }),
             "medium" => self.set_paint(PaintSettings { medium: value, ..self.paint }),

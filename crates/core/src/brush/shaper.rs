@@ -1,10 +1,11 @@
 use super::frame::BrushPose;
-use glam::{Vec3, Vec4};
+use glam::{Vec2, Vec3, Vec4};
 
-pub fn flexed_chain(pose: &BrushPose, rest: &[Vec4], vertices_per_spine: usize) -> Vec<Vec4> {
+pub fn flexed_chain(pose: &BrushPose, rest: &[Vec4], vertices_per_spine: usize, trailing: Vec2) -> Vec<Vec4> {
     let down = pose.orientation * Vec3::NEG_Z;
     let face = (pose.orientation * Vec3::Y).truncate().normalize_or_zero();
-    let folds_over = if face.dot(down.truncate()) < 0.0 { -face } else { face };
+    let leaning_over = if face.dot(down.truncate()) < 0.0 { -face } else { face };
+    let folds_over = if trailing == Vec2::ZERO { leaning_over } else { trailing };
     rest.iter()
         .enumerate()
         .map(|(index, vertex)| {
@@ -46,13 +47,13 @@ mod tests {
 
     #[test]
     fn a_lifted_shaper_hangs_straight() {
-        let chain = flexed_chain(&held_at(150.0, 0.0), &spine(100.0), VERTICES);
+        let chain = flexed_chain(&held_at(150.0, 0.0), &spine(100.0), VERTICES, Vec2::ZERO);
         assert!((chain[VERTICES - 1].z - 50.0).abs() < 1e-3 && chain[VERTICES - 1].x.abs() < 1e-3 && chain[VERTICES - 1].y.abs() < 1e-3);
     }
 
     #[test]
     fn a_pressed_shaper_lays_its_tip_flat_without_stretching() {
-        let chain = flexed_chain(&held_at(60.0, 0.0), &spine(100.0), VERTICES);
+        let chain = flexed_chain(&held_at(60.0, 0.0), &spine(100.0), VERTICES, Vec2::ZERO);
         assert!((length_of(&chain) - 100.0).abs() < 1e-3, "chain length {}", length_of(&chain));
         assert_eq!(chain[VERTICES - 1].z, 0.0);
         assert!((chain[VERTICES - 1].truncate().truncate().length() - 40.0).abs() < 1e-3, "the 40 px pressed past the canvas should lie flat, tip at {:?}", chain[VERTICES - 1]);
@@ -60,7 +61,14 @@ mod tests {
 
     #[test]
     fn a_leaning_shaper_folds_on_the_way_its_blade_points() {
-        let chain = flexed_chain(&held_at(60.0, -0.3), &spine(100.0), VERTICES);
+        let chain = flexed_chain(&held_at(60.0, -0.3), &spine(100.0), VERTICES, Vec2::ZERO);
         assert!(chain[VERTICES - 1].y > chain[6].y + 30.0, "the flat tip should carry on past the touchdown the way the blade points: {:?}", &chain[6..]);
+    }
+
+    #[test]
+    fn a_dragged_shaper_squashes_its_tip_back_against_the_travel() {
+        let chain = flexed_chain(&held_at(95.0, 0.0), &spine(100.0), VERTICES, Vec2::NEG_X);
+        let tip = chain[VERTICES - 1];
+        assert!(tip.x < -4.0 && tip.y.abs() < 1e-3 && tip.z == 0.0, "the squashed tip should trail behind the stroke: {tip:?}");
     }
 }
