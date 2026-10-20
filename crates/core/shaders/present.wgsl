@@ -1,6 +1,8 @@
 const LIGHTING_FLOOR: f32 = 0.35;
 const EDGE_SOFTNESS_PIXELS: f32 = 1.5;
-const EDGE_SOFTNESS_CELLS: f32 = 4.0;
+const EDGE_SOFTNESS_CELLS: f32 = 1.0;
+const ALBEDO_SHARPENING: f32 = 0.6;
+const RELIEF_SHARPENING: f32 = 0.5;
 const MAX_SUPERSAMPLES: f32 = 3.0;
 const OIL_REFLECTANCE: f32 = 0.04;
 const LAMP_RADIANCE: f32 = 14.0;
@@ -60,11 +62,22 @@ fn b_spline_slope(t: f32) -> vec4<f32> {
     return vec4<f32>(-u * u, 3.0 * t * t - 4.0 * t, -3.0 * t * t + 2.0 * t + 1.0, t * t) / 2.0;
 }
 
+fn catmull_rom(t: f32) -> vec4<f32> {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    return vec4<f32>(-t3 + 2.0 * t2 - t, 3.0 * t3 - 5.0 * t2 + 2.0, -3.0 * t3 + 4.0 * t2 + t, t3 - t2) * 0.5;
+}
+
+fn catmull_rom_slope(t: f32) -> vec4<f32> {
+    let t2 = t * t;
+    return vec4<f32>(-3.0 * t2 + 4.0 * t - 1.0, 9.0 * t2 - 10.0 * t, -9.0 * t2 + 8.0 * t + 1.0, 3.0 * t2 - 2.0 * t) * 0.5;
+}
+
 fn relief(corner: vec2<i32>, f: vec2<f32>) -> Patch {
-    let wx = b_spline(f.x);
-    let wy = b_spline(f.y);
-    let dx = b_spline_slope(f.x);
-    let dy = b_spline_slope(f.y);
+    let wx = mix(b_spline(f.x), catmull_rom(f.x), RELIEF_SHARPENING);
+    let wy = mix(b_spline(f.y), catmull_rom(f.y), RELIEF_SHARPENING);
+    let dx = mix(b_spline_slope(f.x), catmull_rom_slope(f.x), RELIEF_SHARPENING);
+    let dy = mix(b_spline_slope(f.y), catmull_rom_slope(f.y), RELIEF_SHARPENING);
     var sampled = Patch(0.0, vec2<f32>(0.0));
     for (var j = 0; j < 4; j++) {
         for (var i = 0; i < 4; i++) {
@@ -91,8 +104,10 @@ fn averaged(tally: Tally) -> Look {
 }
 
 fn class_look(near: Tally, spread: Tally) -> Look {
-    if (near.weight > 1e-6) { return averaged(near); }
-    return averaged(spread);
+    if (near.weight <= 1e-6) { return averaged(spread); }
+    let sharp = averaged(near);
+    let soft = averaged(spread);
+    return Look(max(sharp.albedo + (sharp.albedo - soft.albedo) * ALBEDO_SHARPENING, vec3<f32>(0.0)), sharp.finish);
 }
 
 fn look_at(p: vec2<f32>) -> Look {
@@ -127,8 +142,8 @@ fn look_at(p: vec2<f32>) -> Look {
             spread_out = tallied(spread_out, albedo.rgb, finish, spread * (1.0 - covered));
         }
     }
-    if (spread_in.weight <= 1e-6) { return averaged(spread_out); }
-    if (spread_out.weight <= 1e-6) { return averaged(spread_in); }
+    if (spread_in.weight <= 1e-6) { return class_look(near_out, spread_out); }
+    if (spread_out.weight <= 1e-6) { return class_look(near_in, spread_in); }
     let inside = class_look(near_in, spread_in);
     let outside = class_look(near_out, spread_out);
     let distance = (mask.value - 0.5) / max(length(mask.slope), 1e-3);
