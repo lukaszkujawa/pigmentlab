@@ -776,6 +776,13 @@ fn report_brush_contents(load: f32, absorption: vec3<f32>, scattering: vec3<f32>
     }
 }
 
+fn wettable(base: u32, i: u32, wet: f32) -> bool {
+    let soaked = STRAND_FILL * deposit.sample_capacity;
+    let toward_root = select(0.0, sample_load[base + i - 1u], i > 0u);
+    let toward_tip = select(0.0, sample_load[base + i + 1u], i + 1u < deposit.samples_per_bristle);
+    return sample_load[base + i] >= wet || max(toward_root, toward_tip) >= soaked;
+}
+
 @compute @workgroup_size(64)
 fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
     let bristle = id.x;
@@ -801,7 +808,7 @@ fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
     var given_scattering = vec4<f32>(0.0);
     for (var i = 0u; i < deposit.samples_per_bristle; i++) {
         let difference = (sample_load[base + i] - mean) * rate;
-        if (difference < 0.0 && sample_load[base + i] >= wet) { wanted -= difference; }
+        if (difference < 0.0 && wettable(base, i, wet)) { wanted -= difference; }
         if (difference <= 0.0) { continue; }
         given += difference;
         given_absorption += sample_absorption[base + i] * difference;
@@ -819,7 +826,7 @@ fn replenish(@builtin(global_invocation_id) id: vec3<u32>) {
             sample_load[here] = load - difference * moved / given;
             continue;
         }
-        if (load < wet) { continue; }
+        if (!wettable(base, i, wet)) { continue; }
         let received = -difference * moved / wanted;
         let total_here = load + received;
         sample_absorption[here] = (sample_absorption[here] * load + given_absorption * received) / total_here;
@@ -894,4 +901,36 @@ fn film_cell(local: vec2<u32>, absorption: vec3<f32>, scattering: vec3<f32>) -> 
         atomicStore(&paint[top_cell + channel], 0);
     }
     return top;
+}
+
+const FACE_WORKGROUP: u32 = 256u;
+const FACE_MIXING_PER_SECOND: f32 = 4.0;
+var<workgroup> face_totals: array<array<f32, 8>, FACE_WORKGROUP>;
+
+@compute @workgroup_size(256)
+fn mix_blade_face(@builtin(local_invocation_index) thread: u32) {
+    var total = array<f32, 8>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    for (var sample = thread; sample < deposit.sample_count; sample += FACE_WORKGROUP) {
+        let load = sample_load[sample];
+        let absorption = sample_absorption[sample] * load;
+        let scattering = sample_scattering[sample].xyz * load;
+        total = array<f32, 8>(total[0] + load, total[1] + absorption.x, total[2] + absorption.y, total[3] + absorption.z, total[4] + absorption.w, total[5] + scattering.x, total[6] + scattering.y, total[7] + scattering.z);
+    }
+    face_totals[thread] = total;
+    for (var stride = FACE_WORKGROUP / 2u; stride > 0u; stride /= 2u) {
+        workgroupBarrier();
+        if (thread < stride) {
+            for (var channel = 0u; channel < 8u; channel++) { face_totals[thread][channel] += face_totals[thread + stride][channel]; }
+        }
+    }
+    workgroupBarrier();
+    let sum = face_totals[0];
+    if (sum[0] <= 1e-6) { return; }
+    let mean_absorption = vec4<f32>(sum[1], sum[2], sum[3], sum[4]) / sum[0];
+    let mean_scattering = vec4<f32>(sum[5], sum[6], sum[7], 0.0) / sum[0];
+    let rate = min(FACE_MIXING_PER_SECOND * deposit.dt, 1.0);
+    for (var sample = thread; sample < deposit.sample_count; sample += FACE_WORKGROUP) {
+        sample_absorption[sample] = mix(sample_absorption[sample], mean_absorption, rate);
+        sample_scattering[sample] = mix(sample_scattering[sample], mean_scattering, rate);
+    }
 }

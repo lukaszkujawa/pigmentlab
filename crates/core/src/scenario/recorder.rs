@@ -9,12 +9,17 @@ pub struct Recorder {
     seed: u64,
     start: f64,
     first_bottle: u32,
+    palette: bool,
     steps: Vec<Step>,
 }
 
 impl Recorder {
     pub fn start(canvas: CanvasSize, seed: u64, start: f64, first_bottle: u32) -> Self {
-        Self { canvas, seed, start, first_bottle, steps: Vec::new() }
+        Self { canvas, seed, start, first_bottle, palette: false, steps: Vec::new() }
+    }
+
+    pub fn with_palette(self, palette: bool) -> Self {
+        Self { palette, ..self }
     }
 
     pub fn pointer(&mut self, sample: PointerSample) {
@@ -103,6 +108,10 @@ impl Recorder {
         self.push(time, Action::Clear);
     }
 
+    pub fn clean_palette(&mut self, time: f64) {
+        self.push(time, Action::CleanPalette);
+    }
+
     fn push(&mut self, time: f64, action: Action) {
         self.steps.push(Step { t: time - self.start, action });
     }
@@ -115,6 +124,7 @@ impl Recorder {
             tolerance: Tolerance::default(),
             show_bristles: false,
             levelling: true,
+            palette: self.palette,
             steps: self.steps,
         }
     }

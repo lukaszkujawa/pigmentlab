@@ -731,6 +731,8 @@ export component AppWindow inherits Window {
     out property <length> canvas-shown-width: canvas-image.width;
     in property <length> canvas-width: 1024px;
     in property <length> canvas-height: 768px;
+    in property <length> painting-width: 1024px;
+    in property <length> palette-left: 1024px;
     in property <float> canvas-scale: 1.0;
     in property <int> canvas-pixel-width: 0;
     in property <int> canvas-pixel-height: 0;
@@ -831,6 +833,7 @@ export component AppWindow inherits Window {
     callback pause-toggled(bool);
     callback canvas-changed();
     callback clear();
+    callback clean-palette();
     callback undo();
     callback save();
     callback dry();
@@ -913,11 +916,15 @@ export component AppWindow inherits Window {
                     clip: true;
                     horizontal-stretch: 1;
 
-                    Rectangle {
-                        x: max(canvas-image.x, -root.shadow-margin);
+                    for span in [
+                        { left: 0px, right: root.painting-width },
+                        { left: root.palette-left, right: root.canvas-width },
+                    ]: Rectangle {
+                        x: max(canvas-image.x + span.left * root.zoom, -root.shadow-margin);
                         y: max(canvas-image.y, -root.shadow-margin);
-                        width: min(canvas-image.x + canvas-image.width, viewport.width + root.shadow-margin) - self.x;
+                        width: min(canvas-image.x + span.right * root.zoom, viewport.width + root.shadow-margin) - self.x;
                         height: min(canvas-image.y + canvas-image.height, viewport.height + root.shadow-margin) - self.y;
+                        visible: span.right > span.left;
                         background: white;
                         drop-shadow-blur: 24px;
                         drop-shadow-color: #00000099;
@@ -985,6 +992,25 @@ export component AppWindow inherits Window {
                             self.zoom-around(pow(2, event.delta-y / 300px));
                             return accept;
                         }
+                    }
+
+                    if root.canvas-width > root.palette-left: Rectangle {
+                        width: clean-caption.preferred-width + 24px;
+                        height: 28px;
+                        x: canvas-image.x + (root.palette-left + root.canvas-width) / 2 * root.zoom - self.width / 2;
+                        y: min(canvas-image.y + canvas-image.height, viewport.height) - self.height - 12px;
+                        border-radius: 14px;
+                        background: clean-area.pressed ? #000000c0 : (clean-area.has-hover ? #000000a0 : #00000070);
+                        animate background { duration: 100ms; }
+                        clean-caption := Text {
+                            text: "Clean palette";
+                            color: white;
+                            font-size: 12px;
+                            font-weight: 500;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        clean-area := TouchArea { clicked => { root.clean-palette(); } }
                     }
 
                     if root.show-bristles && root.tube-selected && canvas-area.has-hover: Rectangle {

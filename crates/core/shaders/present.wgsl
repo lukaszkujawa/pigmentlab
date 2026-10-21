@@ -185,12 +185,16 @@ fn shaded(p: vec2<f32>) -> vec3<f32> {
     return clamp(albedo * lighting + vec3<f32>(specular), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+fn coverage(centre: vec2<f32>, left: f32, right: f32) -> f32 {
+    let edge = min(min(centre.x - left, right - centre.x), min(centre.y, f32(composite.canvas_height) - centre.y));
+    return clamp(edge * view.scale + 0.5, 0.0, 1.0);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let centre = (in.position.xy - view.origin) / view.scale;
     let extent = vec2<f32>(canvas_extent());
-    let edge = min(min(centre.x, extent.x - centre.x), min(centre.y, extent.y - centre.y));
-    let shown = clamp(edge * view.scale + 0.5, 0.0, 1.0);
+    let shown = max(coverage(centre, 0.0, f32(composite.painting_width)), coverage(centre, f32(composite.palette_start), extent.x));
     if (shown <= 0.0) { return vec4<f32>(0.0); }
     let samples = i32(clamp(ceil(1.0 / view.scale), 1.0, MAX_SUPERSAMPLES));
     let footprint = 1.0 / view.scale;

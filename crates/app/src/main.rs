@@ -9,7 +9,7 @@ use pigmentlab_core::brush::{BrushAdjustments, DipPart, PRESETS};
 use pigmentlab_core::engine::{DRIP_TOOL, PaintSettings, SPLATTER_TOOL, TUBE_TOOL, tool_names};
 use pigmentlab_core::paint::NOZZLE_RADIUS;
 use pigmentlab_core::scenario::Recorder;
-use pigmentlab_core::canvas::{Medium, Surface};
+use pigmentlab_core::canvas::{Medium, PALETTE_GAP, Surface};
 use pigmentlab_core::pigment::{Coefficients, PALETTE};
 use pigmentlab_core::{CanvasSize, Engine, Gpu, Hover, Lighting, PointerPhase, PointerSample, Viewport};
 use glam::{UVec2, Vec2};
@@ -66,6 +66,7 @@ struct Requests {
     bottle_actions: Vec<BottleAction>,
     tooth: Option<f32>,
     clear: bool,
+    clean_palette: bool,
     undo: bool,
     save: Option<PathBuf>,
     new_canvas: Option<CanvasSpec>,
@@ -246,6 +247,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let shared = requests.clone();
     app.on_clear(move || shared.borrow_mut().clear = true);
     let shared = requests.clone();
+    app.on_clean_palette(move || shared.borrow_mut().clean_palette = true);
+    let shared = requests.clone();
     app.on_cut_strings(move || shared.borrow_mut().cut_strings = true);
     let shared = requests.clone();
     let app_weak = app.as_weak();
@@ -346,7 +349,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     tablet.attach(app.window());
                 }
                 if let slint::GraphicsAPI::WGPU30 { device, queue, .. } = graphics_api {
-                    let mut created = Engine::new(Gpu::shared(device, queue), DEFAULT_CANVAS, SEED);
+                    let mut created = Engine::with_palette(Gpu::shared(device, queue), DEFAULT_CANVAS, SEED);
                     created.dip(PALETTE[2]);
                     engine = Some(created);
                 }
@@ -359,7 +362,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     requests.borrow_mut().follow_hovering_pen(pen);
                     update_recorder(&mut recorder, &app, engine, &custom.borrow(), now, &requests.borrow());
                     if let Some(spec) = requests.borrow_mut().new_canvas.take() {
-                        *engine = Engine::new(engine.gpu().clone(), spec.size, SEED);
+                        *engine = Engine::with_palette(engine.gpu().clone(), spec.size, SEED);
                         engine.set_sheet(spec.surface, spec.ground);
                         show_canvas_size(&app, spec.size);
                         app.invoke_fit_canvas();
@@ -420,7 +423,7 @@ fn stage_view(app: &AppWindow, canvas: CanvasSize) -> Viewport {
 fn update_recorder(recorder: &mut Option<Recorder>, app: &AppWindow, engine: &Engine, custom: &[[u8; 3]], now: f64, requests: &Requests) {
     if app.get_recording() {
         if recorder.is_none() {
-            let started = recorder.insert(Recorder::start(engine.canvas_size(), SEED, now, engine.drips().next_bottle_id()));
+            let started = recorder.insert(Recorder::start(engine.painting_size(), SEED, now, engine.drips().next_bottle_id()).with_palette(engine.has_palette()));
             record(started, now, &state_of(app, custom));
         }
         record(recorder.as_mut().expect("recording has started"), now, requests);
@@ -507,6 +510,9 @@ fn record(active: &mut Recorder, now: f64, requests: &Requests) {
     if requests.clear {
         active.clear(now);
     }
+    if requests.clean_palette {
+        active.clean_palette(now);
+    }
     if requests.undo {
         active.undo(now);
     }
@@ -568,6 +574,9 @@ fn apply_requests(engine: &mut Engine, app: &AppWindow, requests: &mut Requests,
     if std::mem::take(&mut requests.clear) {
         engine.clear();
     }
+    if std::mem::take(&mut requests.clean_palette) {
+        engine.clean_palette();
+    }
     if std::mem::take(&mut requests.dry) {
         engine.dry();
     }
@@ -604,12 +613,15 @@ fn stamp() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-fn show_canvas_size(app: &AppWindow, size: CanvasSize) {
+fn show_canvas_size(app: &AppWindow, painting: CanvasSize) {
     let scale = app.get_canvas_scale();
-    app.set_canvas_width(size.width as f32 / scale);
-    app.set_canvas_height(size.height as f32 / scale);
-    app.set_canvas_pixel_width(size.width as i32);
-    app.set_canvas_pixel_height(size.height as i32);
+    let shown = painting.with_palette();
+    app.set_canvas_width(shown.width as f32 / scale);
+    app.set_canvas_height(shown.height as f32 / scale);
+    app.set_painting_width(painting.width as f32 / scale);
+    app.set_palette_left((painting.width + PALETTE_GAP) as f32 / scale);
+    app.set_canvas_pixel_width(painting.width as i32);
+    app.set_canvas_pixel_height(painting.height as i32);
 }
 
 fn swatches(custom: &[[u8; 3]]) -> slint::ModelRc<slint::Color> {

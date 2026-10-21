@@ -48,3 +48,54 @@ fn a_chosen_ground_survives_surface_changes_until_reset_to_natural() {
     let natural = mean_rgb(&image::DynamicImage::ImageRgba8(engine.read_back()).to_rgb8());
     assert!(natural.iter().all(|channel| *channel > 200.0), "{natural:?}");
 }
+
+fn squeeze(engine: &mut Engine, x: f32, y: f32, start: f64) -> f64 {
+    use pigmentlab_core::{PointerPhase, PointerSample};
+    let at = |phase, time| PointerSample { phase, x, y, pressure: 0.7, tilt: [0.0; 2], rotation: 0.0, time };
+    engine.pointer(at(PointerPhase::Down, start));
+    engine.pointer(at(PointerPhase::Move, start + 0.6));
+    engine.pointer(at(PointerPhase::Up, start + 0.6));
+    engine.advance_exact(start + 0.8);
+    start + 1.0
+}
+
+#[test]
+fn the_palette_is_smooth_keeps_its_paint_through_dry_and_clear_and_only_cleaning_scrapes_it() {
+    let mut engine = Engine::with_palette(Gpu::headless(), SIZE, 1);
+    let width = engine.canvas_size().width as usize;
+    assert_eq!(engine.painting_size(), SIZE);
+    assert!(width > SIZE.width as usize);
+    let relief = engine.canvas_relief();
+    assert!((0..SIZE.height as usize).all(|y| (SIZE.width as usize..width).all(|x| relief[y * width + x] == 0.0)));
+    assert!(relief[..SIZE.width as usize].iter().any(|height| *height != 0.0));
+
+    engine.select_brush("Paint tube");
+    engine.dip(pigmentlab_core::pigment::by_name("cadmium_red").unwrap());
+    let painting_pixel = 128 * width + 100;
+    let palette_pixel = 128 * width + SIZE.width as usize + 100;
+    let time = squeeze(&mut engine, 100.0, 128.0, 0.0);
+    squeeze(&mut engine, SIZE.width as f32 + 100.0, 128.0, time);
+    let wet_on_palette = engine.paint_heights()[palette_pixel];
+    assert!(wet_on_palette > 1.0 && engine.paint_heights()[painting_pixel] > 1.0);
+
+    engine.dry();
+    let heights = engine.paint_heights();
+    assert_eq!(heights[painting_pixel], 0.0);
+    assert!((heights[palette_pixel] - wet_on_palette).abs() < 1e-3);
+    assert!(engine.dry_heights()[painting_pixel] > 0.0 && engine.dry_heights()[palette_pixel] == 0.0);
+
+    engine.clear();
+    assert!((engine.paint_heights()[palette_pixel] - wet_on_palette).abs() < 1e-3);
+    engine.clean_palette();
+    assert_eq!(engine.paint_mass(), 0.0);
+}
+
+#[test]
+fn a_saved_image_holds_the_painting_without_the_palette() {
+    let mut engine = Engine::with_palette(Gpu::headless(), SIZE, 1);
+    let path = std::env::temp_dir().join(format!("pigmentlab-palette-{}.png", std::process::id()));
+    engine.save_image(&path).unwrap();
+    let saved = image::open(&path).unwrap().to_rgb8();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!((saved.width(), saved.height()), (SIZE.width, SIZE.height));
+}

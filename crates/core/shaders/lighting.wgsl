@@ -7,6 +7,8 @@ struct CompositeUniform {
     ambient: f32,
     shadow_strength: f32,
     varnish: f32,
+    painting_width: u32,
+    palette_start: u32,
 };
 
 fn light_direction() -> vec3<f32> {

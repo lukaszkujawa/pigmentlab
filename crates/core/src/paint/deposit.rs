@@ -54,6 +54,7 @@ pub struct Deposit {
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::ComputePipeline,
     replenish: wgpu::ComputePipeline,
+    mix_blade_face: Option<wgpu::ComputePipeline>,
     apply_film: wgpu::ComputePipeline,
     grant_pickups: wgpu::ComputePipeline,
     apply_pickups: wgpu::ComputePipeline,
@@ -186,6 +187,7 @@ impl Deposit {
             bind_group,
             pipeline: compute_pipeline("step"),
             replenish: compute_pipeline("replenish"),
+            mix_blade_face: steel.then(|| compute_pipeline("mix_blade_face")),
             apply_film: compute_pipeline("apply_film"),
             grant_pickups: compute_pipeline("grant_pickups"),
             apply_pickups: compute_pipeline("apply_pickups"),
@@ -247,6 +249,10 @@ impl Deposit {
         pass.dispatch_workgroups(columns_x, columns_y, 1);
         pass.set_pipeline(&self.replenish);
         pass.dispatch_workgroups(self.bristle_count.div_ceil(64), 1, 1);
+        if let Some(mix_blade_face) = &self.mix_blade_face {
+            pass.set_pipeline(mix_blade_face);
+            pass.dispatch_workgroups(1, 1, 1);
+        }
         drop(pass);
         encoder.copy_buffer_to_buffer(&brush.chain, 0, &self.previous_chain, 0, brush.chain.size());
     }

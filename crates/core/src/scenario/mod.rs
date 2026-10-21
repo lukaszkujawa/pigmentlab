@@ -23,6 +23,8 @@ pub struct Scenario {
     pub show_bristles: bool,
     #[serde(default = "default_true")]
     pub levelling: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub palette: bool,
     pub steps: Vec<Step>,
 }
 
@@ -94,6 +96,7 @@ pub enum Action {
     Wipe,
     Undo,
     Clear,
+    CleanPalette,
     Checkpoint {
         name: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]

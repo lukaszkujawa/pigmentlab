@@ -37,7 +37,10 @@ impl Report {
 
 pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> Report {
     let started = Instant::now();
-    let mut engine = Engine::new(Gpu::headless(), scenario.canvas, scenario.seed);
+    let mut engine = match scenario.palette {
+        true => Engine::with_palette(Gpu::headless(), scenario.canvas, scenario.seed),
+        false => Engine::new(Gpu::headless(), scenario.canvas, scenario.seed),
+    };
     engine.set_show_bristles(scenario.show_bristles);
     engine.set_levelling_enabled(scenario.levelling);
     let mut checkpoints = Vec::new();
@@ -67,7 +70,8 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
                     None => engine.read_back(),
                 };
                 let comparison = check(&actual, baseline_dir, name, scenario, update_baselines);
-                let fractal_dimension = box_counting_dimension(&engine.paint_heights(), scenario.canvas.width as usize, scenario.canvas.height as usize);
+                let size = engine.canvas_size();
+                let fractal_dimension = box_counting_dimension(&engine.paint_heights(), size.width as usize, size.height as usize);
                 checkpoints.push(CheckpointResult {
                     name: name.clone(),
                     elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
@@ -87,6 +91,7 @@ pub fn run(scenario: &Scenario, baseline_dir: &Path, update_baselines: bool) -> 
                 engine.undo();
             }
             Action::Clear => engine.clear(),
+            Action::CleanPalette => engine.clean_palette(),
             Action::Dry => engine.dry(),
             Action::Surface { surface } => engine.set_surface(*surface),
             Action::HangBottle { pivot, release, push } => engine.hang_bottle(Hanging { pivot: Vec2::from(*pivot), release: Vec2::from(*release), push: Vec2::from(*push) }),

@@ -76,6 +76,16 @@ impl Engine {
         self.mark_whole_canvas_stale();
     }
 
+    pub fn clean_palette(&mut self) {
+        let mut encoder = self.encoder("clean palette");
+        self.window.encode_bake(&self.gpu, &mut encoder, &self.canvas);
+        self.snapshot(&mut encoder);
+        self.canvas.encode_clean_palette(&mut encoder);
+        self.window.encode_unbake(&mut encoder);
+        self.gpu.queue.submit(Some(encoder.finish()));
+        self.mark_whole_canvas_stale();
+    }
+
     pub fn dry(&mut self) {
         self.film.forget();
         let mut encoder = self.encoder("dry");
@@ -113,6 +123,8 @@ impl Engine {
 
     pub fn save_image(&mut self, path: &std::path::Path) -> Result<(), image::ImageError> {
         self.render();
-        image::DynamicImage::ImageRgba8(self.read_back()).to_rgb8().save(path)
+        let painting = self.painting_size();
+        let image = image::DynamicImage::ImageRgba8(self.read_back()).crop_imm(0, 0, painting.width, painting.height);
+        image.to_rgb8().save(path)
     }
 }

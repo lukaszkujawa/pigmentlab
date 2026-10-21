@@ -38,6 +38,9 @@ struct CompositeUniform {
     ambient: f32,
     shadow_strength: f32,
     varnish: f32,
+    painting_width: u32,
+    palette_start: u32,
+    padding: [u32; 2],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,6 +75,8 @@ pub struct Composite {
 struct CanvasExtent {
     width: u32,
     height: u32,
+    painting_width: u32,
+    palette_start: u32,
 }
 
 impl Composite {
@@ -128,7 +133,7 @@ impl Composite {
             watercolour: None,
             shader,
             uniform,
-            canvas: CanvasExtent { width: canvas.size.width, height: canvas.size.height },
+            canvas: CanvasExtent { width: canvas.size.width, height: canvas.size.height, painting_width: canvas.painting_size().width, palette_start: canvas.palette_start() },
             albedo,
             finish,
             present,
@@ -188,6 +193,9 @@ impl Composite {
                 ambient: lighting.ambient,
                 shadow_strength: lighting.shadow_strength,
                 varnish: lighting.varnish,
+                painting_width: self.canvas.painting_width,
+                palette_start: self.canvas.palette_start,
+                padding: [0; 2],
             }),
         );
     }

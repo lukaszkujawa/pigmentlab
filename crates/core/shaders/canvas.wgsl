@@ -2,7 +2,7 @@ struct CanvasUniform {
     width: u32,
     height: u32,
     shrink: f32,
-    padding: f32,
+    painting_width: u32,
 };
 
 const MIN_DRY_HEIGHT: f32 = 1e-3;
@@ -15,7 +15,7 @@ const MIN_DRY_HEIGHT: f32 = 1e-3;
 
 @compute @workgroup_size(16, 16)
 fn bake_dry(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= canvas.width || id.y >= canvas.height) { return; }
+    if (id.x >= canvas.painting_width || id.y >= canvas.height) { return; }
     let index = id.y * canvas.width + id.x;
     let cell = index * CHANNELS;
     let height = f32(store[cell]) / PAINT_SCALE;
@@ -36,4 +36,23 @@ fn refresh_ground(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= canvas.width || id.y >= canvas.height) { return; }
     let index = id.y * canvas.width + id.x;
     ground[index] = relief[index] + dry[index].x;
+}
+
+fn clear_paint(id: vec2<u32>) {
+    let cell = (id.y * canvas.width + id.x) * CHANNELS;
+    for (var channel = 0u; channel < CHANNELS; channel++) {
+        store[cell + channel] = 0;
+    }
+}
+
+@compute @workgroup_size(16, 16)
+fn clear_painting(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= canvas.painting_width || id.y >= canvas.height) { return; }
+    clear_paint(id.xy);
+}
+
+@compute @workgroup_size(16, 16)
+fn clear_palette(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x < canvas.painting_width || id.x >= canvas.width || id.y >= canvas.height) { return; }
+    clear_paint(id.xy);
 }

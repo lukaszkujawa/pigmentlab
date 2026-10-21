@@ -128,6 +128,16 @@ impl Default for PaintSettings {
 impl Engine {
     pub fn new(gpu: Gpu, size: CanvasSize, seed: u64) -> Self {
         let canvas = Canvas::new(&gpu, size, seed);
+        Self::on_canvas(gpu, canvas, seed)
+    }
+
+    pub fn with_palette(gpu: Gpu, painting: CanvasSize, seed: u64) -> Self {
+        let canvas = Canvas::with_palette(&gpu, painting, seed);
+        Self::on_canvas(gpu, canvas, seed)
+    }
+
+    fn on_canvas(gpu: Gpu, canvas: Canvas, seed: u64) -> Self {
+        let size = canvas.size;
         let window = ActiveWindow::new(&gpu, &canvas, SMALLEST_WINDOW);
         let stroke_base = gpu.storage_buffer("stroke base heights", canvas.size.pixel_count() * 4);
         let brush = Brush::new(&gpu, BrushPreset::default_round(), seed, &window, &canvas, &stroke_base);
@@ -223,6 +233,14 @@ impl Engine {
 
     pub fn canvas_size(&self) -> CanvasSize {
         self.canvas.size
+    }
+
+    pub fn painting_size(&self) -> CanvasSize {
+        self.canvas.painting_size()
+    }
+
+    pub fn has_palette(&self) -> bool {
+        self.canvas.painting_size() != self.canvas.size
     }
 
     pub fn watercolour(&self) -> Option<&Watercolour> {
